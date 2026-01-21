@@ -74,6 +74,25 @@ export default function PDVPage() {
         return supabase
     }
 
+    // Helpers para data local (YYYY-MM-DD) e parsing robusto
+    const getLocalDateString = (d: Date = new Date()) => {
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        return `${y}-${m}-${day}`
+    }
+
+    const parseBaseDateToLocal = (base?: string) => {
+        if (!base) return new Date()
+        // Se já for YYYY-MM-DD, crie Date em meia-noite local
+        if (/^\d{4}-\d{2}-\d{2}$/.test(base)) {
+            const [y, m, day] = base.split('-').map(Number)
+            return new Date(y, m - 1, day)
+        }
+        // Caso contrário, deixa o Date interpretar (ISO ou timestamp)
+        return new Date(base)
+    }
+
     // (removido: flags de simulação de emissão fiscal)
 
     // Grava movimentação diretamente no banco (movimentacoes_caderneta + atualiza saldo do cliente)
@@ -131,7 +150,7 @@ export default function PDVPage() {
     const restaurarCaixaAberto = async (opts?: { changeView?: boolean }) => {
         const changeView = opts?.changeView ?? true
         try {
-            const hojeISO = new Date().toISOString().split('T')[0]
+            const hojeISO = getLocalDateString()
             const { data, error } = await getSupabase()
                 .from('caixa_diario')
                 .select('*')
@@ -150,7 +169,7 @@ export default function PDVPage() {
             if (data.status === 'aberto') {
                 setCaixaAberto(true)
                 setSaldoInicial(Number(data.valor_abertura) || 0)
-                setCaixaDiaISO(data.data || new Date().toISOString())
+                setCaixaDiaISO(data.data || getLocalDateString())
                 setCaixaDiarioId(data.id || null)
                 try {
                     if (data.data) {
@@ -263,7 +282,7 @@ export default function PDVPage() {
             // Também registrar a saída na tabela 'fluxo_caixa' para aparecer em Gestão -> Saídas
             try {
                 // Usar a data de abertura do caixa (caixaDiaISO) para registrar a saída
-                const dataCaixa = caixaDiaISO ? String(caixaDiaISO) : new Date().toISOString().split('T')[0]
+                const dataCaixa = caixaDiaISO || getLocalDateString()
                 const dadosFluxo = {
                     data: dataCaixa,
                     tipo: 'saida',
@@ -526,7 +545,7 @@ export default function PDVPage() {
     // Carrega histórico de vendas do dia baseado na coluna DATE `data` (corrige timezone)
     const carregarVendasHoje = async (baseDateISO?: string) => {
         try {
-            const base = baseDateISO ? new Date(baseDateISO) : new Date()
+            const base = parseBaseDateToLocal(baseDateISO)
             // Usa a coluna DATE `data` no formato YYYY-MM-DD (data local) para evitar problemas de timezone
             const y = base.getFullYear()
             const m = String(base.getMonth() + 1).padStart(2, '0')
@@ -538,15 +557,22 @@ export default function PDVPage() {
             const startOfDay = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, 0, 0, 0).toISOString()
             const endOfDay = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 23, 59, 59, 999).toISOString()
 
+            console.debug('carregarVendasHoje: dateStr, startOfDay, endOfDay', { dateStr, startOfDay, endOfDay })
             const { data, error } = await getSupabase()
                 .from('vendas')
                 .select('*')
-                .or(`data.eq.${dateStr},created_at.gte.${startOfDay},created_at.lte.${endOfDay}`)
+                // Correção: usar o operador lógico `and(...)` dentro do `or(...)` para
+                // representar: data = dateStr OR (created_at >= startOfDay AND created_at <= endOfDay)
+                .or(`data.eq.${dateStr},and(created_at.gte.${startOfDay},created_at.lte.${endOfDay})`)
                 .order('created_at', { ascending: false })
 
             if (error) throw error
 
             if (data) {
+                try {
+                    const formas = Array.from(new Set((data as any[]).map(d => String(d.forma_pagamento || '').toLowerCase())))
+                    console.debug('carregarVendasHoje: vendas retornadas:', (data as any[]).length, 'formas:', formas)
+                } catch (e) { console.debug('carregarVendasHoje: erro ao logar formas', e) }
                 setVendasHoje(data.map((v: any) => ({
                     id: v.id,
                     data: v.created_at ? new Date(v.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '---',
@@ -556,8 +582,21 @@ export default function PDVPage() {
             } else {
                 setVendasHoje([])
             }
-        } catch (err) {
-            console.error('Erro ao carregar vendas do dia:', err)
+        } catch (err: any) {
+            // Log mais informativo para ajudar debugging (Supabase retorna objetos não-enumeráveis às vezes)
+            try {
+                console.error('Erro ao carregar vendas do dia:', err)
+                console.error('Erro (stringified):', JSON.stringify(err))
+            } catch (e) {
+                console.error('Erro ao serializar erro de vendas:', e)
+            }
+            // Propriedades comuns do Supabase
+            if (err) {
+                console.error('err.message:', err?.message)
+                console.error('err.code:', err?.code)
+                console.error('err.details:', err?.details)
+                console.error('err.hint:', err?.hint)
+            }
             setVendasHoje([])
         }
     }
@@ -1169,7 +1208,7 @@ export default function PDVPage() {
                         }
 
                         try {
-                            const hojeStr = new Date().toISOString().split('T')[0]
+                            const hojeStr = getLocalDateString()
                             const dadosFluxo = {
                                 data: hojeStr,
                                 tipo: 'entrada',
@@ -1421,15 +1460,15 @@ export default function PDVPage() {
         setCaixaAberto(true)
         setHoraAbertura(new Date().toLocaleTimeString('pt-BR'))
         setDataHoje(new Date().toLocaleDateString('pt-BR'))
-        // Fixa o dia do turno para relatórios
-        const agoraISO = new Date().toISOString()
-        setCaixaDiaISO(agoraISO)
+        // Fixa o dia do turno para relatórios (data local YYYY-MM-DD)
+        const agoraLocal = getLocalDateString()
+        setCaixaDiaISO(agoraLocal)
         // Recarrega relatório exclusivamente para o dia fixado
-        carregarVendasHoje(agoraISO)
+        carregarVendasHoje(agoraLocal)
         setView('venda')
             // Persiste abertura do caixa no Supabase (cria linha com status 'aberto')
             try {
-                const dataISO = new Date().toISOString().split('T')[0]
+                const dataISO = getLocalDateString()
 
                 // Verifica se já existe qualquer registro para a data (regra: 1 caixa por dia)
                 const { data: existing, error: checkErr } = await getSupabase()
@@ -1568,8 +1607,7 @@ export default function PDVPage() {
 
     const handleConfirmFechamento = async () => {
         try {
-            const hoje = new Date()
-            const dataISO = hoje.toISOString().split('T')[0]
+            const dataISO = getLocalDateString()
             // Fecha a interface do PDV imediatamente (optimistic UI)
             setModalFechamentoConfirm(false)
             setModalFechamento(false)

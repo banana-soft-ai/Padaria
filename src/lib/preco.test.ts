@@ -1,9 +1,32 @@
 import { calcularCustos } from './preco'
+import { Insumo } from '@/lib/supabase'
 
 describe('calcularCustos', () => {
-  const insumos = [
-    { id: 1, preco_pacote: 10, peso_pacote: 2, categoria: 'insumo' },
-    { id: 2, preco_pacote: 5, peso_pacote: 1, categoria: 'embalagem' }
+  const insumos: Insumo[] = [
+    {
+      id: 1,
+      nome: 'Farinha Teste',
+      preco_pacote: 10,
+      peso_pacote: 2,
+      unidade: 'kg',
+      tipo_estoque: 'insumo',
+      categoria: 'insumo',
+      codigo_barras: '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 2,
+      nome: 'Embalagem Teste',
+      preco_pacote: 5,
+      peso_pacote: 1,
+      unidade: 'un',
+      tipo_estoque: 'insumo',
+      categoria: 'embalagem',
+      codigo_barras: '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
   ]
 
   it('calcula custos básicos sem embalagem', () => {

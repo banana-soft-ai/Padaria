@@ -76,8 +76,8 @@ export function calcularCustos({
   }, 0)
 
   const custosInvisiveisDecimalClamped = Math.min(Math.max(Number(custosInvisiveisDecimal) || 0, 0), 1)
-  const custoInvisivel = custoIngredientes * custosInvisiveisDecimalClamped
-  const custoBase = custoIngredientes + custoInvisivel
+  let custoInvisivel = custoIngredientes * custosInvisiveisDecimalClamped
+  let custoBase = custoIngredientes + custoInvisivel
 
   // Assegura que rendimento seja um número não-negativo
   const rendimentoNum = Number(rendimento) || 0
@@ -181,8 +181,8 @@ export function calcularCustosCompletos({ composicoes, rendimento, custosInvisiv
   }
 
   const custosInvisiveisDecimal = Math.min(Math.max(Number(custosInvisiveis) || 0, 0), 1)
-  const custoInvisivel = custoIngredientes * custosInvisiveisDecimal
-  const custoBase = custoIngredientes + custoInvisivel
+  let custoInvisivel = custoIngredientes * custosInvisiveisDecimal
+  let custoBase = custoIngredientes + custoInvisivel
 
   let rendimentoNum = Number(rendimento)
   if (isNaN(rendimentoNum) || rendimentoNum <= 0) rendimentoNum = 1

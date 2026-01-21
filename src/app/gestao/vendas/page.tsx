@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import VendasTab from '@/components/gestao/VendasTab'
 import { RelatorioVendas, RankingVendas } from '@/types/gestao'
-import { obterInicioMes, obterInicioSemana } from '@/lib/dateUtils'
+import { obterInicioMes, obterInicioSemana, obterDataLocal } from '@/lib/dateUtils'
 
 export default function VendasPage() {
   const [loading, setLoading] = useState(true)
@@ -52,14 +52,41 @@ export default function VendasPage() {
       // Carregando relatório de vendas
 
       // Buscar vendas do período usando created_at (igual PDV)
-      const dataInicio = obterDataInicioPeriodo(periodoVendas)
-      const hoje = new Date().toISOString().split('T')[0]
+      const dataInicioYmd = obterDataInicioPeriodo(periodoVendas)
+      // Converte YYYY-MM-DD local para intervalo ISO (meia-noite local -> ISO UTC)
+      const toLocalIsoRange = (ymd: string) => {
+        const [yy, mm, dd] = ymd.split('-').map(Number)
+        const start = new Date(yy, mm - 1, dd, 0, 0, 0, 0).toISOString()
+        const end = new Date(yy, mm - 1, dd, 23, 59, 59, 999).toISOString()
+        return { start, end }
+      }
+
+      const startIso = toLocalIsoRange(dataInicioYmd).start
+      const hojeYmd = obterDataLocal()
+      const endIso = toLocalIsoRange(hojeYmd).end
+
       const { data: vendas, error: vendasError } = await supabase!
         .from('vendas')
-        .select('id, created_at, valor_total, valor_pago, valor_debito, forma_pagamento')
-        .gte('created_at', dataInicio)
-        .lte('created_at', hoje + 'T23:59:59.999Z')
+        .select('id, created_at, valor_total, valor_pago, valor_debito, forma_pagamento, data')
+        // Preferir filtrar pela coluna DATE (`data`) que é gravada em YYYY-MM-DD local
+        .gte('data', dataInicioYmd)
+        .lte('data', hojeYmd)
         .order('created_at', { ascending: false })
+
+      // Logs de diagnóstico para inspecionar quais datas e registros o banco retornou
+      try {
+        const preview = (vendas as any[] | null) ? (vendas as any[]).slice(0, 20).map(v => ({ id: v.id, data: v.data, created_at: v.created_at })) : []
+        console.log('[DIAGNOSTICO] carregarRelatorioVendas', {
+          dataInicioYmd,
+          hojeYmd,
+          startIso: startIso,
+          endIso: endIso,
+          vendasCount: (vendas as any[] | null)?.length ?? 0,
+          vendasPreview: preview
+        })
+      } catch (e) {
+        console.warn('[DIAGNOSTICO] falha ao gerar preview de vendas', e)
+      }
 
       if (vendasError) {
         setRelatorioVendas([])
@@ -274,7 +301,7 @@ export default function VendasPage() {
         return
       }
       const dataInicio = obterDataInicioPeriodo(periodoVendas)
-      const hoje = new Date().toISOString().split('T')[0]
+      const hoje = obterDataLocal()
 
       // DIAGNÓSTICO: Buscar TODAS as vendas do período (sem limite de 1000)
       let todasVendas: Record<string, unknown>[] = []
@@ -403,7 +430,7 @@ export default function VendasPage() {
 
   const obterDataInicioPeriodo = (periodo: string): string => {
     try {
-      const hoje = new Date()
+      const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
       let dataInicio: Date
 
       switch (periodo) {
@@ -433,12 +460,17 @@ export default function VendasPage() {
           dataInicio.setHours(0, 0, 0, 0)
       }
 
-      const dataFormatada = dataInicio.toISOString().split('T')[0]
+      const dataFormatada = (() => {
+        const ano = dataInicio.getFullYear()
+        const mes = String(dataInicio.getMonth() + 1).padStart(2, '0')
+        const dia = String(dataInicio.getDate()).padStart(2, '0')
+        return `${ano}-${mes}-${dia}`
+      })()
       return dataFormatada
     } catch (error) {
       console.error('Erro ao calcular data de início:', error)
-      // Fallback para hoje
-      return new Date().toISOString().split('T')[0]
+      // Fallback para hoje (data local)
+      return obterDataLocal()
     }
   }
 

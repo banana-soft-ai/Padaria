@@ -17,7 +17,7 @@ import { useCadernetaOffline } from '@/hooks/useCadernetaOffline'
  * que permite que todas as operações sejam realizadas sem conexão com a internet e
  * sincronizadas automaticamente quando a conexão é restabelecida.
  */
-export function CadernetaContent() {
+function CadernetaContent() {
   // Hook customizado que abstrai toda a lógica de dados da caderneta, incluindo
   // busca, cache, operações CRUD e sincronização online/offline.
   const {

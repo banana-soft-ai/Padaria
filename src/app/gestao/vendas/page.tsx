@@ -1,0 +1,512 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase/client'
+import ProtectedLayout from '@/components/ProtectedLayout'
+import VendasTab from '@/components/gestao/VendasTab'
+import { RelatorioVendas, RankingVendas } from '@/types/gestao'
+import { obterInicioMes, obterInicioSemana } from '@/lib/dateUtils'
+
+export default function VendasPage() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [periodoVendas, setPeriodoVendas] = useState<'dia' | 'semana' | 'mes' | 'trimestre' | 'semestre' | 'ano'>('mes')
+  const [relatorioVendas, setRelatorioVendas] = useState<RelatorioVendas[]>([])
+  const [rankingVendas, setRankingVendas] = useState<RankingVendas[]>([])
+  const [metricasResumo, setMetricasResumo] = useState({
+    unidadesVendidas: 0,
+    receitaTotal: 0,
+    ticketMedio: 0,
+    totalPix: 0,
+    totalDinheiro: 0,
+    totalDebito: 0,
+    totalCredito: 0,
+    totalCaderneta: 0,
+    valorReceber: 0
+  })
+
+  useEffect(() => {
+    carregarDados()
+  }, [periodoVendas])
+
+  const carregarDados = async () => {
+    try {
+      setError(null)
+      setLoading(true)
+
+      await Promise.all([
+        carregarRelatorioVendas(),
+        carregarRankingVendas(),
+        carregarMetricasResumo()
+      ])
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error)
+      setError('Erro ao carregar dados de vendas')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const carregarRelatorioVendas = async () => {
+    try {
+      // Carregando relatório de vendas
+
+      // Buscar vendas do período usando created_at (igual PDV)
+      const dataInicio = obterDataInicioPeriodo(periodoVendas)
+      const hoje = new Date().toISOString().split('T')[0]
+      const { data: vendas, error: vendasError } = await supabase!
+        .from('vendas')
+        .select('id, created_at, valor_total, valor_pago, valor_debito, forma_pagamento')
+        .gte('created_at', dataInicio)
+        .lte('created_at', hoje + 'T23:59:59.999Z')
+        .order('created_at', { ascending: false })
+
+      if (vendasError) {
+        setRelatorioVendas([])
+        return
+      }
+
+      if (!vendas || vendas.length === 0) {
+        setRelatorioVendas([])
+        return
+      }
+
+      // Buscar itens das vendas
+      const vendaIds = vendas.map(v => v.id)
+      const { data: itensData, error: itensError } = await supabase!
+        .from('venda_itens')
+        .select('id, venda_id, varejo_id, quantidade, preco_unitario')
+        .in('venda_id', vendaIds)
+
+      if (itensError || !itensData || itensData.length === 0) {
+        setRelatorioVendas([])
+        return
+      }
+
+      // Buscar nomes dos produtos de varejo
+      const varejoIds = [...new Set(itensData.map(item => item.varejo_id).filter(Boolean))]
+      let produtosVarejo: { id: number; nome: string }[] = []
+      if (varejoIds.length > 0) {
+        const { data: produtosData } = await supabase!
+          .from('varejo')
+          .select('id, nome')
+          .in('id', varejoIds)
+        produtosVarejo = produtosData || []
+      }
+      const produtosVarejoMap = new Map(produtosVarejo.map(p => [p.id, p.nome]))
+
+      // Agrupar por produto+preço unitário
+      const vendasPorProdutoPreco = new Map<string, RelatorioVendas>()
+      itensData.forEach(item => {
+        const nomeProduto = produtosVarejoMap.get(item.varejo_id) || 'Produto null'
+        const precoUnitario = item.preco_unitario || 0
+        const quantidade = item.quantidade || 0
+        const faturamento = precoUnitario * quantidade
+        // Chave composta: produto + preço
+        const itemKey = `${item.varejo_id}_${precoUnitario}`
+        if (!vendasPorProdutoPreco.has(itemKey)) {
+          vendasPorProdutoPreco.set(itemKey, {
+            item: nomeProduto,
+            tipo: 'varejo',
+            quantidadeTotal: quantidade,
+            receitaTotal: faturamento,
+            mediaVendas: precoUnitario,
+            vendasPorDia: {}
+          })
+        } else {
+          const existing = vendasPorProdutoPreco.get(itemKey)!
+          existing.quantidadeTotal += quantidade
+          existing.receitaTotal += faturamento
+        }
+      })
+
+      setRelatorioVendas(Array.from(vendasPorProdutoPreco.values()))
+    } catch (error) {
+      console.error('Erro ao carregar relatório de vendas:', error)
+      setRelatorioVendas([])
+    }
+  }
+
+  const carregarRankingVendas = async () => {
+    try {
+      // Carregando ranking de vendas
+
+      const { data, error } = await supabase!
+        .from('venda_itens')
+        .select('*')
+        .gte('created_at', obterDataInicioPeriodo(periodoVendas))
+
+      if (error) {
+        console.error('Erro ao carregar itens de venda:', error.message || error)
+        setRankingVendas([])
+        return
+      }
+
+      // Carregar nomes dos produtos separadamente
+      if (data && data.length > 0) {
+        const receitaIds = data.filter(item => item.tipo === 'receita').map(item => item.item_id)
+        const insumoIds = data.filter(item => item.tipo === 'varejo').map(item => item.item_id)
+
+        let receitas: { id: number; nome: string }[] = []
+        let insumos: { id: number; nome: string }[] = []
+
+        if (receitaIds.length > 0) {
+          const { data: receitasData } = await supabase!
+            .from('receitas')
+            .select('id, nome')
+            .eq('ativo', true)
+            .in('id', receitaIds)
+          receitas = receitasData || []
+        }
+
+        if (insumoIds.length > 0) {
+          const { data: insumosData } = await supabase!
+            .from('insumos')
+            .select('id, nome')
+            .in('id', insumoIds)
+          insumos = insumosData || []
+        }
+
+        // Criar mapas para busca rápida
+        const receitasMap = new Map(receitas.map(r => [r.id, r.nome]))
+        const insumosMap = new Map(insumos.map(i => [i.id, i.nome]))
+
+        // Adicionar nomes aos itens
+        data.forEach(item => {
+          if (item.tipo === 'receita') {
+            item.nome_produto = receitasMap.get(item.item_id) || `Receita ${item.item_id}`
+          } else {
+            item.nome_produto = insumosMap.get(item.item_id) || `Produto ${item.item_id}`
+          }
+        })
+      }
+
+      // Processar dados para ranking
+      const ranking: RankingVendas[] = []
+
+      if (data && data.length > 0) {
+        // Agrupar itens por produto
+        const itensPorTipo = new Map<string, RankingVendas>()
+
+        // Agrupar itens por venda para calcular proporções
+        const itensPorVenda = new Map<number, Record<string, unknown>[]>()
+        data.forEach((item: Record<string, unknown>) => {
+          const vendaId = item.venda_id as number
+          if (!itensPorVenda.has(vendaId)) {
+            itensPorVenda.set(vendaId, [])
+          }
+          itensPorVenda.get(vendaId)!.push(item)
+        })
+
+        // Buscar dados das vendas para calcular valores reais
+        const vendaIds = Array.from(itensPorVenda.keys())
+        const { data: vendasData } = await supabase!
+          .from('vendas')
+          .select('id, valor_pago, valor_debito, forma_pagamento')
+          .in('id', vendaIds)
+
+        const vendasMap = new Map(vendasData?.map(v => [v.id, v]) || [])
+
+        data.forEach((item: Record<string, unknown>) => {
+          const itemKey = `${item.tipo}_${item.item_id}`
+          const vendaId = item.venda_id as number
+          const venda = vendasMap.get(vendaId)
+
+          if (!venda) return
+
+          // Calcular proporção do valor da venda para este item
+          const valorTotalVenda = venda.forma_pagamento === 'caderneta' ? (venda.valor_debito as number || 0) : (venda.valor_pago as number || 0)
+          const itensVenda = itensPorVenda.get(vendaId) || []
+          const valorTotalItens = itensVenda.reduce((sum: number, i: Record<string, unknown>) => sum + ((i.preco_unitario as number || 0) * (i.quantidade as number || 0)), 0)
+          const proporcao = valorTotalItens > 0 ? valorTotalVenda / valorTotalItens : 0
+
+          const valorItemOriginal = (item.preco_unitario as number || 0) * (item.quantidade as number || 0)
+          const valorItemProporcional = valorItemOriginal * proporcao
+
+          if (!itensPorTipo.has(itemKey)) {
+            itensPorTipo.set(itemKey, {
+              item: (item.nome_produto as string) || `${item.tipo === 'receita' ? 'Receita' : 'Produto'} ${item.item_id}`,
+              tipo: item.tipo as 'receita' | 'varejo',
+              quantidadeTotal: (item.quantidade as number || 0),
+              receitaTotal: valorItemProporcional,
+              posicao: 0
+            })
+          } else {
+            const rankingItem = itensPorTipo.get(itemKey)!
+            rankingItem.quantidadeTotal += (item.quantidade as number || 0)
+            rankingItem.receitaTotal += valorItemProporcional
+          }
+        })
+
+        // Ordenar por receita total e adicionar posições
+        const sortedItems = Array.from(itensPorTipo.values())
+          .sort((a, b) => b.receitaTotal - a.receitaTotal)
+          .map((item, index) => ({
+            ...item,
+            posicao: index + 1
+          }))
+
+        ranking.push(...sortedItems)
+      }
+
+      // Ranking de vendas processado
+      setRankingVendas(ranking)
+    } catch (error) {
+      console.error('Erro ao carregar ranking de vendas:', error instanceof Error ? error.message : String(error))
+      setRankingVendas([])
+    }
+  }
+
+  const carregarMetricasResumo = async () => {
+    try {
+      if (!supabase) {
+        setMetricasResumo({
+          unidadesVendidas: 0,
+          receitaTotal: 0,
+          ticketMedio: 0,
+          totalPix: 0,
+          totalDinheiro: 0,
+          totalDebito: 0,
+          totalCredito: 0,
+          totalCaderneta: 0,
+          valorReceber: 0
+        })
+        return
+      }
+      const dataInicio = obterDataInicioPeriodo(periodoVendas)
+      const hoje = new Date().toISOString().split('T')[0]
+
+      // DIAGNÓSTICO: Buscar TODAS as vendas do período (sem limite de 1000)
+      let todasVendas: Record<string, unknown>[] = []
+      let offset = 0
+      const limit = 1000
+      let hasMore = true
+
+      while (hasMore) {
+        const { data: vendasBatch, error: vendasError } = await supabase!
+          .from('vendas')
+          .select('*')
+          .gte('data', dataInicio)
+          .lte('data', hoje)
+          .order('data', { ascending: false })
+          .range(offset, offset + limit - 1)
+
+        if (vendasError) {
+          console.error('Erro ao carregar vendas:', vendasError)
+          break
+        }
+
+        if (vendasBatch && vendasBatch.length > 0) {
+          todasVendas = [...todasVendas, ...vendasBatch]
+          offset += limit
+          hasMore = vendasBatch.length === limit
+        } else {
+          hasMore = false
+        }
+      }
+
+      // Verificar se há vendas no período
+      if (todasVendas.length === 0) {
+        console.log('Nenhuma venda encontrada para o período selecionado')
+        setMetricasResumo({
+          unidadesVendidas: 0,
+          receitaTotal: 0,
+          ticketMedio: 0,
+          totalPix: 0,
+          totalDinheiro: 0,
+          totalDebito: 0,
+          totalCredito: 0,
+          totalCaderneta: 0,
+          valorReceber: 0
+        })
+        return
+      }
+
+      let unidadesVendidas = 0
+      let totalPix = 0
+      let totalDinheiro = 0
+      let totalDebito = 0
+      let totalCredito = 0
+      let totalCaderneta = 0
+      let valorReceber = 0
+
+      if (todasVendas.length > 0) {
+        const vendaIds = todasVendas.map(venda => venda.id)
+        const { data: itensData } = await supabase!
+          .from('venda_itens')
+          .select('quantidade')
+          .in('venda_id', vendaIds)
+
+        if (itensData) {
+          unidadesVendidas = itensData.reduce((sum, item) => sum + (item.quantidade || 0), 0)
+        }
+
+        todasVendas.forEach(venda => {
+          switch (venda.forma_pagamento) {
+            case 'pix':
+              totalPix += (venda.valor_pago as number || 0)
+              break
+            case 'dinheiro':
+              totalDinheiro += (venda.valor_pago as number || 0)
+              break
+            case 'debito':
+              totalDebito += (venda.valor_pago as number || 0)
+              break
+            case 'credito':
+              totalCredito += (venda.valor_pago as number || 0)
+              break
+            case 'caderneta':
+              totalCaderneta += (venda.valor_debito as number || 0)
+              break
+          }
+        })
+      }
+
+      const { data: clientesData } = await supabase!
+        .from('clientes_caderneta')
+        .select('saldo_devedor')
+        .eq('ativo', true)
+
+      if (clientesData) {
+        valorReceber = clientesData.reduce((sum, cliente) => sum + (cliente.saldo_devedor || 0), 0)
+      }
+
+      const receitaTotal = totalPix + totalDinheiro + totalDebito + totalCredito + totalCaderneta
+      const vendasCount = todasVendas?.length || 0
+
+      setMetricasResumo({
+        unidadesVendidas,
+        receitaTotal,
+        ticketMedio: vendasCount > 0 ? receitaTotal / vendasCount : 0,
+        totalPix,
+        totalDinheiro,
+        totalDebito,
+        totalCredito,
+        totalCaderneta,
+        valorReceber
+      })
+    } catch (error) {
+      console.error('Erro ao carregar métricas de resumo:', error instanceof Error ? error.message : String(error))
+      setMetricasResumo({
+        unidadesVendidas: 0,
+        receitaTotal: 0,
+        ticketMedio: 0,
+        totalPix: 0,
+        totalDinheiro: 0,
+        totalDebito: 0,
+        totalCredito: 0,
+        totalCaderneta: 0,
+        valorReceber: 0
+      })
+    }
+  }
+
+  const obterDataInicioPeriodo = (periodo: string): string => {
+    try {
+      const hoje = new Date()
+      let dataInicio: Date
+
+      switch (periodo) {
+        case 'dia':
+          dataInicio = new Date(hoje)
+          dataInicio.setHours(0, 0, 0, 0)
+          break
+        case 'semana':
+          // Usar função centralizada para semana (última segunda até hoje)
+          return obterInicioSemana()
+        case 'mes':
+          // Usar função centralizada para mês (dia 1 até hoje)
+          return obterInicioMes()
+        case 'trimestre':
+          const trimestre = Math.floor(hoje.getMonth() / 3)
+          dataInicio = new Date(hoje.getFullYear(), trimestre * 3, 1)
+          break
+        case 'semestre':
+          const semestre = Math.floor(hoje.getMonth() / 6)
+          dataInicio = new Date(hoje.getFullYear(), semestre * 6, 1)
+          break
+        case 'ano':
+          dataInicio = new Date(hoje.getFullYear(), 0, 1)
+          break
+        default:
+          dataInicio = new Date(hoje)
+          dataInicio.setHours(0, 0, 0, 0)
+      }
+
+      const dataFormatada = dataInicio.toISOString().split('T')[0]
+      return dataFormatada
+    } catch (error) {
+      console.error('Erro ao calcular data de início:', error)
+      // Fallback para hoje
+      return new Date().toISOString().split('T')[0]
+    }
+  }
+
+  if (loading) {
+    return (
+      <ProtectedLayout>
+        <div className="page-container">
+          <div className="animate-pulse">
+            <div className="h-6 bg-gray-200 rounded w-1/4 mb-4"></div>
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="bg-white p-4 rounded-lg shadow">
+                  <div className="h-3 bg-gray-200 rounded w-1/3 mb-2"></div>
+                  <div className="h-2 bg-gray-200 rounded w-1/2"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </ProtectedLayout>
+    )
+  }
+
+  return (
+    <ProtectedLayout>
+      <div className="page-container">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Gestão - Vendas</h1>
+          <p className="text-sm text-gray-600 mt-1">Relatórios e análises de vendas</p>
+        </div>
+
+        {/* Erro se houver */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-4 w-4 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Erro ao carregar dados</h3>
+                <p className="text-sm text-red-700 mt-1">{error}</p>
+              </div>
+            </div>
+            <button
+              onClick={carregarDados}
+              className="mt-3 text-sm text-red-600 hover:text-red-800 underline"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        {/* Conteúdo */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="p-6">
+            <VendasTab
+              periodoVendas={periodoVendas}
+              relatorioVendas={relatorioVendas}
+              rankingVendas={rankingVendas}
+              onPeriodoChange={setPeriodoVendas}
+              metricasResumo={metricasResumo}
+            />
+          </div>
+        </div>
+      </div>
+    </ProtectedLayout>
+  )
+}

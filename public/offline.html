@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - Rey dos Pães</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f9fafb;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        
+        .container {
+            max-width: 28rem;
+            width: 100%;
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .icon {
+            width: 4rem;
+            height: 4rem;
+            color: #f97316;
+            margin: 0 auto 1.5rem;
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #111827;
+            margin-bottom: 0.5rem;
+        }
+        
+        p {
+            color: #6b7280;
+            margin-bottom: 1.5rem;
+            line-height: 1.5;
+        }
+        
+        .status {
+            background-color: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            color: #92400e;
+        }
+        
+        .dot {
+            width: 0.5rem;
+            height: 0.5rem;
+            background-color: #f59e0b;
+            border-radius: 50%;
+        }
+        
+        .button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 0.75rem;
+        }
+        
+        .button-primary {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        .button-primary:hover {
+            background-color: #2563eb;
+        }
+        
+        .button-secondary {
+            background-color: #f3f4f6;
+            color: #374151;
+        }
+        
+        .button-secondary:hover {
+            background-color: #e5e7eb;
+        }
+        
+        .features {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .features h3 {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #111827;
+            margin-bottom: 0.5rem;
+        }
+        
+        .features ul {
+            font-size: 0.75rem;
+            color: #6b7280;
+            list-style: none;
+        }
+        
+        .features li {
+            margin-bottom: 0.25rem;
+        }
+        
+        @media (max-width: 640px) {
+            .container {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-12.728 12.728m0 0L5.636 18.364m12.728-12.728L18.364 18.364M5.636 5.636l12.728 12.728"></path>
+        </svg>
+        
+        <h1>Você está offline</h1>
+        <p>Não foi possível conectar ao servidor. Verifique sua conexão com a internet e tente novamente.</p>
+        
+        <div class="status">
+            <div class="status-indicator">
+                <div class="dot"></div>
+                <span>Sem conexão</span>
+            </div>
+        </div>
+        
+        <button class="button button-primary" onclick="window.location.reload()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Tentar Novamente
+        </button>
+        
+        <a href="/" class="button button-secondary">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+            </svg>
+            Ir para o Início
+        </a>
+        
+        <div class="features">
+            <h3>Funcionalidades Offline</h3>
+            <ul>
+                <li>• Visualizar dados em cache</li>
+                <li>• Adicionar novos registros</li>
+                <li>• Editar dados existentes</li>
+                <li>• Sincronização automática quando online</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

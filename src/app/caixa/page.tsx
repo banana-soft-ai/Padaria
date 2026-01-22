@@ -394,9 +394,15 @@ export default function PDVPage() {
 
         const totalEntradas = totais.dinheiro + totais.pix + totais.debito + totais.credito
         const totalGeral = totalEntradas + totais.caderneta
-        const valorEsperadoDinheiro = saldoInicial + totais.dinheiro
-        return { ...totais, totalEntradas, totalGeral, valorEsperadoDinheiro }
-    }, [vendasHoje, saldoInicial])
+
+        // Soma das saídas registradas no estado local (historico de sangrias)
+        const totalSaidas = (saidasDoDia || []).reduce((acc: number, s: any) => acc + (Number(s.valor) || 0), 0)
+
+        // Valor esperado em dinheiro = fundo inicial + entradas em dinheiro - saídas (sangrias)
+        const valorEsperadoDinheiro = Number((saldoInicial || 0)) + totais.dinheiro - totalSaidas
+
+        return { ...totais, totalEntradas, totalGeral, valorEsperadoDinheiro, totalSaidas }
+    }, [vendasHoje, saldoInicial, saidasDoDia])
 
     // Métricas agregadas do dia (somatório de todas as sessões de caixa registradas)
     const metricasDia = useMemo(() => {
@@ -1849,6 +1855,10 @@ export default function PDVPage() {
     const totalCorrigido = totalCorrigidoCents / 100
     const diferencaFechamento = (totalCorrigidoCents - Math.round((metricasCaixa.totalEntradas || 0) * 100)) / 100
 
+    // Valor de saída (soma das sangrias) e saldo final esperado no caixa
+    const safeTotalSaidas = Number(totalSaidasDoDia || 0)
+    const valorTotalDoCaixa = Number(totalCorrigido || 0) - safeTotalSaidas
+
     // Indica se o funcionário já digitou ao menos um valor de conferência
     const hasConferido = [confDinheiro, confPix, confDebito, confCredito].some(v => String(v).trim() !== '')
 
@@ -2265,7 +2275,7 @@ export default function PDVPage() {
                                     <p className="text-sm text-gray-600">Registre retiradas em espécie da gaveta (somente dinheiro).</p>
                                 </div>
                                 <div className="text-sm text-gray-700">
-                                    Disponível em dinheiro: <span className="font-bold">R$ {((metricasCaixa && metricasCaixa.dinheiro) || 0).toFixed(2)}</span>
+                                    Disponível em dinheiro: <span className="font-bold">R$ {((metricasCaixa && metricasCaixa.valorEsperadoDinheiro) || 0).toFixed(2)}</span>
                                 </div>
                             </div>
 
@@ -2726,6 +2736,11 @@ export default function PDVPage() {
                             
 
                             {/* Detalhamento por Forma de Pagamento */}
+                            <div className="mb-4">
+                                <h3 className="text-lg font-semibold text-gray-700 uppercase">Detalhamento por forma de pagamento</h3>
+                                <p className="text-sm text-gray-500">Vendas do dia</p>
+                            </div>
+
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div className="p-4 border border-gray-100 rounded-xl bg-gray-50">
                                     <div className="flex items-center gap-2 mb-2">
@@ -2928,180 +2943,287 @@ export default function PDVPage() {
                     </div>
                 )}
 
-                {/* Modal Fechamento */}
-                {modalFechamento && (
-                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-40 p-4">
-                        <div className="bg-white p-4 rounded-xl w-full max-w-md shadow-lg max-h-[80vh] overflow-y-auto">
-                            <h2 className="text-xl font-black text-gray-800 uppercase text-center mb-1">FECHAR CAIXA</h2>
-                            <div className="text-center text-xs text-gray-500 mb-3">{dataHoje}</div>
+               {/* Modal Fechamento */}
+{modalFechamento && (
+    <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            
+            {/* Header */}
+            <div className="p-6 border-b border-gray-100 text-center">
+                <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase">Fechar Caixa</h2>
+                <p className="text-sm text-slate-500 font-medium">{dataHoje}</p>
+            </div>
 
+            <div className="p-6 overflow-y-auto custom-scrollbar">
+                
+                {/* Banner Principal - Total de Vendas */}
+                <div className="mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total de Vendas Registradas</span>
+                    <div className="text-3xl font-black text-slate-800">
+                        R$ {metricasCaixa.totalEntradas.toFixed(2)}
+                    </div>
+                </div>
 
-                            <div className="mb-3">
-                                <div className="border rounded-lg p-2 text-center bg-gray-50">
-                                    <div className="text-xs font-black text-gray-600">Total de Vendas</div>
-                                    <div className="text-lg font-black text-gray-800">R$ {metricasCaixa.totalEntradas.toFixed(2)}</div>
-                                    
-                                </div>
-                            </div>
-                            <div className="mb-3">
-                                <div className="text-xs text-yellow-700 bg-yellow-100 border border-yellow-300 rounded p-2 text-center">
-                                    Valores anotados em <b>caderneta</b> não entram no fechamento de caixa.<br />
-                                    Para conferir, vá na aba de <b>caderneta</b>.
-                                </div>
-                            </div>
+                {/* Alerta de Caderneta */}
+                <div className="mb-6 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <div className="text-amber-500 mt-0.5">⚠️</div>
+                    <p className="text-[11px] leading-relaxed text-amber-800">
+                        Valores em <b>caderneta</b> não entram no fechamento. 
+                        Confira-os na aba específica.
+                    </p>
+                </div>
 
-                            <div className="grid grid-cols-2 gap-2 mb-3">
-                                {/* Dinheiro */}
-                                <div className="p-3 border rounded-lg bg-white">
-                                    <div className="text-xs font-bold">Dinheiro</div>
-                                    <div className="text-base font-black">R$ {metricasCaixa.dinheiro.toFixed(2)}</div>
-                                        
-                                    <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
-                                    <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        placeholder="0,00"
-                                        value={confDinheiro}
-                                        onChange={(e) => {
-                                            const raw = String(e.target.value)
-                                            // permite apenas dígitos, ponto e vírgula
-                                            const cleaned = raw.replace(/[^0-9.,]/g, '')
-                                            setConfDinheiro(cleaned)
-                                        }}
-                                        onFocus={() => {
-                                            const n = parseCurrencyBR(confDinheiro)
-                                            if (!isNaN(n)) {
-                                                // mostra sem separadores de milhares para facilitar edição
-                                                setConfDinheiro(String(n).replace('.', ','))
-                                            }
-                                        }}
-                                        onBlur={() => {
-                                            const n = parseCurrencyBR(confDinheiro)
-                                            if (isNaN(n)) {
-                                                setConfDinheiro('')
-                                            } else {
-                                                const fmt = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
-                                                setConfDinheiro(fmt)
-                                            }
-                                        }}
-                                        ref={confDinheiroRef}
-                                        className={`w-full p-2 border-2 rounded-lg text-right font-black ${fechamentoFieldErrors.dinheiro ? 'border-red-500' : 'border-gray-100'} mt-2`}
-                                    />
-                                    {fechamentoFieldErrors.dinheiro && <div className="text-xs text-red-600 mt-1">{fechamentoFieldErrors.dinheiro}</div>}
-                                </div>
-
-                                {/* Pix */}
-                                <div className="p-3 border rounded-lg bg-white">
-                                    <div className="text-xs font-bold">Pix</div>
-                                    <div className="text-base font-black">R$ {metricasCaixa.pix.toFixed(2)}</div>
-                                    
-                                    <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
-                                    <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        placeholder="0,00"
-                                        value={confPix}
-                                        onChange={(e) => setConfPix(String(e.target.value).replace(/[^0-9.,]/g, ''))}
-                                        onFocus={() => {
-                                            const n = parseCurrencyBR(confPix)
-                                            if (!isNaN(n)) setConfPix(String(n).replace('.', ','))
-                                        }}
-                                        onBlur={() => {
-                                            const n = parseCurrencyBR(confPix)
-                                            if (isNaN(n)) setConfPix('')
-                                            else setConfPix(new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n))
-                                        }}
-                                        className={`w-full p-2 border-2 rounded-lg text-right font-black ${fechamentoFieldErrors.pix ? 'border-red-500' : 'border-gray-100'} mt-2`}
-                                    />
-                                    {fechamentoFieldErrors.pix && <div className="text-xs text-red-600 mt-1">{fechamentoFieldErrors.pix}</div>}
-                                </div>
-
-                                {/* Débito */}
-                                <div className="p-3 border rounded-lg bg-white">
-                                    <div className="text-xs font-bold">Débito</div>
-                                    <div className="text-base font-black">R$ {metricasCaixa.debito.toFixed(2)}</div>
-                                    
-                                    <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
-                                    <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        placeholder="0,00"
-                                        value={confDebito}
-                                        onChange={(e) => setConfDebito(String(e.target.value).replace(/[^0-9.,]/g, ''))}
-                                        onFocus={() => {
-                                            const n = parseCurrencyBR(confDebito)
-                                            if (!isNaN(n)) setConfDebito(String(n).replace('.', ','))
-                                        }}
-                                        onBlur={() => {
-                                            const n = parseCurrencyBR(confDebito)
-                                            if (isNaN(n)) setConfDebito('')
-                                            else setConfDebito(new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n))
-                                        }}
-                                        className={`w-full p-2 border-2 rounded-lg text-right font-black ${fechamentoFieldErrors.debito ? 'border-red-500' : 'border-gray-100'} mt-2`}
-                                    />
-                                    {fechamentoFieldErrors.debito && <div className="text-xs text-red-600 mt-1">{fechamentoFieldErrors.debito}</div>}
-                                </div>
-
-                                {/* Crédito */}
-                                <div className="p-3 border rounded-lg bg-white">
-                                    <div className="text-xs font-bold">Crédito</div>
-                                    <div className="text-base font-black">R$ {metricasCaixa.credito.toFixed(2)}</div>
-                                    
-                                    <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
-                                    <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        placeholder="0,00"
-                                        value={confCredito}
-                                        onChange={(e) => setConfCredito(String(e.target.value).replace(/[^0-9.,]/g, ''))}
-                                        onFocus={() => {
-                                            const n = parseCurrencyBR(confCredito)
-                                            if (!isNaN(n)) setConfCredito(String(n).replace('.', ','))
-                                        }}
-                                        onBlur={() => {
-                                            const n = parseCurrencyBR(confCredito)
-                                            if (isNaN(n)) setConfCredito('')
-                                            else setConfCredito(new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n))
-                                        }}
-                                        className={`w-full p-2 border-2 rounded-lg text-right font-black ${fechamentoFieldErrors.credito ? 'border-red-500' : 'border-gray-100'} mt-2`}
-                                    />
-                                    {fechamentoFieldErrors.credito && <div className="text-xs text-red-600 mt-1">{fechamentoFieldErrors.credito}</div>}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2 items-center mb-3">
-                                <div className="border rounded-lg p-2">
-                                    <div className="text-xs font-black text-gray-600">Total Corrigido</div>
-                                    <div className="text-lg font-black">R$ {totalCorrigido.toFixed(2)}</div>
-                                </div>
-                                <div className="border rounded-lg p-2 text-right">
-                                    <div className="text-xs font-black text-gray-600">Diferença</div>
-                                    <div className={`text-lg font-black ${diferencaFechamento >= 0 ? 'text-green-600' : 'text-red-600'}`}>{diferencaFechamento >= 0 ? '+' : '-'}R$ {Math.abs(diferencaFechamento).toFixed(2)}</div>
-                                </div>
-                            </div>
-
-                            <div className="text-xs text-red-600 mb-2">O caixa só pode ser fechado ao final do expediente. Tenha certeza que deseja encerrar o expediente do dia.</div>
+                {/* Grid de Conferência */}
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                    {[
+                        { label: 'Dinheiro', valor: metricasCaixa.dinheiro, state: confDinheiro, setter: setConfDinheiro, ref: confDinheiroRef, error: fechamentoFieldErrors.dinheiro },
+                        { label: 'Pix', valor: metricasCaixa.pix, state: confPix, setter: setConfPix, error: fechamentoFieldErrors.pix },
+                        { label: 'Débito', valor: metricasCaixa.debito, state: confDebito, setter: setConfDebito, error: fechamentoFieldErrors.debito },
+                        { label: 'Crédito', valor: metricasCaixa.credito, state: confCredito, setter: setConfCredito, error: fechamentoFieldErrors.credito }
+                    ].map((item, idx) => (
+                        <div key={idx} className="flex flex-col p-3 rounded-xl border border-gray-100 bg-gray-50/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">{item.label}</span>
+                            <span className="text-sm font-bold text-gray-700 mb-2">R$ {item.valor.toFixed(2)}</span>
                             
-
-                            {fechamentoError && <div className="text-xs text-red-600 mb-2">{fechamentoError}</div>}
-
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setModalFechamento(false)}
-                                    className="flex-1 py-2 bg-gray-100 rounded-lg font-bold text-gray-600"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    onClick={validateFechamento}
-                                    className={`flex-1 py-2 rounded-lg font-black transition ${hasConferido ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-300 text-gray-600 hover:bg-gray-300'}`}
-                                >
-                                    Fechar Caixa
-                                </button>
-                            </div>
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0,00"
+                                value={item.state}
+                                ref={item.ref}
+                                onChange={(e) => {
+                                    const raw = String(e.target.value).replace(/[^0-9.,]/g, '');
+                                    item.setter(raw);
+                                }}
+                                onFocus={() => {
+                                    const n = parseCurrencyBR(item.state);
+                                    if (!isNaN(n)) item.setter(String(n).replace('.', ','));
+                                }}
+                                onBlur={() => {
+                                    const n = parseCurrencyBR(item.state);
+                                    if (isNaN(n)) item.setter('');
+                                    else item.setter(new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n));
+                                }}
+                                className={`w-full bg-white p-2 border rounded-lg text-right font-black text-slate-800 outline-none transition-colors ${item.error ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}
+                            />
+                            {item.error && <span className="text-[10px] text-red-600 mt-1 font-bold">{item.error}</span>}
                         </div>
+                    ))}
+                </div>
+
+                {/* Resumo Final */}
+                <div className="space-y-2 border-t border-gray-100 pt-6 mb-4">
+                    <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50">
+                        <div className="flex items-center gap-2">
+                            <Banknote className="h-4 w-4 text-blue-500" />
+                            <span className="text-xs font-bold text-slate-600">Total Corrigido</span>
+                        </div>
+                        <span className="font-black text-slate-800">R$ {new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(Number(totalCorrigido || 0))}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50">
+                        <div className="flex items-center gap-2">
+                            <X className="h-4 w-4 text-gray-400" />
+                            <span className="text-xs font-bold text-slate-600">Diferença</span>
+                        </div>
+                        <span className={`font-black ${diferencaFechamento >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {diferencaFechamento >= 0 ? '+' : '-'} R$ {Math.abs(Number(diferencaFechamento || 0)).toFixed(2)}
+                        </span>
+                    </div>
+
+                    <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50">
+                        <div className="flex items-center gap-2">
+                            <Trash2 className="h-4 w-4 text-red-400" />
+                            <span className="text-xs font-bold text-slate-600">Sangrias (Saídas)</span>
+                        </div>
+                        <span className="font-black text-red-600">R$ {new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(Number(totalSaidasDoDia || 0))}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center p-4 rounded-xl bg-green-50 mt-4 border border-green-100">
+                        <div className="flex items-center gap-2">
+                            <Package className="h-5 w-5 text-green-600" />
+                            <span className="text-sm font-black text-green-700">Saldo Final</span>
+                        </div>
+                        <span className="text-xl font-black text-green-700">
+                            R$ {Math.abs(Number(valorTotalDoCaixa || 0)).toFixed(2)}
+                        </span>
+                    </div>
+                </div>
+
+                <p className="text-[10px] text-center text-red-500 font-bold uppercase tracking-tight mb-4">
+                    Atenção: Esta ação encerrará o expediente e não pode ser desfeita.
+                </p>
+
+                {fechamentoError && (
+                    <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 text-xs font-bold rounded-lg text-center italic">
+                        {fechamentoError}
                     </div>
                 )}
+            </div>
+
+            {/* Footer / Ações */}
+            <div className="p-6 border-t border-gray-100 bg-gray-50 flex gap-3">
+                <button
+                    onClick={() => setModalFechamento(false)}
+                    className="flex-1 py-3 px-4 bg-white border border-gray-200 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
+                >
+                    Cancelar
+                </button>
+                <button
+                    onClick={validateFechamento}
+                    disabled={!hasConferido}
+                    className={`flex-[2] py-3 px-4 rounded-xl font-black shadow-lg shadow-blue-500/20 transition-all transform active:scale-95 ${
+                        hasConferido 
+                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
+                >
+                    CONCLUIR FECHAMENTO
+                </button>
+            </div>
+        </div>
+    </div>
+)}{/* Modal Fechamento */}
+{modalFechamento && (
+    <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            
+            {/* Header */}
+            <div className="p-6 border-b border-gray-100 text-center">
+                <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase">Fechar Caixa</h2>
+                <p className="text-sm text-slate-500 font-medium">{dataHoje}</p>
+            </div>
+
+            <div className="p-6 overflow-y-auto custom-scrollbar">
+                
+                {/* Banner Principal - Total de Vendas */}
+                <div className="mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total de Vendas Registradas</span>
+                    <div className="text-3xl font-black text-slate-800">
+                        R$ {metricasCaixa.totalEntradas.toFixed(2)}
+                    </div>
+                </div>
+
+                {/* Alerta de Caderneta */}
+                <div className="mb-6 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <div className="text-amber-500 mt-0.5">⚠️</div>
+                    <p className="text-[11px] leading-relaxed text-amber-800">
+                        Valores em <b>caderneta</b> não entram no fechamento. 
+                        Confira-os na aba específica.
+                    </p>
+                </div>
+
+                {/* Grid de Conferência */}
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                    {[
+                        { label: 'Dinheiro', valor: metricasCaixa.dinheiro, state: confDinheiro, setter: setConfDinheiro, ref: confDinheiroRef, error: fechamentoFieldErrors.dinheiro },
+                        { label: 'Pix', valor: metricasCaixa.pix, state: confPix, setter: setConfPix, error: fechamentoFieldErrors.pix },
+                        { label: 'Débito', valor: metricasCaixa.debito, state: confDebito, setter: setConfDebito, error: fechamentoFieldErrors.debito },
+                        { label: 'Crédito', valor: metricasCaixa.credito, state: confCredito, setter: setConfCredito, error: fechamentoFieldErrors.credito }
+                    ].map((item, idx) => (
+                        <div key={idx} className="flex flex-col p-3 rounded-xl border border-gray-100 bg-gray-50/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">{item.label}</span>
+                            <span className="text-sm font-bold text-gray-700 mb-2">R$ {item.valor.toFixed(2)}</span>
+                            
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0,00"
+                                value={item.state}
+                                ref={item.ref}
+                                onChange={(e) => {
+                                    const raw = String(e.target.value).replace(/[^0-9.,]/g, '');
+                                    item.setter(raw);
+                                }}
+                                onFocus={() => {
+                                    const n = parseCurrencyBR(item.state);
+                                    if (!isNaN(n)) item.setter(String(n).replace('.', ','));
+                                }}
+                                onBlur={() => {
+                                    const n = parseCurrencyBR(item.state);
+                                    if (isNaN(n)) item.setter('');
+                                    else item.setter(new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n));
+                                }}
+                                className={`w-full bg-white p-2 border rounded-lg text-right font-black text-slate-800 outline-none transition-colors ${item.error ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}
+                            />
+                            {item.error && <span className="text-[10px] text-red-600 mt-1 font-bold">{item.error}</span>}
+                        </div>
+                    ))}
+                </div>
+
+                {/* Resumo Final */}
+                <div className="space-y-2 border-t border-gray-100 pt-6 mb-4">
+                    <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50">
+                        <div className="flex items-center gap-2">
+                            <Banknote className="h-4 w-4 text-blue-500" />
+                            <span className="text-xs font-bold text-slate-600">Total Corrigido</span>
+                        </div>
+                        <span className="font-black text-slate-800">R$ {new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(Number(totalCorrigido || 0))}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50">
+                        <div className="flex items-center gap-2">
+                            <X className="h-4 w-4 text-gray-400" />
+                            <span className="text-xs font-bold text-slate-600">Diferença</span>
+                        </div>
+                        <span className={`font-black ${diferencaFechamento >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {diferencaFechamento >= 0 ? '+' : '-'} R$ {Math.abs(Number(diferencaFechamento || 0)).toFixed(2)}
+                        </span>
+                    </div>
+
+                    <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50">
+                        <div className="flex items-center gap-2">
+                            <Trash2 className="h-4 w-4 text-red-400" />
+                            <span className="text-xs font-bold text-slate-600">Sangrias (Saídas)</span>
+                        </div>
+                        <span className="font-black text-red-600">R$ {new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(Number(totalSaidasDoDia || 0))}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center p-4 rounded-xl bg-green-50 mt-4 border border-green-100">
+                        <div className="flex items-center gap-2">
+                            <Package className="h-5 w-5 text-green-600" />
+                            <span className="text-sm font-black text-green-700">Saldo Final</span>
+                        </div>
+                        <span className="text-xl font-black text-green-700">
+                            R$ {Math.abs(Number(valorTotalDoCaixa || 0)).toFixed(2)}
+                        </span>
+                    </div>
+                </div>
+
+                <p className="text-[10px] text-center text-red-500 font-bold uppercase tracking-tight mb-4">
+                    Atenção: Esta ação encerrará o expediente e não pode ser desfeita.
+                </p>
+
+                {fechamentoError && (
+                    <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 text-xs font-bold rounded-lg text-center italic">
+                        {fechamentoError}
+                    </div>
+                )}
+            </div>
+
+            {/* Footer / Ações */}
+            <div className="p-6 border-t border-gray-100 bg-gray-50 flex gap-3">
+                <button
+                    onClick={() => setModalFechamento(false)}
+                    className="flex-1 py-3 px-4 bg-white border border-gray-200 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
+                >
+                    Cancelar
+                </button>
+                <button
+                    onClick={validateFechamento}
+                    disabled={!hasConferido}
+                    className={`flex-[2] py-3 px-4 rounded-xl font-black shadow-lg shadow-blue-500/20 transition-all transform active:scale-95 ${
+                        hasConferido 
+                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
+                >
+                    CONCLUIR FECHAMENTO
+                </button>
+            </div>
+        </div>
+    </div>
+)}
 
                 {/* Modal de confirmação final */}
                 {modalFechamentoConfirm && (

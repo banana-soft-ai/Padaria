@@ -1,7 +1,5 @@
-// src/app/pdv/page.tsx
-'use client'
 
-// BarcodeDetector type declaration for TypeScript (experimental API)
+'use client'
 declare global {
     interface BarcodeDetector {
         detect(image: ImageBitmapSource): Promise<Array<{ rawValue: string }>>
@@ -31,13 +29,13 @@ import {
     CreditCard,
     Smartphone,
     Eye,
-    Printer,
-    X
+    X,
+    BookOpen
 } from 'lucide-react'
 
 import Toast from '@/app/gestao/caderneta/Toast'
 import { clientConfig } from '@/lib/config'
-import { CadernetaContent } from '@/app/gestao/caderneta/page'
+import CadernetaContent from '@/app/gestao/caderneta/CadernetaContent'
 
 // Se true, o banco (trigger) fará a atualização de caixa automaticamente.
 // Quando habilitado, o cliente NÃO fará updates em `caixa_diario`, `caixa_movimentacoes` ou `fluxo_caixa`.
@@ -72,6 +70,25 @@ export default function PDVPage() {
     const getSupabase = () => {
         if (!supabase) throw new Error('Supabase não inicializado')
         return supabase
+    }
+
+    // Helpers para data local (YYYY-MM-DD) e parsing robusto
+    const getLocalDateString = (d: Date = new Date()) => {
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        return `${y}-${m}-${day}`
+    }
+
+    const parseBaseDateToLocal = (base?: string) => {
+        if (!base) return new Date()
+        // Se já for YYYY-MM-DD, crie Date em meia-noite local
+        if (/^\d{4}-\d{2}-\d{2}$/.test(base)) {
+            const [y, m, day] = base.split('-').map(Number)
+            return new Date(y, m - 1, day)
+        }
+        // Caso contrário, deixa o Date interpretar (ISO ou timestamp)
+        return new Date(base)
     }
 
     // (removido: flags de simulação de emissão fiscal)
@@ -131,7 +148,7 @@ export default function PDVPage() {
     const restaurarCaixaAberto = async (opts?: { changeView?: boolean }) => {
         const changeView = opts?.changeView ?? true
         try {
-            const hojeISO = new Date().toISOString().split('T')[0]
+            const hojeISO = getLocalDateString()
             const { data, error } = await getSupabase()
                 .from('caixa_diario')
                 .select('*')
@@ -150,7 +167,7 @@ export default function PDVPage() {
             if (data.status === 'aberto') {
                 setCaixaAberto(true)
                 setSaldoInicial(Number(data.valor_abertura) || 0)
-                setCaixaDiaISO(data.data || new Date().toISOString())
+                setCaixaDiaISO(data.data || getLocalDateString())
                 setCaixaDiarioId(data.id || null)
                 try {
                     if (data.data) {
@@ -182,6 +199,24 @@ export default function PDVPage() {
     }
 
     // Recarrega produtos, vendas e estado do caixa com indicador de progresso
+    // Carrega todas as sessões de caixa registradas para a data (ordem crescente)
+    async function carregarCaixasDoDia(baseDateISO?: string) {
+        try {
+            const date = baseDateISO || getLocalDateString()
+            const { data, error } = await getSupabase()
+                .from('caixa_diario')
+                .select('*')
+                .eq('data', date)
+                .order('created_at', { ascending: true })
+
+            if (error) throw error
+            setCaixasDoDia(data || [])
+        } catch (e) {
+            console.error('Erro ao carregar caixas do dia:', e)
+            setCaixasDoDia([])
+        }
+    }
+
     const refreshAll = async (opts?: { changeView?: boolean }) => {
         const changeView = opts?.changeView ?? true
         setIsRefreshing(true)
@@ -191,6 +226,8 @@ export default function PDVPage() {
                 carregarVendasHoje(caixaDiaISO || undefined),
                 restaurarCaixaAberto({ changeView })
             ])
+            // Também atualiza a listagem de caixas do dia (para agregação/report)
+            try { await carregarCaixasDoDia(caixaDiaISO || undefined) } catch (e) { console.warn('carregarCaixasDoDia falhou:', e) }
         } catch (e) {
             console.error('Erro ao atualizar dados do PDV:', e)
         } finally {
@@ -198,6 +235,8 @@ export default function PDVPage() {
             setTimeout(() => setIsRefreshing(false), 250)
         }
     }
+
+    
 
     // Registrar saída (sangria) no caixa: atualiza caixa_diario.valor_saidas e tenta criar registro detalhado
     const handleRegistrarSaida = async () => {
@@ -263,7 +302,7 @@ export default function PDVPage() {
             // Também registrar a saída na tabela 'fluxo_caixa' para aparecer em Gestão -> Saídas
             try {
                 // Usar a data de abertura do caixa (caixaDiaISO) para registrar a saída
-                const dataCaixa = caixaDiaISO ? String(caixaDiaISO) : new Date().toISOString().split('T')[0]
+                const dataCaixa = caixaDiaISO || getLocalDateString()
                 const dadosFluxo = {
                     data: dataCaixa,
                     tipo: 'saida',
@@ -330,6 +369,52 @@ export default function PDVPage() {
     const [descontoPercent, setDescontoPercent] = useState('')
     const [descontoValor, setDescontoValor] = useState('')
     const [caixaDiarioId, setCaixaDiarioId] = useState<number | null>(null)
+    const [caixasDoDia, setCaixasDoDia] = useState<any[]>([])
+
+    // --- Métricas do Caixa ---
+    const metricasCaixa = useMemo(() => {
+        const totais = {
+            dinheiro: 0,
+            pix: 0,
+            debito: 0,
+            credito: 0,
+            caderneta: 0
+        }
+
+        vendasHoje.forEach(v => {
+            const formaRaw = String(v.forma_pagamento || '').toLowerCase()
+            const forma = formaRaw.replace(/[_\s]/g, '')
+            if (forma.includes('dinheiro')) totais.dinheiro += v.total
+            else if (forma.includes('pix')) totais.pix += v.total
+            else if (forma.includes('debito') || (forma.includes('cartao') && forma.includes('debito'))) totais.debito += v.total
+            else if (forma.includes('credito') || (forma.includes('cartao') && forma.includes('credito'))) totais.credito += v.total
+            else if (forma.includes('caderneta')) totais.caderneta += v.total
+            else { if (forma.includes('cartao')) totais.debito += v.total }
+        })
+
+        const totalEntradas = totais.dinheiro + totais.pix + totais.debito + totais.credito
+        const totalGeral = totalEntradas + totais.caderneta
+        const valorEsperadoDinheiro = saldoInicial + totais.dinheiro
+        return { ...totais, totalEntradas, totalGeral, valorEsperadoDinheiro }
+    }, [vendasHoje, saldoInicial])
+
+    // Métricas agregadas do dia (somatório de todas as sessões de caixa registradas)
+    const metricasDia = useMemo(() => {
+        const s: any = { dinheiro:0, pix:0, debito:0, credito:0, caderneta:0, totalEntradas:0, totalGeral:0, valorEsperadoDinheiro:0, totalSaidas:0 }
+        caixasDoDia.forEach((c: any) => {
+            s.dinheiro += Number(c.total_dinheiro || 0)
+            s.pix += Number(c.total_pix || 0)
+            s.debito += Number(c.total_debito || 0)
+            s.credito += Number(c.total_credito || 0)
+            s.caderneta += Number(c.total_caderneta || 0)
+            s.totalEntradas += Number(c.total_entradas || 0)
+            s.totalSaidas += Number(c.valor_saidas || 0)
+        })
+        s.totalGeral = s.totalEntradas + s.caderneta
+        const somaAberturas = caixasDoDia.reduce((acc: number, c: any) => acc + Number(c.valor_abertura || 0), 0)
+        s.valorEsperadoDinheiro = somaAberturas + s.dinheiro
+        return s
+    }, [caixasDoDia])
 
     // --- Estados de Modais ---
     const [modalPagamento, setModalPagamento] = useState(false)
@@ -415,6 +500,79 @@ export default function PDVPage() {
     const scanningLockRef = useRef<number>(0)
     const audioCtxRef = useRef<AudioContext | null>(null)
 
+    // refs para evitar re-subscription e ler caixaDiaISO atual
+    const carregarVendasHojeRef = useRef<any>(null)
+    const caixaDiaISORef = useRef<string | null>(null)
+    // Timeout ref usado para debouncing de recarga de vendas ao receber eventos realtime
+    const refreshVendasTimeoutRef = useRef<number | null>(null)
+
+    useEffect(() => {
+        carregarVendasHojeRef.current = carregarVendasHoje
+    }, [carregarVendasHoje])
+
+    useEffect(() => {
+        caixaDiaISORef.current = caixaDiaISO
+    }, [caixaDiaISO])
+
+    // Carrega histórico de vendas do dia baseado na coluna DATE `data` (corrige timezone)
+    async function carregarVendasHoje(baseDateISO?: string) {
+        try {
+            const base = parseBaseDateToLocal(baseDateISO)
+            // Usa a coluna DATE `data` no formato YYYY-MM-DD (data local) para evitar problemas de timezone
+            const y = base.getFullYear()
+            const m = String(base.getMonth() + 1).padStart(2, '0')
+            const day = String(base.getDate()).padStart(2, '0')
+            const dateStr = `${y}-${m}-${day}`
+
+            // Busca mais robusta: aceita vendas onde a coluna `data` bate com a data-base
+            // ou onde `created_at` caiu dentro do intervalo do dia (ajuda com timezone e carregamentos imediatos)
+            const startOfDay = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, 0, 0, 0).toISOString()
+            const endOfDay = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 23, 59, 59, 999).toISOString()
+
+            console.debug('carregarVendasHoje: dateStr, startOfDay, endOfDay', { dateStr, startOfDay, endOfDay })
+            const { data, error } = await getSupabase()
+                .from('vendas')
+                .select('*')
+                // Correção: usar o operador lógico `and(...)` dentro do `or(...)` para
+                // representar: data = dateStr OR (created_at >= startOfDay AND created_at <= endOfDay)
+                .or(`data.eq.${dateStr},and(created_at.gte.${startOfDay},created_at.lte.${endOfDay})`)
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+
+            if (data) {
+                try {
+                    const formas = Array.from(new Set((data as any[]).map(d => String(d.forma_pagamento || '').toLowerCase())))
+                    console.debug('carregarVendasHoje: vendas retornadas:', (data as any[]).length, 'formas:', formas)
+                } catch (e) { console.debug('carregarVendasHoje: erro ao logar formas', e) }
+                setVendasHoje(data.map((v: any) => ({
+                    id: v.id,
+                    data: v.created_at ? new Date(v.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '---',
+                    total: v.valor_total || 0,
+                    forma_pagamento: (v.forma_pagamento || '').replace('_', ' ')
+                })))
+            } else {
+                setVendasHoje([])
+            }
+        } catch (err: any) {
+            // Log mais informativo para ajudar debugging (Supabase retorna objetos não-enumeráveis às vezes)
+            try {
+                console.error('Erro ao carregar vendas do dia:', err)
+                console.error('Erro (stringified):', JSON.stringify(err))
+            } catch (e) {
+                console.error('Erro ao serializar erro de vendas:', e)
+            }
+            // Propriedades comuns do Supabase
+            if (err) {
+                console.error('err.message:', err?.message)
+                console.error('err.code:', err?.code)
+                console.error('err.details:', err?.details)
+                console.error('err.hint:', err?.hint)
+            }
+            setVendasHoje([])
+        }
+    }
+
     // --- Caderneta: seleção de cliente/funcionário para registrar pagamento ---
     const { clientes, adicionarMovimentacao, refreshClientes, refreshMovimentacoes } = useCadernetaOffline()
     const [clienteCadernetaSelecionado, setClienteCadernetaSelecionado] = useState<string>('')
@@ -458,8 +616,14 @@ export default function PDVPage() {
             setRelogio(new Date().toLocaleTimeString('pt-BR'))
         }, 1000)
 
-        // Usa refreshAll para carregar todos os dados inicialmente (não forçar mudança de view)
-        refreshAll({ changeView: false })
+        // Primeiro restaura o estado do caixa (permitindo trocar para 'venda' imediatamente se estiver aberto)
+        // Depois carrega produtos e vendas em background para evitar bloquear a navegação inicial.
+        ;(async () => {
+            await restaurarCaixaAberto({ changeView: true })
+            // Carrega o resto dos dados sem forçar troca de view
+            carregarProdutos().catch(() => {})
+            carregarVendasHoje(undefined).catch(() => {})
+        })()
 
         return () => clearInterval(timer)
     }, [])
@@ -472,6 +636,7 @@ export default function PDVPage() {
         const onVisible = () => {
             carregarProdutos()
             carregarVendasHoje(caixaDiaISO || undefined)
+            carregarCaixasDoDia(caixaDiaISO || undefined)
             restaurarCaixaAberto({ changeView: true })
         }
 
@@ -523,45 +688,6 @@ export default function PDVPage() {
         }
     }
 
-    // Carrega histórico de vendas do dia baseado na coluna DATE `data` (corrige timezone)
-    const carregarVendasHoje = async (baseDateISO?: string) => {
-        try {
-            const base = baseDateISO ? new Date(baseDateISO) : new Date()
-            // Usa a coluna DATE `data` no formato YYYY-MM-DD (data local) para evitar problemas de timezone
-            const y = base.getFullYear()
-            const m = String(base.getMonth() + 1).padStart(2, '0')
-            const day = String(base.getDate()).padStart(2, '0')
-            const dateStr = `${y}-${m}-${day}`
-
-            // Busca mais robusta: aceita vendas onde a coluna `data` bate com a data-base
-            // ou onde `created_at` caiu dentro do intervalo do dia (ajuda com timezone e carregamentos imediatos)
-            const startOfDay = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, 0, 0, 0).toISOString()
-            const endOfDay = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 23, 59, 59, 999).toISOString()
-
-            const { data, error } = await getSupabase()
-                .from('vendas')
-                .select('*')
-                .or(`data.eq.${dateStr},created_at.gte.${startOfDay},created_at.lte.${endOfDay}`)
-                .order('created_at', { ascending: false })
-
-            if (error) throw error
-
-            if (data) {
-                setVendasHoje(data.map((v: any) => ({
-                    id: v.id,
-                    data: v.created_at ? new Date(v.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '---',
-                    total: v.valor_total || 0,
-                    forma_pagamento: (v.forma_pagamento || '').replace('_', ' ')
-                })))
-            } else {
-                setVendasHoje([])
-            }
-        } catch (err) {
-            console.error('Erro ao carregar vendas do dia:', err)
-            setVendasHoje([])
-        }
-    }
-
     // Botão/handler para atualizar manualmente o relatório de vendas
     const handleRefreshRelatorio = async () => {
         setIsRefreshing(true)
@@ -577,20 +703,7 @@ export default function PDVPage() {
         }
     }
 
-    // refs para evitar re-subscription e ler caixaDiaISO atual
-    const carregarVendasHojeRef = useRef<any>(null)
-    const caixaDiaISORef = useRef<string | null>(null)
-
-    useEffect(() => {
-        carregarVendasHojeRef.current = carregarVendasHoje
-    }, [carregarVendasHoje])
-
-    useEffect(() => {
-        caixaDiaISORef.current = caixaDiaISO
-    }, [caixaDiaISO])
-
-    // Timeout ref usado para debouncing de recarga de vendas ao receber eventos realtime
-    const refreshVendasTimeoutRef = useRef<number | null>(null)
+    
 
     // Subscrição realtime para atualizar Relatórios (vendasHoje)
     useEffect(() => {
@@ -768,38 +881,7 @@ export default function PDVPage() {
         }
     }, [modalPagamento, modalDebito, modalCredito, modalPix, modalCaderneta, totalComDesconto])
 
-    // --- Métricas do Caixa ---
-    const metricasCaixa = useMemo(() => {
-        const totais = {
-            dinheiro: 0,
-            pix: 0,
-            debito: 0,
-            credito: 0,
-            caderneta: 0
-        }
-
-        vendasHoje.forEach(v => {
-            // Normaliza a forma de pagamento para facilitar a comparação
-            const formaRaw = String(v.forma_pagamento || '').toLowerCase()
-            const forma = formaRaw.replace(/[_\s]/g, '') // remove espaços e underscores
-
-            if (forma.includes('dinheiro')) totais.dinheiro += v.total
-            else if (forma.includes('pix')) totais.pix += v.total
-            else if (forma.includes('debito') || forma.includes('cartao') && forma.includes('debito')) totais.debito += v.total
-            else if (forma.includes('credito') || forma.includes('cartao') && forma.includes('credito')) totais.credito += v.total
-            else if (forma.includes('caderneta')) totais.caderneta += v.total
-            else {
-                // Tentativa adicional: se a forma tiver 'cartao' sem especificar, distribuir como cartão geral (soma em débito)
-                if (forma.includes('cartao')) totais.debito += v.total
-            }
-        })
-
-        const totalEntradas = totais.dinheiro + totais.pix + totais.debito + totais.credito
-        const totalGeral = totalEntradas + totais.caderneta
-        const valorEsperadoDinheiro = saldoInicial + totais.dinheiro
-
-        return { ...totais, totalEntradas, totalGeral, valorEsperadoDinheiro }
-    }, [vendasHoje, saldoInicial])
+    
 
     // --- Processamento de Venda (Escrita no Banco) ---
 
@@ -941,7 +1023,7 @@ export default function PDVPage() {
             // 1. Registrar Venda na tabela 'vendas'
             const { data: vendaData, error: vendaError } = await getSupabase()
                 .from('vendas')
-                .insert<Database['public']['Tables']['vendas']['Insert']>({
+                .insert<any>({
                     numero_venda: Date.now(), // Gera um número único (ms). Requer coluna BIGINT no banco.
                     // Grava a data local no formato YYYY-MM-DD para compatibilidade
                     // com consultas que filtram por `data` (coluna DATE) usando hora local.
@@ -958,6 +1040,7 @@ export default function PDVPage() {
                     valor_troco: valorTroco,
                     desconto: descontoAplicado,
                     forma_pagamento: formaPagamentoDB,
+                    usuario: operador || null,
                     status: 'finalizada',
                     cliente_caderneta_id: clienteCadernetaSelecionado ? Number(clienteCadernetaSelecionado) : null
                 })
@@ -1169,7 +1252,7 @@ export default function PDVPage() {
                         }
 
                         try {
-                            const hojeStr = new Date().toISOString().split('T')[0]
+                            const hojeStr = getLocalDateString()
                             const dadosFluxo = {
                                 data: hojeStr,
                                 tipo: 'entrada',
@@ -1421,15 +1504,15 @@ export default function PDVPage() {
         setCaixaAberto(true)
         setHoraAbertura(new Date().toLocaleTimeString('pt-BR'))
         setDataHoje(new Date().toLocaleDateString('pt-BR'))
-        // Fixa o dia do turno para relatórios
-        const agoraISO = new Date().toISOString()
-        setCaixaDiaISO(agoraISO)
+        // Fixa o dia do turno para relatórios (data local YYYY-MM-DD)
+        const agoraLocal = getLocalDateString()
+        setCaixaDiaISO(agoraLocal)
         // Recarrega relatório exclusivamente para o dia fixado
-        carregarVendasHoje(agoraISO)
+        carregarVendasHoje(agoraLocal)
         setView('venda')
             // Persiste abertura do caixa no Supabase (cria linha com status 'aberto')
             try {
-                const dataISO = new Date().toISOString().split('T')[0]
+                const dataISO = getLocalDateString()
 
                 // Verifica se já existe qualquer registro para a data (regra: 1 caixa por dia)
                 const { data: existing, error: checkErr } = await getSupabase()
@@ -1454,7 +1537,8 @@ export default function PDVPage() {
                 const payload = {
                     data: dataISO,
                     status: 'aberto',
-                    valor_abertura: saldoInicial || 0
+                    valor_abertura: saldoInicial || 0,
+                    usuario_abertura: operador || null
                 }
                 const { data: inserted, error } = await getSupabase()
                     .from('caixa_diario')
@@ -1467,6 +1551,8 @@ export default function PDVPage() {
                     setCaixaAberto(true)
                     setHoraAbertura(new Date().toLocaleTimeString('pt-BR'))
                     setDataHoje(new Date().toLocaleDateString('pt-BR'))
+                    // atualiza listagem de caixas do dia imediatamente
+                    try { await carregarCaixasDoDia(agoraLocal) } catch (e) { console.warn('carregarCaixasDoDia após abrir falhou:', e) }
                 } else if (error) {
                     console.error('Erro ao persistir abertura do caixa:', error)
                     showToast('Erro ao persistir abertura do caixa', 'error')
@@ -1568,8 +1654,7 @@ export default function PDVPage() {
 
     const handleConfirmFechamento = async () => {
         try {
-            const hoje = new Date()
-            const dataISO = hoje.toISOString().split('T')[0]
+            const dataISO = getLocalDateString()
             // Fecha a interface do PDV imediatamente (optimistic UI)
             setModalFechamentoConfirm(false)
             setModalFechamento(false)
@@ -1628,6 +1713,8 @@ export default function PDVPage() {
                 total_debito: Number((totalDebitoCorrigidoCents / 100).toFixed(2)),
                 total_credito: Number((totalCreditoCorrigidoCents / 100).toFixed(2)),
                 total_dinheiro: Number((totalDinheiroCorrigidoCents / 100).toFixed(2))
+                ,
+                usuario_fechamento: operador || null
             }
 
             try {
@@ -2451,7 +2538,14 @@ export default function PDVPage() {
                                             <Smartphone className="h-5 w-5" />
                                             Pix
                                         </button>
-                                        {/* Botão Caderneta removido do grid de pagamentos */}
+                                        <button
+                                            onClick={() => setModalCaderneta(true)}
+                                            title="Caderneta — F11"
+                                            className="p-3 bg-blue-50 text-blue-700 rounded-xl border border-blue-50 font-black hover:border-blue-300 transition text-xs uppercase flex flex-col items-center gap-1 col-span-2 justify-self-center mx-auto w-3/4 md:w-2/3"
+                                        >
+                                            <BookOpen className="h-5 w-5" />
+                                            Caderneta
+                                        </button>
                                     </div>
 
                                     <div className="mt-auto pt-8 space-y-3 md:static fixed bottom-0 left-0 right-0 md:right-auto md:left-auto bg-white/90 md:bg-transparent p-4 md:p-0 z-40 md:backdrop-blur-sm">
@@ -2589,6 +2683,7 @@ export default function PDVPage() {
                                 <div className="p-4 bg-green-50 rounded-xl border border-green-100">
                                     <span className="text-xs font-bold text-green-600 uppercase block mb-1">Valor Esperado (Dinheiro)</span>
                                     <span className="text-lg font-black text-green-700">R$ {metricasCaixa.valorEsperadoDinheiro.toFixed(2)}</span>
+                                    <div className="text-[11px] text-green-800 mt-1">Dia: R$ {(metricasDia?.valorEsperadoDinheiro || 0).toFixed(2)}</div>
                                 </div>
                             </div>
 
@@ -2597,16 +2692,19 @@ export default function PDVPage() {
                                 <div className="p-6 bg-white rounded-xl border-2 border-blue-100 shadow-sm">
                                     <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Total Entradas</span>
                                     <div className="text-3xl font-black text-blue-600 mt-2">R$ {metricasCaixa.totalEntradas.toFixed(2)}</div>
+                                    <div className="text-[11px] text-gray-500 mt-1">Dia: R$ {(metricasDia?.totalEntradas || 0).toFixed(2)}</div>
                                     <span className="text-[10px] text-gray-400 font-bold">Dinheiro + Pix + Cartões</span>
                                 </div>
                                 <div className="p-6 bg-white rounded-xl border-2 border-orange-100 shadow-sm">
                                     <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Total Caderneta</span>
                                     <div className="text-3xl font-black text-orange-500 mt-2">R$ {metricasCaixa.caderneta.toFixed(2)}</div>
+                                    <div className="text-[11px] text-gray-500 mt-1">Dia: R$ {(metricasDia?.caderneta || 0).toFixed(2)}</div>
                                     <span className="text-[10px] text-gray-400 font-bold">Vendas a Prazo</span>
                                 </div>
                                 <div className="p-6 bg-blue-600 rounded-xl shadow-lg text-white">
                                     <span className="text-xs font-black text-blue-200 uppercase tracking-widest">Total Geral</span>
                                     <div className="text-3xl font-black mt-2">R$ {metricasCaixa.totalGeral.toFixed(2)}</div>
+                                    <div className="text-[11px] text-blue-200 mt-1">Dia: R$ {(metricasDia?.totalGeral || 0).toFixed(2)}</div>
                                     <span className="text-[10px] text-blue-200 font-bold">Entradas + Caderneta</span>
                                 </div>
                             </div>
@@ -2620,28 +2718,40 @@ export default function PDVPage() {
                                         <Banknote className="h-4 w-4 text-green-600" />
                                         <span className="text-xs font-bold text-gray-600 uppercase">Dinheiro</span>
                                     </div>
-                                    <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.dinheiro.toFixed(2)}</span>
+                                    <div>
+                                        <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.dinheiro.toFixed(2)}</span>
+                                        <div className="text-[11px] text-gray-600 mt-1">Dia: R$ {(metricasDia?.dinheiro || 0).toFixed(2)}</div>
+                                    </div>
                                 </div>
                                 <div className="p-4 border border-gray-100 rounded-xl bg-gray-50">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Smartphone className="h-4 w-4 text-blue-600" />
                                         <span className="text-xs font-bold text-gray-600 uppercase">Pix</span>
                                     </div>
-                                    <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.pix.toFixed(2)}</span>
+                                    <div>
+                                        <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.pix.toFixed(2)}</span>
+                                        <div className="text-[11px] text-gray-600 mt-1">Dia: R$ {(metricasDia?.pix || 0).toFixed(2)}</div>
+                                    </div>
                                 </div>
                                 <div className="p-4 border border-gray-100 rounded-xl bg-gray-50">
                                     <div className="flex items-center gap-2 mb-2">
                                         <CreditCard className="h-4 w-4 text-orange-600" />
                                         <span className="text-xs font-bold text-gray-600 uppercase">Débito</span>
                                     </div>
-                                    <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.debito.toFixed(2)}</span>
+                                    <div>
+                                        <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.debito.toFixed(2)}</span>
+                                        <div className="text-[11px] text-gray-600 mt-1">Dia: R$ {(metricasDia?.debito || 0).toFixed(2)}</div>
+                                    </div>
                                 </div>
                                 <div className="p-4 border border-gray-100 rounded-xl bg-gray-50">
                                     <div className="flex items-center gap-2 mb-2">
                                         <CreditCard className="h-4 w-4 text-purple-600" />
                                         <span className="text-xs font-bold text-gray-600 uppercase">Crédito</span>
                                     </div>
-                                    <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.credito.toFixed(2)}</span>
+                                    <div>
+                                        <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.credito.toFixed(2)}</span>
+                                        <div className="text-[11px] text-gray-600 mt-1">Dia: R$ {(metricasDia?.credito || 0).toFixed(2)}</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2816,6 +2926,7 @@ export default function PDVPage() {
                                 <div className="border rounded-lg p-2 text-center bg-gray-50">
                                     <div className="text-xs font-black text-gray-600">Total de Vendas</div>
                                     <div className="text-lg font-black text-gray-800">R$ {metricasCaixa.totalEntradas.toFixed(2)}</div>
+                                    <div className="text-[11px] text-gray-500">Dia: R$ {(metricasDia?.totalEntradas || 0).toFixed(2)}</div>
                                 </div>
                             </div>
                             <div className="mb-3">
@@ -2830,6 +2941,7 @@ export default function PDVPage() {
                                 <div className="p-3 border rounded-lg bg-white">
                                     <div className="text-xs font-bold">Dinheiro</div>
                                     <div className="text-base font-black">R$ {metricasCaixa.dinheiro.toFixed(2)}</div>
+                                    <div className="text-[11px] text-gray-500">Dia: R$ {(metricasDia?.dinheiro || 0).toFixed(2)}</div>
                                     <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
                                     <input
                                         type="text"
@@ -2868,6 +2980,7 @@ export default function PDVPage() {
                                 <div className="p-3 border rounded-lg bg-white">
                                     <div className="text-xs font-bold">Pix</div>
                                     <div className="text-base font-black">R$ {metricasCaixa.pix.toFixed(2)}</div>
+                                    <div className="text-[11px] text-gray-500">Dia: R$ {(metricasDia?.pix || 0).toFixed(2)}</div>
                                     <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
                                     <input
                                         type="text"
@@ -2893,6 +3006,7 @@ export default function PDVPage() {
                                 <div className="p-3 border rounded-lg bg-white">
                                     <div className="text-xs font-bold">Débito</div>
                                     <div className="text-base font-black">R$ {metricasCaixa.debito.toFixed(2)}</div>
+                                    <div className="text-[11px] text-gray-500">Dia: R$ {(metricasDia?.debito || 0).toFixed(2)}</div>
                                     <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
                                     <input
                                         type="text"
@@ -2918,6 +3032,7 @@ export default function PDVPage() {
                                 <div className="p-3 border rounded-lg bg-white">
                                     <div className="text-xs font-bold">Crédito</div>
                                     <div className="text-base font-black">R$ {metricasCaixa.credito.toFixed(2)}</div>
+                                    <div className="text-[11px] text-gray-500">Dia: R$ {(metricasDia?.credito || 0).toFixed(2)}</div>
                                     <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
                                     <input
                                         type="text"

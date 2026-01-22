@@ -2767,7 +2767,6 @@ export default function PDVPage() {
                                 <div className="p-4 bg-green-50 rounded-xl border border-green-100">
                                     <span className="text-xs font-bold text-green-600 uppercase block mb-1">Valor Esperado (Dinheiro)</span>
                                     <span className="text-lg font-black text-green-700">R$ {metricasCaixa.valorEsperadoDinheiro.toFixed(2)}</span>
-                                    <div className="text-[11px] text-green-800 mt-1">Dia: R$ {(metricasDia?.valorEsperadoDinheiro || 0).toFixed(2)}</div>
                                 </div>
                                 <div className="p-4 bg-red-50 rounded-xl border border-red-100">
                                     <span className="text-xs font-bold text-red-600 uppercase block mb-1">Total Saídas (Dia)</span>
@@ -2781,19 +2780,19 @@ export default function PDVPage() {
                                 <div className="p-6 bg-white rounded-xl border-2 border-blue-100 shadow-sm">
                                     <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Total Entradas</span>
                                     <div className="text-3xl font-black text-blue-600 mt-2">R$ {metricasCaixa.totalEntradas.toFixed(2)}</div>
-                                    <div className="text-[11px] text-gray-500 mt-1">Dia: R$ {(metricasDia?.totalEntradas || 0).toFixed(2)}</div>
+                                    
                                     <span className="text-[10px] text-gray-400 font-bold">Dinheiro + Pix + Cartões</span>
                                 </div>
                                 <div className="p-6 bg-white rounded-xl border-2 border-orange-100 shadow-sm">
                                     <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Total Caderneta</span>
                                     <div className="text-3xl font-black text-orange-500 mt-2">R$ {metricasCaixa.caderneta.toFixed(2)}</div>
-                                    <div className="text-[11px] text-gray-500 mt-1">Dia: R$ {(metricasDia?.caderneta || 0).toFixed(2)}</div>
+                                    
                                     <span className="text-[10px] text-gray-400 font-bold">Vendas a Prazo</span>
                                 </div>
                                 <div className="p-6 bg-blue-600 rounded-xl shadow-lg text-white">
                                     <span className="text-xs font-black text-blue-200 uppercase tracking-widest">Total Geral</span>
                                     <div className="text-3xl font-black mt-2">R$ {metricasCaixa.totalGeral.toFixed(2)}</div>
-                                    <div className="text-[11px] text-blue-200 mt-1">Dia: R$ {(metricasDia?.totalGeral || 0).toFixed(2)}</div>
+                                    
                                     <span className="text-[10px] text-blue-200 font-bold">Entradas + Caderneta</span>
                                 </div>
                             </div>
@@ -2809,7 +2808,7 @@ export default function PDVPage() {
                                     </div>
                                     <div>
                                         <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.dinheiro.toFixed(2)}</span>
-                                        <div className="text-[11px] text-gray-600 mt-1">Dia: R$ {(metricasDia?.dinheiro || 0).toFixed(2)}</div>
+                                        
                                     </div>
                                 </div>
                                 <div className="p-4 border border-gray-100 rounded-xl bg-gray-50">
@@ -2819,7 +2818,7 @@ export default function PDVPage() {
                                     </div>
                                     <div>
                                         <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.pix.toFixed(2)}</span>
-                                        <div className="text-[11px] text-gray-600 mt-1">Dia: R$ {(metricasDia?.pix || 0).toFixed(2)}</div>
+                                        
                                     </div>
                                 </div>
                                 <div className="p-4 border border-gray-100 rounded-xl bg-gray-50">
@@ -2829,7 +2828,7 @@ export default function PDVPage() {
                                     </div>
                                     <div>
                                         <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.debito.toFixed(2)}</span>
-                                        <div className="text-[11px] text-gray-600 mt-1">Dia: R$ {(metricasDia?.debito || 0).toFixed(2)}</div>
+                                        
                                     </div>
                                 </div>
                                 <div className="p-4 border border-gray-100 rounded-xl bg-gray-50">
@@ -2839,7 +2838,7 @@ export default function PDVPage() {
                                     </div>
                                     <div>
                                         <span className="text-xl font-black text-gray-800">R$ {metricasCaixa.credito.toFixed(2)}</span>
-                                        <div className="text-[11px] text-gray-600 mt-1">Dia: R$ {(metricasDia?.credito || 0).toFixed(2)}</div>
+                                        
                                     </div>
                                 </div>
                             </div>
@@ -3015,7 +3014,7 @@ export default function PDVPage() {
                                 <div className="border rounded-lg p-2 text-center bg-gray-50">
                                     <div className="text-xs font-black text-gray-600">Total de Vendas</div>
                                     <div className="text-lg font-black text-gray-800">R$ {metricasCaixa.totalEntradas.toFixed(2)}</div>
-                                    <div className="text-[11px] text-gray-500">Dia: R$ {(metricasDia?.totalEntradas || 0).toFixed(2)}</div>
+                                    
                                 </div>
                             </div>
                             <div className="mb-3">
@@ -3030,7 +3029,7 @@ export default function PDVPage() {
                                 <div className="p-3 border rounded-lg bg-white">
                                     <div className="text-xs font-bold">Dinheiro</div>
                                     <div className="text-base font-black">R$ {metricasCaixa.dinheiro.toFixed(2)}</div>
-                                    <div className="text-[11px] text-gray-500">Dia: R$ {(metricasDia?.dinheiro || 0).toFixed(2)}</div>
+                                        
                                     <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
                                     <input
                                         type="text"
@@ -3069,7 +3068,7 @@ export default function PDVPage() {
                                 <div className="p-3 border rounded-lg bg-white">
                                     <div className="text-xs font-bold">Pix</div>
                                     <div className="text-base font-black">R$ {metricasCaixa.pix.toFixed(2)}</div>
-                                    <div className="text-[11px] text-gray-500">Dia: R$ {(metricasDia?.pix || 0).toFixed(2)}</div>
+                                    
                                     <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
                                     <input
                                         type="text"
@@ -3095,7 +3094,7 @@ export default function PDVPage() {
                                 <div className="p-3 border rounded-lg bg-white">
                                     <div className="text-xs font-bold">Débito</div>
                                     <div className="text-base font-black">R$ {metricasCaixa.debito.toFixed(2)}</div>
-                                    <div className="text-[11px] text-gray-500">Dia: R$ {(metricasDia?.debito || 0).toFixed(2)}</div>
+                                    
                                     <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
                                     <input
                                         type="text"
@@ -3121,7 +3120,7 @@ export default function PDVPage() {
                                 <div className="p-3 border rounded-lg bg-white">
                                     <div className="text-xs font-bold">Crédito</div>
                                     <div className="text-base font-black">R$ {metricasCaixa.credito.toFixed(2)}</div>
-                                    <div className="text-[11px] text-gray-500">Dia: R$ {(metricasDia?.credito || 0).toFixed(2)}</div>
+                                    
                                     <div className="mt-2 text-xs font-bold text-gray-500">Conferência</div>
                                     <input
                                         type="text"

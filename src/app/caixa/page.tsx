@@ -2294,9 +2294,10 @@ export default function PDVPage() {
 
                     {/* Lista de Saídas do dia */}
                     {view === 'saida' && (
-                        <div className="mt-6 bg-white rounded-lg shadow-sm p-4 overflow-auto">
+                        <div className="mt-6 bg-white rounded-lg shadow-sm p-4 overflow-hidden">
                             <h3 className="text-lg font-bold mb-3">Saídas do dia</h3>
-                            <table className="w-full text-left text-sm">
+                            <div className="max-h-80 overflow-y-auto">
+                                <table className="w-full text-left text-sm">
                                 <thead className="bg-blue-50 border-b border-blue-100">
                                     <tr>
                                         <th className="p-3 font-black uppercase text-blue-800">DATA</th>
@@ -2321,7 +2322,8 @@ export default function PDVPage() {
                                         ))
                                     )}
                                 </tbody>
-                            </table>
+                                </table>
+                            </div>
                         </div>
                     )}
 

@@ -224,7 +224,8 @@ export default function PDVPage() {
             await Promise.all([
                 carregarProdutos(),
                 carregarVendasHoje(caixaDiaISO || undefined),
-                restaurarCaixaAberto({ changeView })
+                restaurarCaixaAberto({ changeView }),
+                carregarSaidasDoDia(caixaDiaISO || undefined)
             ])
             // Também atualiza a listagem de caixas do dia (para agregação/report)
             try { await carregarCaixasDoDia(caixaDiaISO || undefined) } catch (e) { console.warn('carregarCaixasDoDia falhou:', e) }
@@ -368,6 +369,7 @@ export default function PDVPage() {
     const [descontoValor, setDescontoValor] = useState('')
     const [caixaDiarioId, setCaixaDiarioId] = useState<number | null>(null)
     const [caixasDoDia, setCaixasDoDia] = useState<any[]>([])
+    const [saidasDoDia, setSaidasDoDia] = useState<any[]>([])
 
     // --- Métricas do Caixa ---
     const metricasCaixa = useMemo(() => {
@@ -571,6 +573,39 @@ export default function PDVPage() {
         }
     }
 
+    // Carrega saídas registradas no `fluxo_caixa` para a data do caixa
+    async function carregarSaidasDoDia(baseDateISO?: string) {
+        try {
+            const dataCaixa = baseDateISO || caixaDiaISO || getLocalDateString()
+            const { data, error } = await getSupabase()
+                .from('fluxo_caixa')
+                .select('id, data, usuario, valor, observacoes, created_at')
+                .eq('data', dataCaixa)
+                .eq('tipo', 'saida')
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+
+            const mapped = (data || []).map((d: any) => {
+                let displayData = '—'
+                try {
+                    if (d.created_at) {
+                        displayData = new Date(d.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    } else if (d.data) {
+                        const dt = parseBaseDateToLocal(d.data)
+                        displayData = dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    }
+                } catch (e) { displayData = String(d.data || '—') }
+                return { ...d, displayData }
+            })
+
+            setSaidasDoDia(mapped)
+        } catch (e) {
+            console.error('Erro ao carregar saídas do dia:', e)
+            setSaidasDoDia([])
+        }
+    }
+
     // --- Caderneta: seleção de cliente/funcionário para registrar pagamento ---
     const { clientes, adicionarMovimentacao, refreshClientes, refreshMovimentacoes } = useCadernetaOffline()
     const [clienteCadernetaSelecionado, setClienteCadernetaSelecionado] = useState<string>('')
@@ -656,6 +691,13 @@ export default function PDVPage() {
         if (view === 'venda' || view === 'historico') {
             carregarProdutos()
             carregarVendasHoje(caixaDiaISO || undefined)
+        }
+    }, [view, caixaDiaISO])
+
+    // Ao abrir a view 'saida' ou alterar a data do caixa, recarrega as saídas do dia
+    useEffect(() => {
+        if (view === 'saida') {
+            carregarSaidasDoDia(caixaDiaISO || undefined)
         }
     }, [view, caixaDiaISO])
 
@@ -2250,7 +2292,40 @@ export default function PDVPage() {
                         </div>
                     )}
 
-                            {/* Modal aviso: não é possível fechar sem conferência */}
+                    {/* Lista de Saídas do dia */}
+                    {view === 'saida' && (
+                        <div className="mt-6 bg-white rounded-lg shadow-sm p-4 overflow-auto">
+                            <h3 className="text-lg font-bold mb-3">Saídas do dia</h3>
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-blue-50 border-b border-blue-100">
+                                    <tr>
+                                        <th className="p-3 font-black uppercase text-blue-800">DATA</th>
+                                        <th className="p-3 font-black uppercase text-blue-800">OPERADOR</th>
+                                        <th className="p-3 font-black uppercase text-blue-800 text-right">VALOR</th>
+                                        <th className="p-3 font-black uppercase text-blue-800">OBSERVAÇÕES</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {saidasDoDia.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={4} className="p-4 text-center text-gray-500">Nenhuma saída registrada hoje.</td>
+                                        </tr>
+                                    ) : (
+                                        saidasDoDia.map(s => (
+                                            <tr key={s.id} className="border-b border-blue-50 hover:bg-blue-50/30">
+                                                <td className="p-3">{s.displayData || s.data || '—'}</td>
+                                                <td className="p-3">{s.usuario || '—'}</td>
+                                                <td className="p-3 text-right font-black text-blue-600">R$ {Number(s.valor || 0).toFixed(2)}</td>
+                                                <td className="p-3">{s.observacoes || '—'}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {/* Modal aviso: não é possível fechar sem conferência */}
                             {modalNoConferencia && (
                                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
                                     <div className="bg-white p-4 rounded-lg w-full max-w-sm shadow-lg">

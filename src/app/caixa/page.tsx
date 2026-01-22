@@ -416,6 +416,15 @@ export default function PDVPage() {
         return s
     }, [caixasDoDia])
 
+    // Soma total de saídas do dia (usado no card de resumo)
+    const totalSaidasDoDia = useMemo(() => {
+        try {
+            return (saidasDoDia || []).reduce((acc: number, s: any) => acc + (Number(s.valor) || 0), 0)
+        } catch (e) {
+            return 0
+        }
+    }, [saidasDoDia])
+
     // --- Estados de Modais ---
     const [modalPagamento, setModalPagamento] = useState(false)
     const [modalDebito, setModalDebito] = useState(false)
@@ -2742,7 +2751,7 @@ export default function PDVPage() {
                             </div>
 
                             {/* Resumo do Dia */}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                                     <span className="text-xs font-bold text-blue-400 uppercase block mb-1">Data Abertura</span>
                                     <span className="text-lg font-black text-gray-800">{dataHoje}</span>
@@ -2759,6 +2768,11 @@ export default function PDVPage() {
                                     <span className="text-xs font-bold text-green-600 uppercase block mb-1">Valor Esperado (Dinheiro)</span>
                                     <span className="text-lg font-black text-green-700">R$ {metricasCaixa.valorEsperadoDinheiro.toFixed(2)}</span>
                                     <div className="text-[11px] text-green-800 mt-1">Dia: R$ {(metricasDia?.valorEsperadoDinheiro || 0).toFixed(2)}</div>
+                                </div>
+                                <div className="p-4 bg-red-50 rounded-xl border border-red-100">
+                                    <span className="text-xs font-bold text-red-600 uppercase block mb-1">Total Saídas (Dia)</span>
+                                    <span className="text-lg font-black text-red-700">R$ {totalSaidasDoDia.toFixed(2)}</span>
+                                    <div className="text-[11px] text-red-800 mt-1">Registros: {saidasDoDia.length}</div>
                                 </div>
                             </div>
 

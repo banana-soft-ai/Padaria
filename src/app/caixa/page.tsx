@@ -339,8 +339,6 @@ export default function PDVPage() {
             setObsSaida('')
             // Atualiza interface (não forçar mudança de view)
             await refreshAll({ changeView: false })
-            // Redireciona para relatório de saídas
-            router.push('/gestao/saidas')
         } catch (err) {
             console.error('Erro ao registrar saída:', err)
             showToast('Erro ao registrar saída. Verifique o console.', 'error')

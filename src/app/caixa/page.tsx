@@ -622,7 +622,7 @@ export default function PDVPage() {
     }
 
     // --- Caderneta: seleção de cliente/funcionário para registrar pagamento ---
-    const { clientes, adicionarMovimentacao, refreshClientes, refreshMovimentacoes } = useCadernetaOffline()
+    const { clientes, adicionarMovimentacao, registrarPagamento, refreshClientes, refreshMovimentacoes } = useCadernetaOffline()
     const [clienteCadernetaSelecionado, setClienteCadernetaSelecionado] = useState<string>('')
     const [valorAbaterCaderneta, setValorAbaterCaderneta] = useState<string>('')
 
@@ -685,7 +685,13 @@ export default function PDVPage() {
             carregarProdutos()
             carregarVendasHoje(caixaDiaISO || undefined)
             carregarCaixasDoDia(caixaDiaISO || undefined)
-            restaurarCaixaAberto({ changeView: true })
+            try {
+                // Atualizar lista de clientes/movimentações caso tenham sido alteradas na aba de gestão
+                if (typeof refreshClientes === 'function') refreshClientes()
+                if (typeof refreshMovimentacoes === 'function') refreshMovimentacoes()
+            } catch (e) {
+                console.warn('Falha ao refrescar clientes/movimentacoes ao voltar ao foco:', e)
+            }
         }
 
         const handleVisibility = () => {
@@ -1218,7 +1224,7 @@ export default function PDVPage() {
                     }
                 }
 
-                if (effectiveCaixaId && !USE_DB_TRIGGER) {
+                if (effectiveCaixaId && !USE_DB_TRIGGER && formaPagamentoDB !== 'caderneta') {
                     const { data: caixaRow, error: caixaRowErr } = await getSupabase()
                         .from('caixa_diario')
                         .select('id, total_vendas, total_entradas, total_dinheiro, total_pix, total_debito, total_credito, total_caderneta')
@@ -1394,6 +1400,45 @@ export default function PDVPage() {
             setLoading(false)
         }
     }
+
+        // Registrar pagamento em caderneta a partir do PDV (abatimento) — atualiza saldo e, quando online,
+        // registra a entrada no caixa (caixa_diario, caixa_movimentacoes e fluxo_caixa) via `registrarPagamento`.
+        const handleConfirmarPagamentoCaderneta = async () => {
+            const valor = parseFloat(String(valorAbaterCaderneta).replace(',', '.')) || 0
+            if (!clienteCadernetaSelecionado) {
+                showToast('Selecione um cliente', 'warning')
+                return
+            }
+            if (valor <= 0) {
+                showToast('Informe um valor maior que zero', 'warning')
+                return
+            }
+
+            setLoading(true)
+            try {
+                const clienteIdNum = Number(clienteCadernetaSelecionado)
+                const res = await registrarPagamento(
+                    clienteIdNum,
+                    valor,
+                    `Pagamento registrado no PDV (operador ${operador || '—'})`,
+                    { data_pagamento: caixaDiaISO || getLocalDateString(), forma_pagamento: 'dinheiro' }
+                )
+
+                if (!res.success) throw new Error(res.message || 'Falha ao registrar pagamento')
+
+                try { refreshClientes(); refreshMovimentacoes(); } catch (e) { console.error(e) }
+
+                setModalCaderneta(false)
+                setClienteCadernetaSelecionado('')
+                setValorAbaterCaderneta('')
+                showToast(res.message || 'Pagamento registrado com sucesso', 'success')
+            } catch (err: any) {
+                console.error('Erro ao registrar pagamento via PDV:', err)
+                showToast(err?.message || 'Erro ao registrar pagamento', 'error')
+            } finally {
+                setLoading(false)
+            }
+        }
 
     // --- Visualizar Detalhes da Venda ---
     const verDetalhesVenda = async (id: number) => {
@@ -2122,13 +2167,21 @@ export default function PDVPage() {
         setModalScanner(false)
     }
 
-    const abrirCaderneta = () => {
-        if (clientes && clientes.length > 0) {
-            setClienteCadernetaSelecionado(String(clientes[0].id))
-        } else {
-            setClienteCadernetaSelecionado('')
+    const abrirCaderneta = async () => {
+        try {
+            if (typeof refreshClientes === 'function') await refreshClientes()
+            if (typeof refreshMovimentacoes === 'function') await refreshMovimentacoes()
+            if (clientes && clientes.length > 0) {
+                setClienteCadernetaSelecionado(String(clientes[0].id))
+            } else {
+                setClienteCadernetaSelecionado('')
+            }
+            // Abre a view de caderneta no layout do PDV (espelho da página de gestão)
+            setView('caderneta')
+        } catch (e) {
+            console.warn('Falha ao abrir caderneta:', e)
+            setView('caderneta')
         }
-        setModalCaderneta(true)
     }
 
     // Fecha scanner ao desmontar (garantia extra)
@@ -2559,7 +2612,7 @@ export default function PDVPage() {
                                             Pix
                                         </button>
                                         <button
-                                            onClick={() => setModalCaderneta(true)}
+                                            onClick={() => abrirCaderneta()}
                                             title="Caderneta — F11"
                                             className="p-3 bg-blue-50 text-blue-700 rounded-xl border border-blue-50 font-black hover:border-blue-300 transition text-xs uppercase flex flex-col items-center gap-1 col-span-2 justify-self-center mx-auto w-3/4 md:w-2/3"
                                         >
@@ -2663,8 +2716,13 @@ export default function PDVPage() {
 
                     {/* TELA DE CADERNETA (aba incorporada) */}
                     {caixaAberto && view === 'caderneta' && (
-                        <div className="h-full bg-white rounded-2xl shadow-sm border border-blue-100 p-6 overflow-auto">
-                            <CadernetaContent />
+                        <div className="h-full bg-white rounded-2xl shadow-sm border border-blue-100 p-2 overflow-hidden">
+                            <iframe
+                                src="/gestao/caderneta?embedded=1"
+                                title="Caderneta - Gestão (Espelho)"
+                                className="w-full h-full border-0"
+                                style={{ minHeight: '600px' }}
+                            />
                         </div>
                     )}
 
@@ -3405,7 +3463,7 @@ export default function PDVPage() {
 
                                 <div className="flex flex-col gap-2">
                                     <button
-                                        onClick={() => finalizarVenda('caderneta')}
+                                        onClick={handleConfirmarPagamentoCaderneta}
                                         disabled={loading || !clienteCadernetaSelecionado || (parseFloat(String(valorAbaterCaderneta).replace(',', '.')) || 0) <= 0}
                                         className="w-full py-3 bg-blue-600 text-white rounded-2xl font-black text-lg uppercase tracking-widest hover:bg-blue-700 transition disabled:opacity-50"
                                     >

@@ -220,7 +220,7 @@ export default function CadernetaContent() {
             .limit(1)
             .maybeSingle()
           if (!abertoErr && abertoAny && (abertoAny as any).status === 'aberto') {
-            showToast(`ATENÇÃO: existe um caixa aberto para ${abertoAny.data}. Registrando pagamento usando esse caixa.`, 'warning')
+            // Aviso removido: registrar pagamento usando caixa aberto sem notificar o usuário.
           } else {
             showToast(`CAIXA FECHADO: Não é possível registrar pagamento para ${formPagamento.data_pagamento}. Abra o caixa no PDV primeiro.`, 'error')
             return

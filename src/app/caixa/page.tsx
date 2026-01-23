@@ -371,6 +371,7 @@ export default function PDVPage() {
     const [caixaDiarioId, setCaixaDiarioId] = useState<number | null>(null)
     const [caixasDoDia, setCaixasDoDia] = useState<any[]>([])
     const [saidasDoDia, setSaidasDoDia] = useState<any[]>([])
+    const [pagamentosCadernetaHoje, setPagamentosCadernetaHoje] = useState<number[]>([])
 
     // --- Métricas do Caixa ---
     const metricasCaixa = useMemo(() => {
@@ -393,6 +394,12 @@ export default function PDVPage() {
             else { if (forma.includes('cartao')) totais.debito += v.total }
         })
 
+        // Incluir pagamentos recebidos hoje da caderneta (fluxo_caixa categoria 'caderneta')
+        try {
+            const somaPagamentos = (pagamentosCadernetaHoje || []).reduce((acc, val) => acc + Number(val || 0), 0)
+            if (somaPagamentos > 0) totais.caderneta += somaPagamentos
+        } catch (e) { }
+
         const totalEntradas = totais.dinheiro + totais.pix + totais.debito + totais.credito
         const totalGeral = totalEntradas + totais.caderneta
 
@@ -403,7 +410,7 @@ export default function PDVPage() {
         const valorEsperadoDinheiro = Number((saldoInicial || 0)) + totais.dinheiro - totalSaidas
 
         return { ...totais, totalEntradas, totalGeral, valorEsperadoDinheiro, totalSaidas }
-    }, [vendasHoje, saldoInicial, saidasDoDia])
+    }, [vendasHoje, saldoInicial, saidasDoDia, pagamentosCadernetaHoje])
 
     // Métricas agregadas do dia (somatório de todas as sessões de caixa registradas)
     const metricasDia = useMemo(() => {
@@ -567,6 +574,23 @@ export default function PDVPage() {
                     total: v.valor_total || 0,
                     forma_pagamento: (v.forma_pagamento || '').replace('_', ' ')
                 })))
+                // Buscar pagamentos registrados no fluxo_caixa como 'caderneta' para essa data
+                try {
+                    const { data: pagamentosFluxo, error: errPag } = await getSupabase()
+                        .from('fluxo_caixa')
+                        .select('valor')
+                        .eq('data', dateStr)
+                        .eq('tipo', 'entrada')
+                        .eq('categoria', 'caderneta')
+                    if (!errPag && pagamentosFluxo) {
+                        setPagamentosCadernetaHoje((pagamentosFluxo as any[]).map(p => Number(p.valor || 0)))
+                    } else {
+                        setPagamentosCadernetaHoje([])
+                    }
+                } catch (e) {
+                    console.warn('Erro ao carregar pagamentos de caderneta do fluxo_caixa:', e)
+                    setPagamentosCadernetaHoje([])
+                }
             } else {
                 setVendasHoje([])
             }
@@ -1428,6 +1452,109 @@ export default function PDVPage() {
                 )
 
                 if (!res.success) throw new Error(res.message || 'Falha ao registrar pagamento')
+
+                // Garantir que o pagamento também seja registrado no caixa (caixa_diario, caixa_movimentacoes, fluxo_caixa).
+                // Algumas vezes a função `registrarPagamento` pode não ter gravado os registros de caixa (ex: offline/sincronização),
+                // então fazemos uma verificação e inserção adicional aqui, protegendo contra duplicatas.
+                try {
+                    const hoje = caixaDiaISO || getLocalDateString()
+
+                    // Tenta achar caixa do dia aberto; se não houver, tenta qualquer caixa aberto
+                    let caixaRow: any = null
+                    const { data: caixaHoje, error: errHoje } = await getSupabase()
+                        .from('caixa_diario')
+                        .select('id, data, total_caderneta, total_entradas, total_dinheiro, total_pix, total_debito, total_credito')
+                        .eq('data', hoje)
+                        .eq('status', 'aberto')
+                        .limit(1)
+                        .maybeSingle()
+
+                    if (!errHoje && caixaHoje) caixaRow = caixaHoje
+                    else {
+                        const { data: abertoAny, error: errAny } = await getSupabase()
+                            .from('caixa_diario')
+                            .select('id, data, total_caderneta, total_entradas, total_dinheiro, total_pix, total_debito, total_credito')
+                            .eq('status', 'aberto')
+                            .limit(1)
+                            .maybeSingle()
+                        if (!errAny && abertoAny) caixaRow = abertoAny
+                    }
+
+                    if (caixaRow && caixaRow.id) {
+                        // Evitar duplicatas: checar se já existe entrada similar no fluxo_caixa
+                        const descricao = `Pagamento caderneta (cliente ${clienteIdNum})`
+                        const { data: fluxoExist } = await getSupabase()
+                            .from('fluxo_caixa')
+                            .select('id')
+                            .eq('data', caixaRow.data || hoje)
+                            .eq('categoria', 'caderneta')
+                            .eq('descricao', descricao)
+                            .eq('valor', valor)
+                            .limit(1)
+                            .maybeSingle()
+
+                        if (!fluxoExist) {
+                            const curCaderneta = Number(caixaRow.total_caderneta || 0)
+                            const curTotalEntradas = Number(caixaRow.total_entradas || 0)
+                            const curDinheiro = Number(caixaRow.total_dinheiro || 0)
+                            const curPix = Number(caixaRow.total_pix || 0)
+                            const curDebito = Number(caixaRow.total_debito || 0)
+                            const curCredito = Number(caixaRow.total_credito || 0)
+
+                            const atualizar: any = {
+                                total_caderneta: Number((curCaderneta + valor).toFixed(2)),
+                                total_entradas: curTotalEntradas,
+                                total_dinheiro: curDinheiro,
+                                total_pix: curPix,
+                                total_debito: curDebito,
+                                total_credito: curCredito
+                            }
+
+                            // No PDV usamos 'dinheiro' por padrão aqui
+                            atualizar.total_entradas = Number((curTotalEntradas + valor).toFixed(2))
+                            atualizar.total_dinheiro = Number((curDinheiro + valor).toFixed(2))
+
+                            await getSupabase()
+                                .from('caixa_diario')
+                                .update(atualizar)
+                                .eq('id', caixaRow.id)
+
+                            // Inserir detalhamento em caixa_movimentacoes
+                            try {
+                                await getSupabase()
+                                    .from('caixa_movimentacoes')
+                                    .insert({
+                                        caixa_diario_id: caixaRow.id,
+                                        tipo: 'entrada',
+                                        valor: valor,
+                                        motivo: descricao,
+                                        observacoes: `Pagamento registrado pelo PDV (operador ${operador || '—'})`,
+                                        created_at: new Date().toISOString()
+                                    })
+                            } catch (e) {
+                                console.warn('Falha ao gravar caixa_movimentacoes para pagamento de caderneta:', e)
+                            }
+
+                            // Inserir entrada no fluxo_caixa
+                            try {
+                                const dadosFluxo = {
+                                    data: caixaRow.data || hoje,
+                                    tipo: 'entrada',
+                                    categoria: 'caderneta',
+                                    descricao,
+                                    valor: valor,
+                                    observacoes: `Pagamento registrado pelo PDV (operador ${operador || '—'})`,
+                                    created_at: new Date().toISOString()
+                                }
+                                await getSupabase().from('fluxo_caixa').insert(dadosFluxo)
+                            } catch (e) {
+                                console.warn('Falha ao gravar fluxo_caixa para pagamento de caderneta:', e)
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('Erro ao garantir registro de pagamento no caixa:', err)
+                }
 
                 try { refreshClientes(); refreshMovimentacoes(); } catch (e) { console.error(e) }
 

@@ -313,8 +313,7 @@ function CadernetaContent() {
             .maybeSingle()
 
           if (!abertoErr && abertoAny && (abertoAny as any).status === 'aberto') {
-            // Permite usar o caixa aberto, mas avisa sobre a diferença de data
-            showToast(`ATENÇÃO: existe um caixa aberto para ${abertoAny.data}. Registrando pagamento usando esse caixa.`, 'warning')
+            // Permite usar o caixa aberto; aviso visual removido.
             // prossegue sem retornar
           } else {
             showToast(`CAIXA FECHADO: Não é possível registrar pagamento para ${formPagamento.data_pagamento}. Abra o caixa no PDV primeiro.`, 'error')

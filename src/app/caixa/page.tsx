@@ -36,6 +36,7 @@ import {
 import Toast from '@/app/gestao/caderneta/Toast'
 import { clientConfig } from '@/lib/config'
 import CadernetaContent from '@/app/gestao/caderneta/CadernetaContent'
+import AbrirCaixaModal from '@/components/AbrirCaixaModal'
 
 // Se true, o banco (trigger) fará a atualização de caixa automaticamente.
 // Quando habilitado, o cliente NÃO fará updates em `caixa_diario`, `caixa_movimentacoes` ou `fluxo_caixa`.
@@ -1614,11 +1615,12 @@ export default function PDVPage() {
             try {
                 const dataISO = getLocalDateString()
 
-                // Verifica se já existe qualquer registro para a data (regra: 1 caixa por dia)
+                // Verifica o registro mais recente do dia; permite novos aberturas se o último estiver fechado
                 const { data: existing, error: checkErr } = await getSupabase()
                     .from('caixa_diario')
                     .select('id, status')
                     .eq('data', dataISO)
+                    .order('created_at', { ascending: false })
                     .limit(1)
                     .maybeSingle()
 
@@ -1626,11 +1628,10 @@ export default function PDVPage() {
                     console.warn('Falha ao checar existência de caixa antes de abrir:', checkErr)
                 }
 
-                if (existing) {
-                    showToast('Já existe um caixa registrado para hoje. Abertura permitida apenas 1 vez por dia.', 'warning')
-                    // ajustar estados locais para refletir que não há um novo caixa aberto por esta ação
-                    setCaixaAberto(existing.status === 'aberto')
-                    if (existing.status === 'aberto') setCaixaDiarioId(existing.id || null)
+                if (existing && existing.status === 'aberto') {
+                    showToast('Já existe um caixa aberto hoje.', 'warning')
+                    setCaixaAberto(true)
+                    setCaixaDiarioId(existing.id || null)
                     return
                 }
 
@@ -2303,6 +2304,16 @@ export default function PDVPage() {
 
                 {/* --- MAIN CONTENT --- */}
                 <main className="flex-1 overflow-hidden relative p-2">
+                    {/* Modal obrigatório de abertura de caixa: renderizado dentro do main para não cobrir a sidebar */}
+                    {!caixaAberto && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <AbrirCaixaModal
+                                onCaixaAberto={async () => {
+                                    await restaurarCaixaAberto()
+                                }}
+                            />
+                        </div>
+                    )}
                     {/* FAIXA DE ATALHOS */}
                     {caixaAberto && mostrarAtalhos && (
                         <div className="mb-2 p-2 bg-blue-50 border border-blue-100 rounded-xl text-[10px] text-gray-700 font-bold flex flex-wrap gap-x-4 gap-y-1">

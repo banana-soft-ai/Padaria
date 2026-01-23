@@ -20,15 +20,16 @@ export function useCaixa() {
       toast.dismiss()
       toast.loading('Carregando caixa...')
 
-      if (isOnline) {
+        if (isOnline) {
         // Online: buscar do Supabase
         console.log('🌐 Modo online - buscando dados do Supabase')
         const { data, error } = await supabase
           .from('caixa_diario')
           .select('*')
           .eq('data', hoje)
+          .order('created_at', { ascending: false })
           .limit(1)
-          .single()
+          .maybeSingle()
 
         if (error && error.code === 'PGRST116') {
           console.log('📊 Nenhum caixa encontrado para hoje')
@@ -157,12 +158,13 @@ export function useCaixa() {
           .from('caixa_diario')
           .select('id, status')
           .eq('data', hoje)
+          .order('created_at', { ascending: false })
           .limit(1)
-          .single()
+          .maybeSingle()
 
-        if (!selErr && existing) {
+        if (!selErr && existing && existing.status === 'aberto') {
           toast.dismiss()
-          toast.error('Já existe um caixa registrado para hoje. Abertura permitida apenas 1 vez por dia.')
+          toast.error('Já existe um caixa aberto hoje.')
           return false
         }
       } catch (checkErr) {

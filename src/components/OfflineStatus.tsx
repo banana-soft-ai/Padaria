@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Wifi, WifiOff, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { syncService } from '@/lib/syncService'
 
@@ -12,6 +13,7 @@ interface SyncStats {
 }
 
 export function OfflineStatus() {
+  const searchParams = useSearchParams()
   const { isOnline, isReconnecting } = useOnlineStatus()
   const [syncStats, setSyncStats] = useState<SyncStats>({
     pendingOperations: 0,
@@ -73,6 +75,14 @@ export function OfflineStatus() {
     const days = Math.floor(hours / 24)
     return `${days} dias atrás`
   }
+
+  // Detectar embed via query param `embedded=1|true` ou se estamos dentro de um iframe
+  const embedded =
+    searchParams?.get('embedded') === '1' ||
+    searchParams?.get('embedded') === 'true'
+  const isIframe = typeof window !== 'undefined' && window.self !== window.top
+
+  if (embedded || isIframe) return null
 
   return (
     <div className="fixed bottom-4 right-4 z-50">

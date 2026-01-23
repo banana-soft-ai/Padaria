@@ -256,13 +256,11 @@ export default function EstoquePage() {
         const produtoPayload = {
           nome: formData.nome,
           categoria: 'varejo',
-          preco_venda: formData.preco_pacote ? parseFloat(formData.preco_pacote) : 0,
+          preco_venda: precoPacoteNum ?? 0,
+          preco_pacote: precoPacoteNum ?? null,
+          peso_pacote: formData.peso_pacote ? parseFloat(formData.peso_pacote) : null,
           codigo_barras: (formData.codigo_barras || '').trim() || null,
           unidade: formData.unidade || 'un',
-          unidade_medida_base: baseUnit,
-          quantidade_pacote: quantityInBase,
-          quantidade_minima: formData.quantidade_minima ? parseFloat(formData.quantidade_minima) : null,
-          preco_unitario: precoUnit,
           estoque_atual: formData.estoque_atual ? parseFloat(formData.estoque_atual) : 0,
           estoque_minimo: formData.estoque_minimo ? parseFloat(formData.estoque_minimo) : 0,
           ativo: true,
@@ -395,8 +393,26 @@ export default function EstoquePage() {
 
       carregarItens()
     } catch (err: any) {
-      console.error('Erro ao salvar item:', err)
-      const msg = err?.message || 'Erro ao salvar item'
+      // Log detalhado: alguns erros retornados pelo Supabase não têm propriedades enumeráveis
+      try {
+        console.error('Erro ao salvar item:', err)
+        // mostra também propriedades não-enumeráveis
+        console.error('Erro (detalhes):', JSON.stringify(err, Object.getOwnPropertyNames(err), 2))
+      } catch (e) {
+        console.error('Erro ao serializar erro:', e)
+      }
+
+      const extractMessage = (e: any) => {
+        if (!e) return 'Erro ao salvar item'
+        if (typeof e === 'string') return e
+        if (e.message) return e.message
+        if (e.error) return e.error
+        if (e.statusText) return `${e.status || ''} ${e.statusText}`.trim()
+        if (e.details) return e.details
+        try { return JSON.stringify(e) } catch { return String(e) }
+      }
+
+      const msg = extractMessage(err)
       showToast(msg, 'error')
     }
   }
@@ -655,29 +671,6 @@ export default function EstoquePage() {
                     <option value="embalagem">Embalagem</option>
                   </select>
                 </div>
-
-                <div>
-                  <label className="text-sm">Unidade</label>
-                  <select
-                    value={formData.unidade}
-                    onChange={(e) => {
-                      const unit = e.target.value
-                      const newBase = unit === 'kg' ? 'g' : unit === 'l' ? 'ml' : unit
-                      setFormData({ ...formData, unidade: unit, unidade_medida_base: newBase })
-                    }}
-                    className="w-full px-3 py-2 border rounded-md"
-                  >
-                    <option value="kg">kg</option>
-                    <option value="g">g</option>
-                    <option value="l">l</option>
-                    <option value="ml">ml</option>
-                    <option value="un">un</option>
-                    <option value="cx">cx</option>
-                    <option value="pct">pct</option>
-                  </select>
-                </div>
-
-
                 <div>
                   <label className="text-sm">Fornecedor</label>
                   <input
@@ -737,8 +730,9 @@ export default function EstoquePage() {
                   />
                 </div>
 
+                {/* Campos específicos para Insumo: quantidade do pacote, unidade base, quantidade mínima e preço unitário calculado */}
                 <div>
-                  <label className="text-sm">Quantidade total do pacote</label>
+                  <label className="text-sm">Quantidade do Pacote</label>
                   <input
                     type="number"
                     step="0.001"
@@ -751,10 +745,25 @@ export default function EstoquePage() {
                 </div>
 
                 <div>
-                  <label className="text-sm">Quantidade mínima (opcional)</label>
+                  <label className="text-sm">Unidade (base)</label>
+                  <select
+                    value={formData.unidade_medida_base}
+                    onChange={(e) => setFormData({ ...formData, unidade_medida_base: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md"
+                  >
+                    <option value="g">g</option>
+                    <option value="ml">ml</option>
+                    <option value="un">un</option>
+                    <option value="kg">kg</option>
+                    <option value="l">l</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm">Quantidade Mínima</label>
                   <input
                     type="number"
-                    step="0.001"
+                    step="0.01"
                     value={formData.quantidade_minima}
                     onChange={(e) => setFormData({ ...formData, quantidade_minima: e.target.value })}
                     onFocus={handleNumberFocus}
@@ -764,23 +773,13 @@ export default function EstoquePage() {
                 </div>
 
                 <div>
-                  <label className="text-sm">Unidade do pacote</label>
-                  <select
-                    value={formData.unidade_medida_base}
-                    onChange={(e) => setFormData({ ...formData, unidade_medida_base: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md"
-                  >
-                    <option value="kg">kg</option>
-                    <option value="g">g</option>
-                    <option value="l">l</option>
-                    <option value="ml">ml</option>
-                    <option value="un">un</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm">Preço unitário (real de uso)</label>
-                  <input type="text" readOnly value={precoUnitarioCalculado ? `R$ ${formatPreco(precoUnitarioCalculado)}` : '-'} className="w-full px-3 py-2 border rounded-md bg-gray-50" />
+                  <label className="text-sm">Preço Unitário (calculado)</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={precoUnitarioCalculado ? `R$ ${formatPreco(precoUnitarioCalculado)}` : (formData.preco_pacote ? '-' : '-')}
+                    className="w-full px-3 py-2 border rounded-md bg-gray-50"
+                  />
                 </div>
 
                 <div>
@@ -926,51 +925,7 @@ export default function EstoquePage() {
                     className="w-full px-3 py-2 border rounded-md"
                   />
                 </div>
-                <div>
-                  <label className="text-sm">Quantidade total do pacote</label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={formData.quantidade_pacote}
-                    onChange={(e) => setFormData({ ...formData, quantidade_pacote: e.target.value })}
-                    onFocus={handleNumberFocus}
-                    onBlur={handleNumberBlur}
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm">Quantidade mínima (opcional)</label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={formData.quantidade_minima}
-                    onChange={(e) => setFormData({ ...formData, quantidade_minima: e.target.value })}
-                    onFocus={handleNumberFocus}
-                    onBlur={handleNumberBlur}
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm">Unidade do pacote</label>
-                  <select
-                    value={formData.unidade_medida_base}
-                    onChange={(e) => setFormData({ ...formData, unidade_medida_base: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md"
-                  >
-                    <option value="kg">kg</option>
-                    <option value="g">g</option>
-                    <option value="l">l</option>
-                    <option value="ml">ml</option>
-                    <option value="un">un</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm">Preço unitário (real de uso)</label>
-                  <input type="text" readOnly value={precoUnitarioCalculado ? `R$ ${formatPreco(precoUnitarioCalculado)}` : '-'} className="w-full px-3 py-2 border rounded-md bg-gray-50" />
-                </div>
+                {/* Campos de pacote removidos para Varejo (quantidade/unidade/preço unitário) */}
 
                 <div>
                   <label className="text-sm">Peso do Pacote</label>

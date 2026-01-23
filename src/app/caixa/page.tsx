@@ -716,9 +716,11 @@ export default function PDVPage() {
         }
     }, [view, caixaDiaISO])
 
-    // Ao abrir a view 'saida' ou alterar a data do caixa, recarrega as saídas do dia
+    // Ao abrir a view 'saida' ou 'caixa' (aba principal do caixa),
+    // recarrega as saídas do dia para garantir que o total exibido
+    // esteja sempre atualizado mesmo se o usuário não acessar a aba 'Saída'.
     useEffect(() => {
-        if (view === 'saida') {
+        if (view === 'saida' || view === 'caixa') {
             carregarSaidasDoDia(caixaDiaISO || undefined)
         }
     }, [view, caixaDiaISO])

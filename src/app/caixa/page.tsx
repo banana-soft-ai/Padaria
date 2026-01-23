@@ -2752,8 +2752,8 @@ export default function PDVPage() {
                                             Pix
                                         </button>
                                         <button
-                                            onClick={() => abrirCaderneta()}
-                                            title="Caderneta — F11"
+                                            onClick={() => setModalCaderneta(true)}
+                                            title="Caderneta — abrir modal de pagamento"
                                             className="p-3 bg-blue-50 text-blue-700 rounded-xl border border-blue-50 font-black hover:border-blue-300 transition text-xs uppercase flex flex-col items-center gap-1 col-span-2 justify-self-center mx-auto w-3/4 md:w-2/3"
                                         >
                                             <BookOpen className="h-5 w-5" />

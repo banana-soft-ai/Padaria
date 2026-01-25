@@ -13,12 +13,16 @@ const getLocalDateString = (d = new Date()) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+
 export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
   const [operador, setOperador] = useState('')
   const [saldoInicial, setSaldoInicial] = useState('')
   const [observacoes, setObservacoes] = useState('')
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+
+  // Busca o saldo final do último caixa fechado
+  // (Removido: lógica de troca de turno)
 
   const handleAbrirCaixa = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -49,7 +53,7 @@ export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
         status: 'aberto',
         valor_abertura: Number(String(saldoInicial || '0').replace(',', '.')) || 0,
         usuario_abertura: operador || null,
-        observacoes_abertura: observacoes || null,
+        observacoes_abertura: observacoes || null
       }
       const { data: inserted, error } = await supabase
         .from('caixa_diario')
@@ -79,6 +83,7 @@ export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
           <h2 className="text-2xl font-black text-gray-800 uppercase italic mb-0">Abrir Caixa</h2>
         </div>
         <form className="space-y-4" onSubmit={handleAbrirCaixa}>
+          {/* Removido: seleção de tipo de abertura */}
           <div>
             <label className="block text-[10px] font-black text-blue-600 uppercase mb-1">Funcionário</label>
             <input
@@ -102,6 +107,7 @@ export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
               step="0.01"
               required
             />
+            {/* Removido: mensagem de valor sugerido para troca de turno */}
           </div>
           <div>
             <label className="block text-[10px] font-black text-blue-600 uppercase mb-1">Observações</label>

@@ -401,6 +401,44 @@ export interface Database {
                 Update: any
             }
         }
+        turno_operador: {
+            Row: {
+                id: number;
+                caixa_diario_id: number;
+                operador_id: number;
+                operador_nome: string;
+                data_inicio: string;
+                data_fim?: string | null;
+                status: string;
+                observacoes?: string | null;
+                created_at: string;
+                updated_at: string;
+            };
+            Insert: Partial<{
+                id: number;
+                caixa_diario_id: number;
+                operador_id: number;
+                operador_nome: string;
+                data_inicio: string;
+                data_fim?: string | null;
+                status: string;
+                observacoes?: string | null;
+                created_at: string;
+                updated_at: string;
+            }>;
+            Update: Partial<{
+                id: number;
+                caixa_diario_id: number;
+                operador_id: number;
+                operador_nome: string;
+                data_inicio: string;
+                data_fim?: string | null;
+                status: string;
+                observacoes?: string | null;
+                created_at: string;
+                updated_at: string;
+            }>;
+        }
         Views: Record<string, unknown>
         Functions: Record<string, unknown>
         Enums: Record<string, string>

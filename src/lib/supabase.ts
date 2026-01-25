@@ -1,3 +1,16 @@
+// Interface para controle de turnos de operador do PDV
+export interface TurnoOperador {
+  id: number;
+  caixa_diario_id: number;
+  operador_id: number;
+  operador_nome: string;
+  data_inicio: string;
+  data_fim?: string | null;
+  status: string;
+  observacoes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
 // Evite importar este agregador em componentes client.
 // Use '@/lib/supabase/client' ou '@/lib/supabase/server'.
 export { supabase as client } from './supabase/client'

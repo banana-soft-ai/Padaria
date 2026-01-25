@@ -239,111 +239,116 @@ export function useCadernetaOffline() {
       observacoes
     })
 
-    // Se ocorreu com sucesso e estamos online, tentar registrar no caixa do dia
-    if (result.success && !isOffline) {
-      try {
-        // Tenta obter caixa aberto para a data do pagamento (se fornecida) ou hoje;
-        const hoje = opts?.data_pagamento || new Date().toISOString().split('T')[0]
-        let caixaRow: any = null
+    const hoje = opts?.data_pagamento || new Date().toISOString().split('T')[0];
+    const forma = String(opts?.forma_pagamento || 'dinheiro').toLowerCase();
+    const formasValidas = ['dinheiro', 'pix', 'debito', 'débito', 'cartao_debito', 'cartao-debito', 'credito', 'crédito', 'cartao_credito', 'cartao-credito'];
 
+    if (result.success) {
+      if (!isOffline) {
+        // ONLINE: registrar direto no banco
+        // Buscar caixa_diario aberto do dia
         const { data: caixaHoje, error: errHoje } = await supabase
           .from('caixa_diario')
           .select('id, data, total_caderneta, total_entradas, total_dinheiro, total_pix, total_debito, total_credito')
           .eq('data', hoje)
           .eq('status', 'aberto')
           .limit(1)
-          .maybeSingle()
-
-        if (!errHoje && caixaHoje) caixaRow = caixaHoje
-        else {
+          .maybeSingle();
+        let caixaRow = caixaHoje;
+        if (!errHoje && !caixaHoje) {
+          // Tenta buscar qualquer caixa aberto
           const { data: abertoAny, error: errAny } = await supabase
             .from('caixa_diario')
-            .select('id, data, total_caderneta')
+            .select('id, data, total_caderneta, total_entradas, total_dinheiro, total_pix, total_debito, total_credito')
             .eq('status', 'aberto')
             .limit(1)
-            .maybeSingle()
-          if (!errAny && abertoAny) caixaRow = abertoAny
+            .maybeSingle();
+          if (!errAny && abertoAny) caixaRow = abertoAny;
         }
-
-        if (caixaRow && caixaRow.id) {
-          const curCaderneta = Number(caixaRow.total_caderneta || 0)
-          const curTotalEntradas = Number(caixaRow.total_entradas || 0)
-          const curDinheiro = Number(caixaRow.total_dinheiro || 0)
-          const curPix = Number(caixaRow.total_pix || 0)
-          const curDebito = Number(caixaRow.total_debito || 0)
-          const curCredito = Number(caixaRow.total_credito || 0)
-
-          const forma = String(opts?.forma_pagamento || 'dinheiro').toLowerCase()
-
-          const atualizar: any = {
-            total_caderneta: Number((curCaderneta + valor).toFixed(2)),
-            total_entradas: curTotalEntradas,
-            total_dinheiro: curDinheiro,
-            total_pix: curPix,
-            total_debito: curDebito,
-            total_credito: curCredito
-          }
-
-          if (forma === 'dinheiro') {
-            atualizar.total_entradas = Number((curTotalEntradas + valor).toFixed(2))
-            atualizar.total_dinheiro = Number((curDinheiro + valor).toFixed(2))
-          } else if (forma === 'pix') {
-            atualizar.total_entradas = Number((curTotalEntradas + valor).toFixed(2))
-            atualizar.total_pix = Number((curPix + valor).toFixed(2))
-          } else if (forma === 'debito' || forma === 'débito' || forma === 'cartao_debito' || forma === 'cartao-debito') {
-            atualizar.total_entradas = Number((curTotalEntradas + valor).toFixed(2))
-            atualizar.total_debito = Number((curDebito + valor).toFixed(2))
-          } else if (forma === 'credito' || forma === 'crédito' || forma === 'cartao_credito' || forma === 'cartao-credito') {
-            atualizar.total_entradas = Number((curTotalEntradas + valor).toFixed(2))
-            atualizar.total_credito = Number((curCredito + valor).toFixed(2))
-          }
-
-          // Atualizar totais do caixa
-          await supabase
-            .from('caixa_diario')
-            .update(atualizar)
-            .eq('id', caixaRow.id)
-
-          // Inserir detalhamento em caixa_movimentacoes
-          try {
-            await supabase
-              .from('caixa_movimentacoes')
-              .insert({
-                caixa_diario_id: caixaRow.id,
-                tipo: 'entrada',
-                valor: valor,
-                motivo: `Pagamento caderneta (cliente ${clienteId})`,
-                observacoes: observacoes || null,
-                created_at: new Date().toISOString()
-              })
-          } catch (e) {
-            console.warn('Falha ao gravar caixa_movimentacoes para pagamento de caderneta:', e)
-          }
-
-          // Inserir entrada no fluxo_caixa
-          try {
-            const dadosFluxo = {
-              data: caixaRow.data || hoje,
-              tipo: 'entrada',
-              categoria: 'caderneta',
-              descricao: `Pagamento caderneta (cliente ${clienteId})`,
-              valor: valor,
-              observacoes: observacoes || null,
-              created_at: new Date().toISOString()
-            }
-            await supabase
-              .from('fluxo_caixa')
-              .insert(dadosFluxo)
-          } catch (e) {
-            console.warn('Falha ao gravar fluxo_caixa para pagamento de caderneta:', e)
-          }
+        if (!caixaRow || !caixaRow.id) {
+          // Não há caixa aberto, não registra no caixa
+          return result;
         }
-      } catch (err) {
-        console.error('Erro ao registrar pagamento no caixa:', err)
+        // Atualizar totais do caixa_diario no banco
+        let atualizar: any = {
+          updated_at: new Date().toISOString()
+        };
+        if (formasValidas.includes(forma)) {
+          atualizar.total_entradas = Number((Number(caixaRow.total_entradas || 0) + valor).toFixed(2));
+          if (forma === 'dinheiro') atualizar.total_dinheiro = Number((Number(caixaRow.total_dinheiro || 0) + valor).toFixed(2));
+          if (forma === 'pix') atualizar.total_pix = Number((Number(caixaRow.total_pix || 0) + valor).toFixed(2));
+          if (['debito', 'débito', 'cartao_debito', 'cartao-debito'].includes(forma)) atualizar.total_debito = Number((Number(caixaRow.total_debito || 0) + valor).toFixed(2));
+          if (['credito', 'crédito', 'cartao_credito', 'cartao-credito'].includes(forma)) atualizar.total_credito = Number((Number(caixaRow.total_credito || 0) + valor).toFixed(2));
+        }
+        await supabase
+          .from('caixa_diario')
+          .update(atualizar)
+          .eq('id', caixaRow.id);
+        // Inserir detalhamento em caixa_movimentacoes
+        await supabase
+          .from('caixa_movimentacoes')
+          .insert({
+            caixa_diario_id: caixaRow.id,
+            tipo: 'entrada',
+            valor: valor,
+            motivo: `Pagamento caderneta (cliente ${clienteId})`,
+            observacoes: observacoes || null,
+            created_at: new Date().toISOString()
+          });
+        // Inserir entrada no fluxo_caixa
+        await supabase
+          .from('fluxo_caixa')
+          .insert({
+            data: caixaRow.data || hoje,
+            tipo: 'entrada',
+            categoria: 'caderneta',
+            descricao: `Pagamento caderneta (cliente ${clienteId})`,
+            valor: valor,
+            observacoes: observacoes || null,
+            created_at: new Date().toISOString()
+          });
+      } else {
+        // OFFLINE: registrar localmente (como antes)
+        try {
+          const { data: caixas } = useOfflineData<any>({ table: 'caixa_diario', autoSync: false });
+          let caixaAberto = caixas.find((c: any) => c.data === hoje && c.status === 'aberto');
+          if (!caixaAberto) return result;
+          let atualizar: any = { ...caixaAberto };
+          if (formasValidas.includes(forma)) {
+            atualizar.total_entradas = Number((Number(atualizar.total_entradas || 0) + valor).toFixed(2));
+            if (forma === 'dinheiro') atualizar.total_dinheiro = Number((Number(atualizar.total_dinheiro || 0) + valor).toFixed(2));
+            if (forma === 'pix') atualizar.total_pix = Number((Number(atualizar.total_pix || 0) + valor).toFixed(2));
+            if (['debito', 'débito', 'cartao_debito', 'cartao-debito'].includes(forma)) atualizar.total_debito = Number((Number(atualizar.total_debito || 0) + valor).toFixed(2));
+            if (['credito', 'crédito', 'cartao_credito', 'cartao-credito'].includes(forma)) atualizar.total_credito = Number((Number(atualizar.total_credito || 0) + valor).toFixed(2));
+          }
+          atualizar.updated_at = new Date().toISOString();
+          const { updateItem: updateCaixa } = useOfflineData<any>({ table: 'caixa_diario', autoSync: false });
+          await updateCaixa(caixaAberto.id, atualizar);
+          const { addItem: addMovCaixa } = useOfflineData<any>({ table: 'caixa_movimentacoes', autoSync: true });
+          await addMovCaixa({
+            caixa_diario_id: caixaAberto.id,
+            tipo: 'entrada',
+            valor: valor,
+            motivo: `Pagamento caderneta (cliente ${clienteId})`,
+            observacoes: observacoes || null,
+            created_at: new Date().toISOString()
+          });
+          const { addItem: addFluxo } = useOfflineData<any>({ table: 'fluxo_caixa', autoSync: true });
+          await addFluxo({
+            data: caixaAberto.data || hoje,
+            tipo: 'entrada',
+            categoria: 'caderneta',
+            descricao: `Pagamento caderneta (cliente ${clienteId})`,
+            valor: valor,
+            observacoes: observacoes || null,
+            created_at: new Date().toISOString()
+          });
+        } catch (e) {
+          console.warn('[registrarPagamento] Falha ao registrar movimentação de caixa offline:', e);
+        }
       }
     }
-
-    return result
+    return result;
   }
 
   // Obter clientes com movimentações

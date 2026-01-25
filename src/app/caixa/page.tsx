@@ -35,7 +35,6 @@ import {
 
 import Toast from '@/app/gestao/caderneta/Toast'
 import { clientConfig } from '@/lib/config'
-import CadernetaContent from '@/app/gestao/caderneta/CadernetaContent'
 import AbrirCaixaModal from '@/components/AbrirCaixaModal'
 
 // Se true, o banco (trigger) fará a atualização de caixa automaticamente.
@@ -2753,7 +2752,7 @@ export default function PDVPage() {
                                         </button>
                                         <button
                                             onClick={() => setModalCaderneta(true)}
-                                            title="Caderneta — abrir modal de pagamento"
+                                            title="Caderneta — F11"
                                             className="p-3 bg-blue-50 text-blue-700 rounded-xl border border-blue-50 font-black hover:border-blue-300 transition text-xs uppercase flex flex-col items-center gap-1 col-span-2 justify-self-center mx-auto w-3/4 md:w-2/3"
                                         >
                                             <BookOpen className="h-5 w-5" />
@@ -3603,7 +3602,7 @@ export default function PDVPage() {
 
                                 <div className="flex flex-col gap-2">
                                     <button
-                                        onClick={handleConfirmarPagamentoCaderneta}
+                                        onClick={() => finalizarVenda('caderneta')}
                                         disabled={loading || !clienteCadernetaSelecionado || (parseFloat(String(valorAbaterCaderneta).replace(',', '.')) || 0) <= 0}
                                         className="w-full py-3 bg-blue-600 text-white rounded-2xl font-black text-lg uppercase tracking-widest hover:bg-blue-700 transition disabled:opacity-50"
                                     >

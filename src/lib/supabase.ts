@@ -84,6 +84,7 @@ export interface MovimentacaoCaderneta {
   observacoes?: string
   created_at: string
   cliente?: ClienteCaderneta
+  saldo_devedor?: number
 }
 
 export interface ItemVenda {

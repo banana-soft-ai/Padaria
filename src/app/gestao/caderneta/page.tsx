@@ -972,7 +972,10 @@ function CadernetaContent() {
                     Saldo Anterior
                   </th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
-                    Saldo Atual
+                    Saldo Devedor
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                    Limite Atual
                   </th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Observações
@@ -1031,7 +1034,16 @@ function CadernetaContent() {
                         R$ {mov.saldo_anterior.toFixed(2)}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-xs font-medium text-gray-900">
-                        R$ {mov.saldo_atual.toFixed(2)}
+                        {typeof mov.saldo_devedor !== 'undefined' ? `R$ ${Number(mov.saldo_devedor).toFixed(2)}` : '-'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs font-medium text-gray-900">
+                        {(() => {
+                          const cliente = clientes.find(c => c.id === mov.cliente_id)
+                          if (!cliente) return '-'
+                          // Calcula limite disponível após a movimentação
+                          const limite = Number(cliente.limite_credito) - Number(mov.saldo_atual)
+                          return `R$ ${limite.toFixed(2)}`
+                        })()}
                       </td>
                       <td className="px-3 py-2 text-xs text-gray-900">
                         {mov.observacoes || '-'}

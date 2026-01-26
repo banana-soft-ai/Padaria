@@ -51,6 +51,15 @@ export default function GestaoPage() {
       color: 'bg-blue-500',
       textColor: 'text-blue-500'
     },
+        {
+          id: 'operadores',
+          name: 'Operadores',
+          description: 'Gestão de operadores do sistema',
+          icon: User,
+          href: '/gestao/operadores',
+          color: 'bg-cyan-500',
+          textColor: 'text-cyan-500'
+        },
     {
       id: 'saidas',
       name: 'Saídas',

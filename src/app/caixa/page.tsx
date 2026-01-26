@@ -71,15 +71,14 @@ export default function PDVPage() {
     // --- Troca de Operador ---
     const [showTurnoModal, setShowTurnoModal] = useState(false)
     const [operadores, setOperadores] = useState<{ id: number; nome: string }[]>([])
-    // Busca colaboradores ativos (operadores)
+    // Busca colaboradores da tabela funcionario
     const carregarOperadores = async () => {
         const { data, error } = await getSupabase()
-            .from('clientes_caderneta')
+            .from('funcionario')
             .select('id, nome')
-            .eq('tipo', 'colaborador')
-            .eq('ativo', true)
             .order('nome', { ascending: true })
         if (!error && data) setOperadores(data)
+        else setOperadores([])
     }
     useEffect(() => { if (showTurnoModal) carregarOperadores() }, [showTurnoModal])
 

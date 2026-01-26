@@ -9,7 +9,7 @@ interface TurnoOperadorModalProps {
 }
 
 export default function TurnoOperadorModal({ operadores, operadorAtual, onCancelar, onConfirmar }: TurnoOperadorModalProps) {
-  const [nomeDigitado, setNomeDigitado] = useState('');
+  const [operadorSelecionado, setOperadorSelecionado] = useState<number | null>(null);
   const horaTroca = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   return (
@@ -18,17 +18,19 @@ export default function TurnoOperadorModal({ operadores, operadorAtual, onCancel
         <h2 className="text-xl font-black flex items-center gap-2 mb-4">
           <span role="img" aria-label="troca">🔄</span> Troca de Turno
         </h2>
-        <div className="mb-4">
+        <div className="mb-4 relative">
           <label className="block text-xs font-bold text-blue-700 mb-1">Novo Operador</label>
-          <input
-            type="text"
+          <select
             className="w-full border rounded-lg p-2 text-base"
-            placeholder="Digite o nome do operador"
-            value={nomeDigitado}
-            onChange={e => setNomeDigitado(e.target.value)}
-            maxLength={60}
+            value={operadorSelecionado ?? ''}
+            onChange={e => setOperadorSelecionado(Number(e.target.value))}
             required
-          />
+          >
+            <option value="" disabled>Selecione o operador</option>
+            {operadores.map(op => (
+              <option key={op.id} value={op.id}>{op.nome}</option>
+            ))}
+          </select>
         </div>
         <div className="mb-4">
           <label className="block text-xs font-bold text-blue-700 mb-1">Hora da troca</label>
@@ -43,8 +45,11 @@ export default function TurnoOperadorModal({ operadores, operadorAtual, onCancel
           <button
             type="button"
             className="btn btn-primary"
-            disabled={!nomeDigitado.trim()}
-            onClick={() => nomeDigitado.trim() && onConfirmar(0, nomeDigitado.trim())}
+            disabled={operadorSelecionado === null}
+            onClick={() => {
+              const op = operadores.find(o => o.id === operadorSelecionado);
+              if (op) onConfirmar(op.id, op.nome);
+            }}
           >
             Confirmar Troca
           </button>

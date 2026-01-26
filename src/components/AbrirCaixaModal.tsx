@@ -1,5 +1,5 @@
 "use client"
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { ShoppingCart } from 'lucide-react'
 
@@ -16,6 +16,19 @@ const getLocalDateString = (d = new Date()) => {
 
 export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
   const [operador, setOperador] = useState('')
+  const [funcionarios, setFuncionarios] = useState<{ id: number; nome: string }[]>([])
+    // Carrega funcionários do banco ao abrir o modal
+    useEffect(() => {
+      const fetchFuncionarios = async () => {
+        const { data, error } = await supabase
+          .from('funcionario')
+          .select('id, nome')
+          .order('nome', { ascending: true })
+        if (!error && data) setFuncionarios(data)
+        else setFuncionarios([])
+      }
+      fetchFuncionarios()
+    }, [])
   const [saldoInicial, setSaldoInicial] = useState('')
   const [observacoes, setObservacoes] = useState('')
   const [loading, setLoading] = useState(false)
@@ -86,14 +99,18 @@ export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
           {/* Removido: seleção de tipo de abertura */}
           <div>
             <label className="block text-[10px] font-black text-blue-600 uppercase mb-1">Funcionário</label>
-            <input
+            <select
               value={operador}
               onChange={e => setOperador(e.target.value)}
-              placeholder="Quem está no caixa?"
               className="block w-full border-2 border-blue-100 rounded-xl p-2 focus:border-blue-400 outline-none font-bold text-gray-700 bg-blue-50/30 text-sm"
               required
               autoFocus
-            />
+            >
+              <option value="">Quem está no caixa?</option>
+              {funcionarios.map(f => (
+                <option key={f.id} value={f.nome}>{f.nome}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-[10px] font-black text-blue-600 uppercase mb-1">Fundo de Caixa (R$)</label>

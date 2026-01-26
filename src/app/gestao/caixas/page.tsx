@@ -108,7 +108,35 @@ export default function CaixasPage() {
         setCaixasDiarios([])
         return
       }
-      setCaixasDiarios(data || [])
+      const caixas = (data || []) as CaixaDiario[]
+
+      try {
+        // Buscar saídas agrupadas por data para popular `valor_saidas` quando não estiver preenchido
+        let saidasQuery = supabase!.from('fluxo_caixa').select('data, valor').eq('tipo', 'saida').eq('categoria', 'caixa')
+
+        if (dataInicio) saidasQuery = saidasQuery.gte('data', dataInicio)
+        if (dataFim) saidasQuery = saidasQuery.lte('data', dataFim)
+
+        const { data: saidasData, error: saidasError } = await saidasQuery
+
+        if (!saidasError) {
+          const mapaSaidas: Record<string, number> = {}
+          ;(saidasData || []).forEach((r: any) => {
+            const d = r.data
+            const v = Number(r.valor) || 0
+            mapaSaidas[d] = (mapaSaidas[d] || 0) + v
+          })
+
+          const caixasComSaidas = caixas.map(c => ({ ...c, valor_saidas: (c.valor_saidas ?? 0) + (mapaSaidas[c.data as string] || 0) }))
+          setCaixasDiarios(caixasComSaidas)
+        } else {
+          console.warn('Erro ao buscar saídas para caixas:', saidasError)
+          setCaixasDiarios(caixas)
+        }
+      } catch (e) {
+        console.warn('Erro ao agregar saídas por data:', e)
+        setCaixasDiarios(caixas)
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
       console.log('Informação ao carregar caixas diários:', errorMessage)

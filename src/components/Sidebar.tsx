@@ -43,26 +43,30 @@ const sidebarSections = [
   },
 ]
 
+
 export default function Sidebar() {
-  const pathname = usePathname()
-  const router = useRouter()
-  const [currentTime, setCurrentTime] = useState(new Date())
+  const pathname = usePathname();
+  const router = useRouter();
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
-  /* ✅ estado persistente correto */
+  // Estado persistente correto
   const [isOpen, setIsOpen] = useState(() => {
-    if (typeof window === 'undefined') return true
-    const saved = localStorage.getItem('sidebar-open')
-    return saved === null ? true : saved === 'true'
-  })
+    if (typeof window === 'undefined') return true;
+    const saved = localStorage.getItem('sidebar-open');
+    return saved === null ? true : saved === 'true';
+  });
 
   useEffect(() => {
-    localStorage.setItem('sidebar-open', String(isOpen))
-  }, [isOpen])
+    setIsMounted(true);
+    setCurrentTime(new Date());
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
+    localStorage.setItem('sidebar-open', String(isOpen));
+  }, [isOpen]);
 
   const formatTime = (date: Date) =>
     date.toLocaleTimeString('pt-BR', {
@@ -71,7 +75,7 @@ export default function Sidebar() {
       second: '2-digit',
       hour12: false,
       timeZone: 'America/Sao_Paulo',
-    })
+    });
 
   const formatDate = (date: Date) =>
     date.toLocaleDateString('pt-BR', {
@@ -79,7 +83,7 @@ export default function Sidebar() {
       month: '2-digit',
       year: 'numeric',
       timeZone: 'America/Sao_Paulo',
-    })
+    });
 
   return (
     <aside
@@ -118,14 +122,15 @@ export default function Sidebar() {
             <h1 className="text-xl font-bold text-gray-900">
               Rey dos Pães
             </h1>
-
-            <div className="mt-1 flex items-center justify-center space-x-1">
-              <Clock className="h-3 w-3 text-gray-500" />
-              <div className="text-xs font-mono text-gray-600">
-                <div className="font-semibold">{formatTime(currentTime)}</div>
-                <div className="text-gray-500">{formatDate(currentTime)}</div>
+            {isMounted && currentTime && (
+              <div className="mt-1 flex items-center justify-center space-x-1">
+                <Clock className="h-3 w-3 text-gray-500" />
+                <div className="text-xs font-mono text-gray-600">
+                  <div className="font-semibold">{formatTime(currentTime)}</div>
+                  <div className="text-gray-500">{formatDate(currentTime)}</div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

@@ -23,6 +23,7 @@ interface PrecoModalProps {
   onMostrarTodos: () => void
   loadingDetalhes?: boolean
   loadingPesquisa?: boolean
+  showSugestoes?: boolean
 }
 
 export default function PrecoModal({
@@ -38,7 +39,8 @@ export default function PrecoModal({
   onSelecionarItem,
   onMostrarTodos,
   loadingDetalhes = false,
-  loadingPesquisa = false
+  loadingPesquisa = false,
+  showSugestoes = true
 }: PrecoModalProps) {
 
   // Função para calcular margem de lucro baseada no preço de venda
@@ -180,7 +182,8 @@ export default function PrecoModal({
                 </div>
               )}
               {/* Lista de itens filtrados, só mostra se tipo selecionado */}
-              {formData.tipo && itensFiltrados.length > 0 && (
+              {/* Lista de sugestões só aparece se showSugestoes for true */}
+              {formData.tipo && itensFiltrados.length > 0 && showSugestoes && (
                 <div className="mt-3 max-h-40 overflow-y-auto border-2 border-gray-200 rounded-xl">
                   {itensFiltrados.map((item) => (
                     <div

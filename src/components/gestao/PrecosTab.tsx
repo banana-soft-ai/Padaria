@@ -18,6 +18,7 @@ export default function PrecosTab({
   onDeletePreco,
   onAplicarPrecos
 }: PrecosTabProps) {
+  const [showConfirmAplicar, setShowConfirmAplicar] = useState(false)
   const [filtro, setFiltro] = useState('')
   const [ordenarPor, setOrdenarPor] = useState<'itemNome' | 'preco_venda' | 'preco_custo_unitario'>('itemNome')
   const [ordemAsc, setOrdemAsc] = useState(true)
@@ -117,16 +118,44 @@ export default function PrecosTab({
           >
             + Novo
           </button>
-          <button
-            onClick={() => {
-              if (!onAplicarPrecos) return
-              if (!confirm('Aplicar preços no estoque? Isso atualizará as tabelas de varejo e receitas.')) return
-              onAplicarPrecos(dadosFiltradosOrdenados)
-            }}
-            className="px-3 py-2 bg-green-600 text-white rounded-md text-sm"
-          >
-            Aplicar no Estoque
-          </button>
+          <>
+            <button
+              onClick={() => {
+                if (!onAplicarPrecos) return
+                setShowConfirmAplicar(true)
+              }}
+              className="px-3 py-2 bg-green-600 text-white rounded-md text-sm"
+            >
+              Aplicar no Estoque
+            </button>
+
+            {showConfirmAplicar && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center">
+                <div className="absolute inset-0 bg-black/40" onClick={() => setShowConfirmAplicar(false)} />
+                <div className="bg-white rounded-lg shadow-lg z-10 max-w-lg mx-4 p-6">
+                  <h3 className="text-lg font-semibold mb-2">Confirmar ação</h3>
+                  <p className="text-sm text-gray-700 mb-4">Deseja aplicar o preço no estoque? Isso atualizará o preço de varejo/ receitas no estoque.</p>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      className="px-3 py-2 bg-gray-100 rounded"
+                      onClick={() => setShowConfirmAplicar(false)}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      className="px-3 py-2 bg-green-600 text-white rounded"
+                      onClick={() => {
+                        setShowConfirmAplicar(false)
+                        onAplicarPrecos && onAplicarPrecos(dadosFiltradosOrdenados)
+                      }}
+                    >
+                      Confirmar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         </div>
       </div>
 
@@ -168,7 +197,6 @@ export default function PrecosTab({
                     <button
                       onClick={() => {
                         if (!onDeletePreco) return
-                        if (!confirm('Remover preço? Esta ação não pode ser desfeita.')) return
                         onDeletePreco(p.id)
                       }}
                       className="px-2 py-1 text-xs bg-red-100 rounded"

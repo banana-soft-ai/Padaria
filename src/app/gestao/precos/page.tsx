@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import PrecosTab from '@/components/gestao/PrecosTab'
 import PrecoModal from '@/components/gestao/PrecoModal'
+import { toast, Toaster } from 'react-hot-toast'
 import { ItemPrecoVenda } from '@/types/gestao'
 import { ReceitaSelect, InsumoSelect } from '@/types/selects'
 import { calcularCustoSeguroFromComposicoes } from '@/lib/preco'
@@ -25,6 +26,8 @@ export default function PrecosPage() {
 
   // Estados para pesquisa dinâmica no modal
   const [termoPesquisa, setTermoPesquisa] = useState('')
+  // Estado para controlar exibição das sugestões
+  const [showSugestoes, setShowSugestoes] = useState(true)
 
   // <-- Ajuste: usamos um tipo genérico SelectItem[] aqui (compatível com ReceitaSelect/InsumoSelect)
   const [itensFiltrados, setItensFiltrados] = useState<SelectItem[]>([])
@@ -32,6 +35,10 @@ export default function PrecosPage() {
   const [insumos, setInsumos] = useState<InsumoSelect[]>([])
   const [loadingDetalhes, setLoadingDetalhes] = useState(false)
   const [loadingPesquisa, setLoadingPesquisa] = useState(false)
+
+  // Estado para confirmação de remoção
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false)
+  const [deleteCandidateId, setDeleteCandidateId] = useState<number | null>(null)
 
   // Expandimos a forma do formData para incluir categoria, unidade e estoque
   const [formData, setFormData] = useState<{
@@ -93,10 +100,45 @@ export default function PrecosPage() {
 
   // --- STUBS para handlers e funções ausentes ---
   function carregarDados() {
-    // Exemplo: simula carregamento
-    setLoading(false)
-    setError(null)
-    setPrecosVenda([])
+    // Busca os preços salvos no banco Supabase e enriquece com o nome do item
+    ;(async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        if (!supabase) throw new Error('Supabase não configurado')
+        const { data, error } = await supabase
+          .from('precos_venda')
+          .select('*')
+          .eq('ativo', true)
+          .order('updated_at', { ascending: false })
+        if (error) throw error
+
+        const enriched = await Promise.all((data || []).map(async (row: any) => {
+          let nome = row.item_nome || ''
+          if (!nome) {
+            try {
+              if (row.tipo === 'receita') {
+                const { data: r } = await supabase.from('receitas').select('nome').eq('id', row.item_id).single()
+                nome = r?.nome ?? nome
+              } else if (row.tipo === 'varejo') {
+                const { data: v } = await supabase.from('varejo').select('nome').eq('id', row.item_id).single()
+                nome = v?.nome ?? nome
+              }
+            } catch (e) {
+              // falha ao buscar nome do item — ignorar e usar fallback
+            }
+          }
+          return normalizePrecoForState({ ...row, item_nome: nome })
+        }))
+
+        setPrecosVenda(enriched)
+      } catch (err) {
+        setError('Erro ao carregar preços do banco.')
+        setPrecosVenda([])
+      } finally {
+        setLoading(false)
+      }
+    })()
   }
 
   function handleShowPrecoModal() {
@@ -105,14 +147,49 @@ export default function PrecosPage() {
   }
 
   function handleEditPreco(preco: ItemPrecoVenda) {
+    // Preenche o formData com os dados do item selecionado para edição
     setEditingPreco(preco)
+    setFormData({
+      item_id: String(preco.item_id),
+      tipo: preco.tipo,
+      preco_venda: preco.preco_venda ? String(preco.preco_venda) : '',
+      margem_lucro: preco.margem_lucro ? String(preco.margem_lucro) : '',
+      preco_custo_unitario: preco.preco_custo_unitario ? String(preco.preco_custo_unitario) : '0.0000',
+      nome_item: preco.itemNome || '',
+      categoria: preco.categoria || '',
+      unidade: preco.unidade || '',
+      estoque: preco.estoque || 0
+    })
     setShowPrecoModal(true)
   }
 
   function handleDeletePreco(id: number) {
-    // Remove pelo id
-    setPrecosVenda(prev => prev.filter(p => p.id !== id))
+    // Soft delete: marca como inativo no banco
+    // Abre modal de confirmação
+    setDeleteCandidateId(id)
+    setShowConfirmDelete(true)
   }
+
+  async function confirmDeletePreco() {
+    const id = deleteCandidateId
+    setShowConfirmDelete(false)
+    setDeleteCandidateId(null)
+    if (!id) return
+    try {
+      if (!supabase) throw new Error('Supabase não configurado')
+      const { error } = await supabase
+        .from('precos_venda')
+        .update({ ativo: false, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
+      // Remove localmente
+      setPrecosVenda(prev => prev.filter(p => p.id !== id))
+      toast.success('Item removido com sucesso')
+    } catch (err) {
+      console.error('Erro ao remover preço:', err)
+      toast.error('Não foi possível remover o item')
+      }
+    }
 
   function handleFormChange(field: string, value: string) {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -129,34 +206,51 @@ export default function PrecosPage() {
     const custoNum = parseFloat(formData.preco_custo_unitario || '0')
     const margemNum = (!isNaN(precoVendaNum) && precoVendaNum > 0) ? ((precoVendaNum - custoNum) / precoVendaNum) * 100 : (parseFloat(formData.margem_lucro || '0') || 0)
 
-    // A tabela `precos_venda` só contém: id, item_id, tipo, preco_venda, ativo, created_at, updated_at
-    // portanto enviamos apenas essas colunas no INSERT para evitar erro no Supabase.
+    // Adiciona preco_custo_unitario ao payload para persistir o custo unitário
     const payload = {
       tipo: formData.tipo,
       item_id: Number(formData.item_id),
       preco_venda: isNaN(precoVendaNum) ? 0 : precoVendaNum,
+      preco_custo_unitario: isNaN(custoNum) ? 0 : custoNum,
       ativo: true,
-      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
 
-    // Tenta persistir no Supabase, em caso de falha adiciona localmente
+    // Se estiver editando, faz UPDATE, senão faz INSERT
     try {
       if (!supabase) {
         throw new Error('Supabase não está configurado. Verifique as variáveis de ambiente.')
       }
-      const { data, error } = await supabase
-        .from('precos_venda')
-        .insert([payload])
-        .select('*')
-        .single()
-
-      if (error) throw error
-
-      // usar o registro retornado pelo banco (possui id)
-      const salvo = normalizePrecoForState(data)
-      setPrecosVenda(prev => [salvo, ...prev])
+      let salvo: ItemPrecoVenda
+      if (editingPreco && editingPreco.id) {
+        // UPDATE no registro existente
+        const { data, error } = await supabase
+          .from('precos_venda')
+          .update(payload)
+          .eq('id', editingPreco.id)
+          .select('*')
+          .single()
+        if (error) throw error
+        salvo = normalizePrecoForState(data)
+        // Atualiza o item no estado local
+        setPrecosVenda(prev => prev.map(p => p.id === salvo.id ? salvo : p))
+      } else {
+        // INSERT novo registro
+        const payloadInsert = {
+          ...payload,
+          created_at: new Date().toISOString()
+        }
+        const { data, error } = await supabase
+          .from('precos_venda')
+          .insert([payloadInsert])
+          .select('*')
+          .single()
+        if (error) throw error
+        salvo = normalizePrecoForState(data)
+        setPrecosVenda(prev => [salvo, ...prev])
+      }
       setShowPrecoModal(false)
+      setEditingPreco(null)
       setFormData({
         item_id: '',
         tipo: 'varejo',
@@ -182,7 +276,7 @@ export default function PrecosPage() {
       setError(`Não foi possível salvar no servidor — salvando localmente. (${errMsg})`)
 
       const novo = normalizePrecoForState({
-        id: Date.now(),
+        id: editingPreco?.id || Date.now(),
         tipo: formData.tipo,
         item_id: Number(formData.item_id),
         item_nome: formData.nome_item || '',
@@ -193,9 +287,14 @@ export default function PrecosPage() {
         unidade: formData.unidade ?? '',
         estoque: formData.estoque ?? 0
       })
-
-      setPrecosVenda(prev => [novo, ...prev])
+      // Atualiza localmente se for edição
+      if (editingPreco && editingPreco.id) {
+        setPrecosVenda(prev => prev.map(p => p.id === novo.id ? novo : p))
+      } else {
+        setPrecosVenda(prev => [novo, ...prev])
+      }
       setShowPrecoModal(false)
+      setEditingPreco(null)
       setFormData({
         item_id: '',
         tipo: 'varejo',
@@ -213,6 +312,7 @@ export default function PrecosPage() {
   function handleTermoChange(termo: string) {
     // atualiza termo localmente
     setTermoPesquisa(termo)
+    setShowSugestoes(true)
 
     // se termo vazio, limpa/mostra lista atual conforme tipo
     if (!termo || termo.trim() === '') {
@@ -282,8 +382,22 @@ export default function PrecosPage() {
     const itemId = _item.id;
     const itemNome = _item.nome;
 
+
     // atualiza item_id e nome imediatamente para feedback UX
     setFormData(prev => ({ ...prev, item_id: String(itemId), nome_item: itemNome }));
+
+    // Corrige: mantém o termo de busca igual ao nome do item selecionado
+    setTermoPesquisa(itemNome);
+
+    // Corrige: garante que o item selecionado está presente em itensFiltrados
+    setItensFiltrados(prev => {
+      // Se já existe, mantém; senão, adiciona
+      if (prev.some(i => i.id === itemId)) return prev;
+      return [{ id: itemId, nome: itemNome }, ...prev];
+    });
+
+    // FECHA sugestões após selecionar
+    setShowSugestoes(false);
 
     // buscar e preencher demais campos (nome, custo, preco_venda)
     try {
@@ -363,9 +477,10 @@ export default function PrecosPage() {
         if (error) throw error
         dadosItem = data
 
-        // Tentar localizar um registro em `produtos` que referencie uma `receita` (produtos podem ter receita_id)
         let custoUnitario = 0
         try {
+          // 1. Tentar localizar receita vinculada via produtos (por código de barras ou nome do produto)
+          let receitaId: number | null = null
           let produtoLink: any = null
           if (dadosItem?.codigo_barras) {
             const { data: prodData } = await supabase
@@ -373,57 +488,66 @@ export default function PrecosPage() {
               .select('id, receita_id, peso_unitario, rendimento')
               .eq('codigo_barras', dadosItem.codigo_barras)
               .limit(1)
-              .single()
+              .maybeSingle()
             produtoLink = prodData
           }
-
-          // fallback: tentar buscar por nome (pode colidir, mas é uma tentativa útil)
           if (!produtoLink) {
             const { data: prodByName } = await supabase
               .from('produtos')
               .select('id, receita_id, peso_unitario, rendimento')
               .ilike('nome', dadosItem?.nome ?? '')
               .limit(1)
-              .single()
+              .maybeSingle()
             produtoLink = prodByName
           }
+          if (produtoLink && produtoLink?.receita_id) {
+            receitaId = Number(produtoLink.receita_id)
+          }
 
-            if (produtoLink && produtoLink?.receita_id) {
-            const receitaId = Number(produtoLink.receita_id)
-            // Buscar composição e calcular custo total de forma segura
+          // 2. Se encontrou receita vinculada (via produtos) ou por nome, buscar dados e composição da receita
+          let composicoesMapped: any[] = []
+          let receitaData: any = null
+
+          if (!receitaId) {
+            const { data: foundReceita } = await supabase
+              .from('receitas')
+              .select('id')
+              .ilike('nome', dadosItem?.nome ?? '')
+              .limit(1)
+              .maybeSingle()
+            if (foundReceita && foundReceita.id) receitaId = Number(foundReceita.id)
+          }
+
+          if (receitaId) {
+            const { data: rData, error: rErr } = await supabase
+              .from('receitas')
+              .select('id, nome, rendimento, unidade_rendimento, categoria')
+              .eq('id', receitaId)
+              .maybeSingle()
+            if (rErr) throw rErr
+            receitaData = rData
+
             const { data: compData, error: compErr } = await supabase
               .from('composicao_receitas')
               .select('quantidade, categoria, insumo:insumos(id, nome, preco_pacote, peso_pacote)')
               .eq('receita_id', receitaId)
-
             if (compErr) throw compErr
-
-            const composicoesMapped = (compData || []).map((it: any) => ({
+            composicoesMapped = (compData || []).map((it: any) => ({
               quantidade: Number(it.quantidade ?? 0),
               categoria: it.categoria,
               insumo: it.insumo || it.insumos || null
             }))
 
-            const { custoTotal } = calcularCustoSeguroFromComposicoes({ composicoes: composicoesMapped, rendimento: undefined })
-
-            // Determinar divisor: preferir peso_unitario do produto, senão rendimento da receita, senão 1
-            let divisor = Number(produtoLink.peso_unitario ?? 0) || 0
-            if (!divisor) {
-              // buscar rendimento da receita
-              const { data: receitaData } = await supabase
-                .from('receitas')
-                .select('rendimento')
-                .eq('id', receitaId)
-                .eq('ativo', true)
-                .single()
-              divisor = Number(receitaData?.rendimento ?? 0) || 0
+            // 3a. Se temos composição da receita, usar mesmo fluxo de `receita` para calcular custo unitário
+            if (composicoesMapped.length > 0) {
+              const { custoTotal, custoUnitario: custoUnitarioReceita } = calcularCustoSeguroFromComposicoes({ composicoes: composicoesMapped, rendimento: Number(receitaData?.rendimento) })
+              custoUnitario = Number(custoUnitarioReceita) || 0
             }
-            if (!divisor) divisor = 1
+          }
 
-            custoUnitario = custoTotal / divisor
-          } else {
-            // Se não há receita vinculada, NÃO buscar em `insumos` — usar somente dados de receita
-            // Mantemos fallback para qualquer campo de custo existente no próprio registro de varejo
+          // 3b. Se não obteve custo via receita, tentar fallback para cálculo direto (pode usar peso/pacote)
+          if (!custoUnitario || custoUnitario === 0) {
+            // Fallback: usar preco_custo_unitario do próprio registro `varejo` quando disponível
             custoUnitario = Number((dadosItem as any)?.preco_custo_unitario ?? 0) || 0
           }
         } catch (e) {
@@ -735,8 +859,36 @@ export default function PrecosPage() {
             onMostrarTodos={handleMostrarTodos}
             loadingDetalhes={loadingDetalhes}
             loadingPesquisa={loadingPesquisa}
+            showSugestoes={showSugestoes}
           />
         )}
+
+        {/* Modal de confirmação de remoção */}
+        {showConfirmDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-lg">
+              <h3 className="text-lg font-semibold mb-4">Confirmar remoção</h3>
+              <p className="text-sm text-gray-600 mb-6">Tem certeza que deseja remover este item? Esta ação pode ser revertida apenas reativando o registro.</p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => { setShowConfirmDelete(false); setDeleteCandidateId(null) }}
+                  className="px-4 py-2 rounded border border-gray-300 text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmDeletePreco}
+                  className="px-4 py-2 rounded bg-red-600 text-white text-sm"
+                >
+                  Remover
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Toaster para toasts de feedback */}
+        <Toaster />
       </div>
     </ProtectedLayout>
   )

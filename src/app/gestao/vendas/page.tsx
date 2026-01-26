@@ -300,29 +300,55 @@ export default function VendasPage() {
         })
         return
       }
-      const dataInicio = obterDataInicioPeriodo(periodoVendas)
-      const hoje = obterDataLocal()
 
-      // DIAGNÓSTICO: Buscar TODAS as vendas do período (sem limite de 1000)
+      // Sempre buscar apenas o dia atual para o resumo financeiro
+      const hoje = obterDataLocal()
+      // dataInicio e hoje são iguais para o dia atual
+      const dataInicio = hoje
+
+      const { data: caixaData, error: caixaError } = await supabase!
+        .from('caixa_diario')
+        .select('total_dinheiro, total_pix, total_debito, total_credito, total_caderneta, data')
+        .eq('data', hoje)
+
+      let totalPix = 0
+      let totalDinheiro = 0
+      let totalDebito = 0
+      let totalCredito = 0
+      let totalCaderneta = 0
+
+      if (caixaError) {
+        console.error('Erro ao buscar caixa_diario:', caixaError)
+      }
+
+      if (caixaData && caixaData.length > 0) {
+        caixaData.forEach((caixa: any) => {
+          totalPix += caixa.total_pix || 0
+          totalDinheiro += caixa.total_dinheiro || 0
+          totalDebito += caixa.total_debito || 0
+          totalCredito += caixa.total_credito || 0
+        })
+      }
+
+      // Buscar unidades vendidas (itens)
+      let unidadesVendidas = 0
+      // Buscar vendas do período
       let todasVendas: Record<string, unknown>[] = []
       let offset = 0
       const limit = 1000
       let hasMore = true
-
       while (hasMore) {
         const { data: vendasBatch, error: vendasError } = await supabase!
           .from('vendas')
-          .select('*')
+          .select('id')
           .gte('data', dataInicio)
           .lte('data', hoje)
           .order('data', { ascending: false })
           .range(offset, offset + limit - 1)
-
         if (vendasError) {
           console.error('Erro ao carregar vendas:', vendasError)
           break
         }
-
         if (vendasBatch && vendasBatch.length > 0) {
           todasVendas = [...todasVendas, ...vendasBatch]
           offset += limit
@@ -331,74 +357,32 @@ export default function VendasPage() {
           hasMore = false
         }
       }
-
-      // Verificar se há vendas no período
-      if (todasVendas.length === 0) {
-        console.log('Nenhuma venda encontrada para o período selecionado')
-        setMetricasResumo({
-          unidadesVendidas: 0,
-          receitaTotal: 0,
-          ticketMedio: 0,
-          totalPix: 0,
-          totalDinheiro: 0,
-          totalDebito: 0,
-          totalCredito: 0,
-          totalCaderneta: 0,
-          valorReceber: 0
-        })
-        return
-      }
-
-      let unidadesVendidas = 0
-      let totalPix = 0
-      let totalDinheiro = 0
-      let totalDebito = 0
-      let totalCredito = 0
-      let totalCaderneta = 0
-      let valorReceber = 0
-
       if (todasVendas.length > 0) {
         const vendaIds = todasVendas.map(venda => venda.id)
         const { data: itensData } = await supabase!
           .from('venda_itens')
           .select('quantidade')
           .in('venda_id', vendaIds)
-
         if (itensData) {
           unidadesVendidas = itensData.reduce((sum, item) => sum + (item.quantidade || 0), 0)
         }
-
-        todasVendas.forEach(venda => {
-          switch (venda.forma_pagamento) {
-            case 'pix':
-              totalPix += (venda.valor_pago as number || 0)
-              break
-            case 'dinheiro':
-              totalDinheiro += (venda.valor_pago as number || 0)
-              break
-            case 'debito':
-              totalDebito += (venda.valor_pago as number || 0)
-              break
-            case 'credito':
-              totalCredito += (venda.valor_pago as number || 0)
-              break
-            case 'caderneta':
-              totalCaderneta += (venda.valor_debito as number || 0)
-              break
-          }
-        })
       }
 
+      // Buscar valor a receber (caderneta)
+      let valorReceber = 0
       const { data: clientesData } = await supabase!
         .from('clientes_caderneta')
         .select('saldo_devedor')
         .eq('ativo', true)
-
       if (clientesData) {
         valorReceber = clientesData.reduce((sum, cliente) => sum + (cliente.saldo_devedor || 0), 0)
       }
+      // O valor da caderneta deve ser igual ao valor a receber
+      totalCaderneta = valorReceber
 
+      // Receita total = soma dos totais do caixa
       const receitaTotal = totalPix + totalDinheiro + totalDebito + totalCredito + totalCaderneta
+      // Ticket médio = receita total / número de vendas (dias de caixa)
       const vendasCount = todasVendas?.length || 0
 
       setMetricasResumo({

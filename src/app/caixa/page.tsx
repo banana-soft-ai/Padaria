@@ -433,21 +433,23 @@ export default function PDVPage() {
             caderneta: 0
         }
 
-        vendasHoje.forEach(v => {
-            const formaRaw = String(v.forma_pagamento || '').toLowerCase()
-            const forma = formaRaw.replace(/[_\s]/g, '')
-            if (forma.includes('dinheiro')) totais.dinheiro += v.total
-            else if (forma.includes('pix')) totais.pix += v.total
-            else if (forma.includes('debito') || (forma.includes('cartao') && forma.includes('debito'))) totais.debito += v.total
-            else if (forma.includes('credito') || (forma.includes('cartao') && forma.includes('credito'))) totais.credito += v.total
-            else if (forma.includes('caderneta')) totais.caderneta += v.total
-            else { if (forma.includes('cartao')) totais.debito += v.total }
-        })
 
-        // Incluir pagamentos recebidos hoje da caderneta (fluxo_caixa categoria 'caderneta')
+        vendasHoje.forEach(v => {
+            const formaRaw = String(v.forma_pagamento || '').toLowerCase();
+            const forma = formaRaw.replace(/[_\s]/g, '');
+            if (forma.includes('dinheiro')) totais.dinheiro += v.total;
+            else if (forma.includes('pix')) totais.pix += v.total;
+            else if (forma.includes('debito') || (forma.includes('cartao') && forma.includes('debito'))) totais.debito += v.total;
+            else if (forma.includes('credito') || (forma.includes('cartao') && forma.includes('credito'))) totais.credito += v.total;
+            else if (forma.includes('caderneta')) totais.caderneta += v.total;
+            else { if (forma.includes('cartao')) totais.debito += v.total; }
+        });
+
+        // Pagamentos recebidos de caderneta devem entrar em entradas, não em caderneta
+        // Aqui assumimos que todos pagamentos são em dinheiro (ajuste se houver registro da forma)
         try {
-            const somaPagamentos = (pagamentosCadernetaHoje || []).reduce((acc, val) => acc + Number(val || 0), 0)
-            if (somaPagamentos > 0) totais.caderneta += somaPagamentos
+            const somaPagamentos = (pagamentosCadernetaHoje || []).reduce((acc, val) => acc + Number(val || 0), 0);
+            if (somaPagamentos > 0) totais.dinheiro += somaPagamentos;
         } catch (e) { }
 
         const totalEntradas = totais.dinheiro + totais.pix + totais.debito + totais.credito

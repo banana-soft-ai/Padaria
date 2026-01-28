@@ -381,7 +381,8 @@ export default function PDVPage() {
                     valor: valor,
                     observacoes: obsSaida || null,
                     usuario: operador || null,
-                    created_at: new Date().toISOString()
+                    created_at: new Date().toISOString(),
+                    caixa_diario_id: caixaDiarioId
                 }
                 const { data: fluxoData, error: fluxoErr } = await getSupabase()
                     .from('fluxo_caixa')

@@ -7,16 +7,18 @@ import PrecosTab from '@/components/gestao/PrecosTab'
 import PrecoModal from '@/components/gestao/PrecoModal'
 import { toast, Toaster } from 'react-hot-toast'
 import { ItemPrecoVenda } from '@/types/gestao'
-import { ReceitaSelect, InsumoSelect } from '@/types/selects'
+import { AutocompleteItem } from '@/types/selects'
 import { calcularCustoSeguroFromComposicoes } from '@/lib/preco'
 
-// tipo simples para itens de autocomplete (id + nome)
-type SelectItem = { id: number; nome: string }
+// tipo principal usado para o autocomplete (traz tabela de origem para chaves únicas)
+type SelectItem = AutocompleteItem
 
 export default function PrecosPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [precosVenda, setPrecosVenda] = useState<ItemPrecoVenda[]>([])
+  const [rankingVendas, setRankingVendas] = useState<any[]>([])
+  const [periodoRanking, setPeriodoRanking] = useState<'dia' | 'semana' | 'mes' | 'ano'>('mes')
   const [showPrecoModal, setShowPrecoModal] = useState(false)
   const [editingPreco, setEditingPreco] = useState<ItemPrecoVenda | null>(null)
 
@@ -29,10 +31,9 @@ export default function PrecosPage() {
   // Estado para controlar exibição das sugestões
   const [showSugestoes, setShowSugestoes] = useState(true)
 
-  // <-- Ajuste: usamos um tipo genérico SelectItem[] aqui (compatível com ReceitaSelect/InsumoSelect)
   const [itensFiltrados, setItensFiltrados] = useState<SelectItem[]>([])
-  const [receitas, setReceitas] = useState<ReceitaSelect[]>([])
-  const [insumos, setInsumos] = useState<InsumoSelect[]>([])
+  const [receitas, setReceitas] = useState<SelectItem[]>([])
+  const [insumos, setInsumos] = useState<SelectItem[]>([])
   const [loadingDetalhes, setLoadingDetalhes] = useState(false)
   const [loadingPesquisa, setLoadingPesquisa] = useState(false)
 
@@ -40,7 +41,7 @@ export default function PrecosPage() {
   const [showConfirmDelete, setShowConfirmDelete] = useState(false)
   const [deleteCandidateId, setDeleteCandidateId] = useState<number | null>(null)
 
-  // Expandimos a forma do formData para incluir categoria, unidade e estoque
+  // Expandimos a forma do formData para incluir categoria, unidade, estoque e origem do custo
   const [formData, setFormData] = useState<{
     item_id: string
     tipo: 'receita' | 'varejo'
@@ -51,6 +52,7 @@ export default function PrecosPage() {
     categoria?: string
     unidade?: string
     estoque?: number
+    custo_origem?: string
   }>({
     item_id: '',
     tipo: 'varejo',
@@ -60,7 +62,8 @@ export default function PrecosPage() {
     nome_item: '', // armazena nome do item selecionado
     categoria: '',
     unidade: '',
-    estoque: 0
+    estoque: 0,
+    custo_origem: ''
   })
 
   // Normaliza um objeto de preço para o formato usado no estado
@@ -82,6 +85,15 @@ export default function PrecosPage() {
     } as ItemPrecoVenda
   }
 
+  function normalizeAutocompleteRows(rows: any[] | null | undefined, table: SelectItem['table']) {
+    return (rows || []).map(row => ({
+      ...row,
+      id: Number(row?.id ?? row?.item_id ?? 0),
+      nome: row?.nome ?? row?.item_nome ?? row?.itemNome ?? '',
+      table
+    })) as SelectItem[]
+  }
+
 
   useEffect(() => {
     carregarDados()
@@ -89,10 +101,9 @@ export default function PrecosPage() {
   // Atualiza itensFiltrados ao mudar tipo do form
   useEffect(() => {
     if (formData.tipo === 'receita') {
-      // receitas tem formato compatível com SelectItem (id, nome)
-      setItensFiltrados(receitas.map(r => ({ id: r.id, nome: r.nome })))
+      setItensFiltrados(receitas)
     } else if (formData.tipo === 'varejo') {
-      setItensFiltrados(insumos.map(i => ({ id: i.id, nome: i.nome })))
+      setItensFiltrados(insumos)
     } else {
       setItensFiltrados([])
     }
@@ -121,7 +132,7 @@ export default function PrecosPage() {
                 const { data: r } = await supabase.from('receitas').select('nome').eq('id', row.item_id).single()
                 nome = r?.nome ?? nome
               } else if (row.tipo === 'varejo') {
-                const { data: v } = await supabase.from('varejo').select('nome').eq('id', row.item_id).single()
+                const { data: v } = await supabase.from('produtos').select('nome').eq('id', row.item_id).single()
                 nome = v?.nome ?? nome
               }
             } catch (e) {
@@ -143,6 +154,19 @@ export default function PrecosPage() {
 
   function handleShowPrecoModal() {
     setEditingPreco(null)
+    setTermoPesquisa('')
+    setFormData({
+      item_id: '',
+      tipo: 'varejo',
+      preco_venda: '',
+      margem_lucro: '',
+      preco_custo_unitario: '0.0000',
+      nome_item: '',
+      categoria: '',
+      unidade: '',
+      estoque: 0,
+      custo_origem: ''
+    })
     setShowPrecoModal(true)
   }
 
@@ -158,7 +182,8 @@ export default function PrecosPage() {
       nome_item: preco.itemNome || '',
       categoria: preco.categoria || '',
       unidade: preco.unidade || '',
-      estoque: preco.estoque || 0
+      estoque: preco.estoque || 0,
+      custo_origem: 'Existente'
     })
     setShowPrecoModal(true)
   }
@@ -206,12 +231,17 @@ export default function PrecosPage() {
     const custoNum = parseFloat(formData.preco_custo_unitario || '0')
     const margemNum = (!isNaN(precoVendaNum) && precoVendaNum > 0) ? ((precoVendaNum - custoNum) / precoVendaNum) * 100 : (parseFloat(formData.margem_lucro || '0') || 0)
 
-    // Adiciona preco_custo_unitario ao payload para persistir o custo unitário
+    // Adiciona todos os campos necessários ao payload para persistir
     const payload = {
       tipo: formData.tipo,
       item_id: Number(formData.item_id),
+      item_nome: formData.nome_item,
       preco_venda: isNaN(precoVendaNum) ? 0 : precoVendaNum,
       preco_custo_unitario: isNaN(custoNum) ? 0 : custoNum,
+      margem_lucro: isNaN(margemNum) ? 0 : margemNum,
+      categoria: formData.categoria || '',
+      unidade: formData.unidade || '',
+      estoque: formData.estoque || 0,
       ativo: true,
       updated_at: new Date().toISOString()
     }
@@ -260,7 +290,8 @@ export default function PrecosPage() {
         nome_item: '',
         categoria: '',
         unidade: '',
-        estoque: 0
+        estoque: 0,
+        custo_origem: ''
       })
       setError(null)
     } catch (err: any) {
@@ -316,11 +347,7 @@ export default function PrecosPage() {
 
     // se termo vazio, limpa/mostra lista atual conforme tipo
     if (!termo || termo.trim() === '') {
-      if (formData.tipo === 'receita') {
-        setItensFiltrados(receitas.map(r => ({ id: r.id, nome: r.nome })))
-      } else if (formData.tipo === 'varejo') {
-        setItensFiltrados(insumos.map(i => ({ id: i.id, nome: i.nome })))
-      }
+      setItensFiltrados(formData.tipo === 'receita' ? receitas : insumos)
       return
     }
 
@@ -333,38 +360,32 @@ export default function PrecosPage() {
 
       setLoadingPesquisa(true)
       try {
-        // Para autocomplete buscamos apenas `id` e `nome` (limite 50)
         if (formData.tipo === 'receita') {
           const { data, error } = await supabase
             .from('receitas')
-            .select('id, nome')
+            .select('id, nome, rendimento, unidade_rendimento, categoria')
             .eq('ativo', true)
             .ilike('nome', `%${termo}%`)
             .order('nome', { ascending: true })
             .limit(50)
 
           if (error) throw error
-          const receitas: ReceitaSelect[] = (data || []).map((r: any) => ({
-            id: r.id,
-            nome: r.nome
-          }))
-          setReceitas(receitas)
-          setItensFiltrados(receitas.map(r => ({ id: r.id, nome: r.nome })))
+          const receitasNormalize = normalizeAutocompleteRows(data, 'receitas')
+          setReceitas(receitasNormalize)
+          setItensFiltrados(receitasNormalize)
         } else {
           const { data, error } = await supabase
             .from('varejo')
-            .select('id, nome')
+            .select('id, nome, unidade, categoria, estoque_atual, preco_venda, codigo_barras')
+            .eq('ativo', true)
             .ilike('nome', `%${termo}%`)
             .order('nome', { ascending: true })
-            .limit(50)
+            .limit(100)
 
           if (error) throw error
-          const insumos: InsumoSelect[] = (data || []).map((r: any) => ({
-            id: r.id,
-            nome: r.nome
-          }))
-          setInsumos(insumos)
-          setItensFiltrados(insumos.map(i => ({ id: i.id, nome: i.nome })))
+          const varejoNormalize = normalizeAutocompleteRows(data, 'varejo')
+          setInsumos(varejoNormalize)
+          setItensFiltrados(varejoNormalize)
         }
       } catch (err) {
         console.error('Erro na busca por termo:', err)
@@ -377,7 +398,7 @@ export default function PrecosPage() {
 
   // Seleciona um item vindo do modal/lista e busca detalhes conforme o tipo
   // aceita `tipo` opcional; se não informado usa `formData.tipo`
-  async function handleSelecionarItem(_item: ReceitaSelect | InsumoSelect, tipoArg?: 'receita' | 'varejo') {
+  async function handleSelecionarItem(_item: SelectItem, tipoArg?: 'receita' | 'varejo') {
     const tipo = tipoArg || formData.tipo;
     const itemId = _item.id;
     const itemNome = _item.nome;
@@ -392,8 +413,8 @@ export default function PrecosPage() {
     // Corrige: garante que o item selecionado está presente em itensFiltrados
     setItensFiltrados(prev => {
       // Se já existe, mantém; senão, adiciona
-      if (prev.some(i => i.id === itemId)) return prev;
-      return [{ id: itemId, nome: itemNome }, ...prev];
+      if (prev.some(i => i.table === _item.table && i.id === itemId)) return prev;
+      return [_item, ...prev];
     });
 
     // FECHA sugestões após selecionar
@@ -402,7 +423,7 @@ export default function PrecosPage() {
     // buscar e preencher demais campos (nome, custo, preco_venda)
     try {
       setLoadingDetalhes(true);
-      await buscarDetalhesItem(itemId, tipo);
+      await buscarDetalhesItem(itemId, tipo, _item.table);
       setError(null);
     } catch (err) {
       console.error('Erro ao selecionar item:', err);
@@ -413,7 +434,7 @@ export default function PrecosPage() {
   }
 
   // Função antiga `calcularCustoReceita` removida. Usamos `calcularCustoSeguroFromComposicoes` diretamente em `buscarDetalhesItem`.
-  async function buscarDetalhesItem(itemId: number, tipo: 'receita' | 'varejo') {
+  async function buscarDetalhesItem(itemId: number, tipo: 'receita' | 'varejo', sourceTable?: SelectItem['table']) {
     if (!supabase) {
       setError('Configuração do Supabase ausente. Verifique as variáveis de ambiente.')
       return
@@ -429,7 +450,7 @@ export default function PrecosPage() {
         // Buscar dados essenciais da receita
         const { data, error } = await supabase
           .from('receitas')
-          .select('id, nome, preco_venda, rendimento, unidade_rendimento, categoria')
+          .select('id, nome, rendimento, unidade_rendimento, categoria')
           .eq('id', itemId)
           .eq('ativo', true)
           .single()
@@ -467,10 +488,21 @@ export default function PrecosPage() {
         }))
 
       } else if (tipo === 'varejo') {
-        // Buscar dados essenciais do produto de varejo
+        const tabelaOrigem = sourceTable === 'insumos'
+          ? 'insumos'
+          : sourceTable === 'produtos'
+            ? 'produtos'
+            : 'varejo'
+        
+        // Incluindo campos da migração: preco_unitario, preco_pacote, peso_pacote
+        const camposSelect = tabelaOrigem === 'insumos'
+          ? 'id, nome, unidade, categoria, estoque_atual, codigo_barras, preco_pacote, peso_pacote'
+          : 'id, nome, preco_venda, unidade, categoria, estoque_atual, codigo_barras, preco_unitario, preco_pacote, peso_pacote'
+        
+        // Buscar dados essenciais do produto (produtos/insumos/varejo)
         const { data, error } = await supabase
-          .from('varejo')
-          .select('id, nome, preco_venda, unidade, categoria, estoque_atual, codigo_barras')
+          .from(tabelaOrigem)
+          .select(camposSelect)
           .eq('id', itemId)
           .single()
 
@@ -478,91 +510,95 @@ export default function PrecosPage() {
         dadosItem = data
 
         let custoUnitario = 0
+        let origemCusto = 'Manual'
+
         try {
-          // 1. Tentar localizar receita vinculada via produtos (por código de barras ou nome do produto)
+          // 1. Tentar localizar receita vinculada
           let receitaId: number | null = null
+          
           let produtoLink: any = null
           if (dadosItem?.codigo_barras) {
             const { data: prodData } = await supabase
               .from('produtos')
-              .select('id, receita_id, peso_unitario, rendimento')
+              .select('id, receita_id')
               .eq('codigo_barras', dadosItem.codigo_barras)
-              .limit(1)
               .maybeSingle()
             produtoLink = prodData
           }
-          if (!produtoLink) {
-            const { data: prodByName } = await supabase
-              .from('produtos')
-              .select('id, receita_id, peso_unitario, rendimento')
-              .ilike('nome', dadosItem?.nome ?? '')
-              .limit(1)
-              .maybeSingle()
-            produtoLink = prodByName
-          }
+
           if (produtoLink && produtoLink?.receita_id) {
             receitaId = Number(produtoLink.receita_id)
           }
-
-          // 2. Se encontrou receita vinculada (via produtos) ou por nome, buscar dados e composição da receita
-          let composicoesMapped: any[] = []
-          let receitaData: any = null
 
           if (!receitaId) {
             const { data: foundReceita } = await supabase
               .from('receitas')
               .select('id')
               .ilike('nome', dadosItem?.nome ?? '')
-              .limit(1)
               .maybeSingle()
             if (foundReceita && foundReceita.id) receitaId = Number(foundReceita.id)
           }
 
           if (receitaId) {
-            const { data: rData, error: rErr } = await supabase
+            const { data: rData } = await supabase
               .from('receitas')
-              .select('id, nome, rendimento, unidade_rendimento, categoria')
+              .select('id, rendimento')
               .eq('id', receitaId)
               .maybeSingle()
-            if (rErr) throw rErr
-            receitaData = rData
 
-            const { data: compData, error: compErr } = await supabase
+            const { data: compData } = await supabase
               .from('composicao_receitas')
-              .select('quantidade, categoria, insumo:insumos(id, nome, preco_pacote, peso_pacote)')
+              .select('quantidade, insumo:insumos(preco_pacote, peso_pacote)')
               .eq('receita_id', receitaId)
-            if (compErr) throw compErr
-            composicoesMapped = (compData || []).map((it: any) => ({
-              quantidade: Number(it.quantidade ?? 0),
-              categoria: it.categoria,
-              insumo: it.insumo || it.insumos || null
-            }))
 
-            // 3a. Se temos composição da receita, usar mesmo fluxo de `receita` para calcular custo unitário
-            if (composicoesMapped.length > 0) {
-              const { custoTotal, custoUnitario: custoUnitarioReceita } = calcularCustoSeguroFromComposicoes({ composicoes: composicoesMapped, rendimento: Number(receitaData?.rendimento) })
-              custoUnitario = Number(custoUnitarioReceita) || 0
+            if (compData && compData.length > 0) {
+              const composicoesMapped = (compData || []).map((it: any) => ({
+                quantidade: Number(it.quantidade ?? 0),
+                insumo: it.insumo || null
+              }))
+
+              const { custoUnitario: custoCalc } = calcularCustoSeguroFromComposicoes({
+                composicoes: composicoesMapped,
+                rendimento: Number(rData?.rendimento || 1)
+              })
+              
+              if (custoCalc > 0) {
+                custoUnitario = custoCalc
+                origemCusto = 'Receita'
+              }
             }
           }
 
-          // 3b. Se não obteve custo via receita, tentar fallback para cálculo direto (pode usar peso/pacote)
+          // 2. Fallback para campos de preco_unitario ou calculo por pacote
           if (!custoUnitario || custoUnitario === 0) {
-            // Fallback: usar preco_custo_unitario do próprio registro `varejo` quando disponível
-            custoUnitario = Number((dadosItem as any)?.preco_custo_unitario ?? 0) || 0
+            if (dadosItem?.preco_unitario > 0) {
+              custoUnitario = Number(dadosItem.preco_unitario)
+              origemCusto = 'Cadastro (Unitário)'
+            } else if (dadosItem?.preco_pacote > 0 && dadosItem?.peso_pacote > 0) {
+              custoUnitario = Number(dadosItem.preco_pacote) / Number(dadosItem.peso_pacote)
+              origemCusto = 'Cálculo (Pacote/Peso)'
+            } else {
+              custoUnitario = Number(dadosItem?.preco_custo_unitario ?? 0)
+            }
           }
         } catch (e) {
-          console.warn('Não foi possível determinar custo automático para varejo:', e)
+          console.warn('Erro ao determinar custo automático:', e)
         }
+
+        const precoVendaString = dadosItem?.preco_venda != null
+          ? String(dadosItem?.preco_venda)
+          : undefined
 
         setFormData(prev => ({
           ...prev,
           item_id: String(itemId),
           nome_item: dadosItem?.nome ?? '',
           preco_custo_unitario: custoUnitario > 0 ? custoUnitario.toFixed(4) : (prev.preco_custo_unitario || '0.0000'),
-          preco_venda: dadosItem?.preco_venda != null ? String(dadosItem?.preco_venda) : prev.preco_venda,
+          preco_venda: precoVendaString ?? prev.preco_venda,
           categoria: dadosItem?.categoria ?? prev.categoria ?? '',
           unidade: dadosItem?.unidade ?? prev.unidade ?? '',
-          estoque: (dadosItem?.estoque_atual ?? prev.estoque ?? 0)
+          estoque: (dadosItem?.estoque_atual ?? prev.estoque ?? 0),
+          custo_origem: origemCusto // Novo campo para feedback
         }))
       }
 
@@ -587,23 +623,26 @@ export default function PrecosPage() {
           if (formData.tipo === 'receita') {
             const { data, error } = await supabase
               .from('receitas')
-              .select('id, nome')
+              .select('id, nome, rendimento, unidade_rendimento, categoria')
               .eq('ativo', true)
               .order('nome', { ascending: true })
               .limit(50)
             if (!error) {
-              setReceitas(data || [])
-              setItensFiltrados((data || []).map((r: any) => ({ id: r.id, nome: r.nome })))
+              const receitasNormalize = normalizeAutocompleteRows(data, 'receitas')
+              setReceitas(receitasNormalize)
+              setItensFiltrados(receitasNormalize)
             }
           } else if (formData.tipo === 'varejo') {
             const { data, error } = await supabase
               .from('varejo')
-              .select('id, nome')
+              .select('id, nome, unidade, categoria, estoque_atual, preco_venda, codigo_barras')
+              .eq('ativo', true)
               .order('nome', { ascending: true })
               .limit(50)
             if (!error) {
-              setInsumos(data || [])
-              setItensFiltrados((data || []).map((r: any) => ({ id: r.id, nome: r.nome })))
+              const varejoNormalize = normalizeAutocompleteRows(data, 'varejo')
+              setInsumos(varejoNormalize)
+              setItensFiltrados(varejoNormalize)
             }
           }
         } catch (e) {
@@ -664,7 +703,7 @@ export default function PrecosPage() {
 
       try {
         if (p.tipo === 'varejo') {
-          await supabase.from('varejo').update({ preco_venda: precoNum, updated_at: new Date().toISOString() }).eq('id', p.item_id)
+          await supabase.from('produtos').update({ preco_venda: precoNum, updated_at: new Date().toISOString() }).eq('id', p.item_id)
         } else if (p.tipo === 'receita') {
           await supabase.from('receitas').update({ preco_venda: precoNum, updated_at: new Date().toISOString() }).eq('id', p.item_id)
         }
@@ -843,7 +882,23 @@ export default function PrecosPage() {
         {showPrecoModal && (
           <PrecoModal
             isOpen={showPrecoModal}
-            onClose={() => setShowPrecoModal(false)}
+            onClose={() => {
+              setShowPrecoModal(false)
+              setEditingPreco(null)
+              setTermoPesquisa('')
+              setFormData({
+                item_id: '',
+                tipo: 'varejo',
+                preco_venda: '',
+                margem_lucro: '',
+                preco_custo_unitario: '0.0000',
+                nome_item: '',
+                categoria: '',
+                unidade: '',
+                estoque: 0,
+                custo_origem: ''
+              })
+            }}
             editingPreco={editingPreco}
             formData={formData}
             onFormChange={handleFormChange}
@@ -853,8 +908,7 @@ export default function PrecosPage() {
             }}
             termoPesquisa={termoPesquisa}
             onTermoChange={handleTermoChange}
-            // <-- Cast para qualquer para evitar incompatibilidade de tipos entre Select vs full models
-            itensFiltrados={itensFiltrados as any}
+            itensFiltrados={itensFiltrados}
             onSelecionarItem={handleSelecionarItem}
             onMostrarTodos={handleMostrarTodos}
             loadingDetalhes={loadingDetalhes}

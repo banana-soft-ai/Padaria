@@ -76,6 +76,15 @@ export default function EstoquePage() {
     codigo_barras: ''
   })
 
+  const categoriaOptions = [
+    { value: 'insumo', label: 'Insumo' },
+    { value: 'embalagem', label: 'Embalagem' },
+    { value: 'varejo', label: 'Varejo' },
+    { value: 'outro', label: 'Outro' }
+  ]
+
+  const unidadeOptions = ['kg', 'g', 'l', 'ml', 'un', 'cx', 'pct']
+
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3000)
@@ -170,31 +179,36 @@ export default function EstoquePage() {
 
       if (filtroEstoque === 'todos' || filtroEstoque === 'varejo') {
         const { data: varejoData, error: varejoError } = await supabase!
-          .from('varejo')
-          .select('id, nome, categoria, preco_venda, codigo_barras, unidade, estoque_atual, estoque_minimo, ativo, created_at, updated_at')
+        .from('varejo')
+          .select('id, nome, categoria, marca, fornecedor, unidade, unidade_medida_base, quantidade_pacote, preco_venda, preco_pacote, preco_unitario, peso_pacote, quantidade_minima, estoque_atual, estoque_minimo, codigo_barras, ativo, created_at, updated_at')
           .order('nome', { ascending: true })
         if (varejoError) throw varejoError
         const varejoMapped: Insumo[] = (varejoData || []).map((v: any) => {
           const originalUnit = v.unidade ?? 'un'
           const baseUnit = v.unidade_medida_base ?? (originalUnit === 'kg' ? 'g' : originalUnit === 'l' ? 'ml' : originalUnit)
-          const quantidadeInBase = v.quantidade_pacote != null ? Number(v.quantidade_pacote) : null
-          const precoPacoteNum = v.preco_venda != null ? Number(v.preco_venda) : null
-          const precoUnit = precoPacoteNum != null && quantidadeInBase ? calculatePrecoUnitario(precoPacoteNum, baseUnit, quantidadeInBase) : (v.preco_unitario ?? null)
+          const quantidadeFromQuantidadePacote = v.quantidade_pacote != null ? Number(v.quantidade_pacote) : null
+          const quantidadeFromPeso = v.peso_pacote != null ? convertToBaseQuantity(originalUnit, Number(v.peso_pacote)).quantityInBase : null
+          const quantidadeInBase = quantidadeFromQuantidadePacote ?? quantidadeFromPeso ?? null
+          const precoPacoteNum = v.preco_pacote != null ? Number(v.preco_pacote) : (v.preco_venda != null ? Number(v.preco_venda) : null)
+          const precoUnitStored = v.preco_unitario != null ? Number(v.preco_unitario) : null
+          const precoUnitCalculated = precoPacoteNum != null && quantidadeInBase ? calculatePrecoUnitario(precoPacoteNum, baseUnit, quantidadeInBase) : null
 
           return {
             id: v.id,
             nome: v.nome,
             categoria: v.categoria ?? 'varejo',
             tipo_estoque: 'varejo',
+            marca: v.marca ?? undefined,
+            fornecedor: v.fornecedor ?? undefined,
             unidade: originalUnit,
-            peso_pacote: null,
-            preco_pacote: v.preco_venda ?? null,
+            peso_pacote: v.peso_pacote ?? null,
+            preco_pacote: precoPacoteNum,
             estoque_atual: v.estoque_atual ?? 0,
             estoque_minimo: v.estoque_minimo ?? 0,
             unidade_medida_base: baseUnit ?? null,
             quantidade_pacote: quantidadeInBase,
             quantidade_minima: v.quantidade_minima ?? null,
-            preco_unitario: precoUnit,
+            preco_unitario: precoUnitStored ?? precoUnitCalculated,
             codigo_barras: v.codigo_barras ?? '',
             created_at: v.created_at,
             updated_at: v.updated_at,
@@ -255,14 +269,20 @@ export default function EstoquePage() {
 
         const produtoPayload = {
           nome: formData.nome,
-          categoria: 'varejo',
+          categoria: formData.categoria || 'varejo',
+          marca: formData.marca || null,
+          fornecedor: formData.fornecedor || null,
+          unidade: formData.unidade || 'un',
+          unidade_medida_base: baseUnit,
+          quantidade_pacote: quantityInBase,
+          quantidade_minima: formData.quantidade_minima ? parseFloat(formData.quantidade_minima) : null,
+          preco_unitario: precoUnit,
           preco_venda: precoPacoteNum ?? 0,
           preco_pacote: precoPacoteNum ?? null,
           peso_pacote: formData.peso_pacote ? parseFloat(formData.peso_pacote) : null,
-          codigo_barras: (formData.codigo_barras || '').trim() || null,
-          unidade: formData.unidade || 'un',
           estoque_atual: formData.estoque_atual ? parseFloat(formData.estoque_atual) : 0,
           estoque_minimo: formData.estoque_minimo ? parseFloat(formData.estoque_minimo) : 0,
+          codigo_barras: (formData.codigo_barras || '').trim() || null,
           ativo: true,
         }
 
@@ -468,6 +488,14 @@ export default function EstoquePage() {
       insumo.fornecedor?.toLowerCase().includes(termoPesquisa.toLowerCase()) ||
       insumo.codigo_barras.includes(termoPesquisa)
     )
+  const isVarejoModal = activeModal === 'varejo'
+  const modalTitle = editingInsumo
+    ? isVarejoModal
+      ? 'Editar Varejo'
+      : 'Editar Insumo'
+    : isVarejoModal
+      ? 'Novo Varejo'
+      : 'Novo Insumo'
 
   if (loading) {
     return (
@@ -640,13 +668,11 @@ export default function EstoquePage() {
           </div>
         </div>
 
-        {/* Modal Insumo */}
-        {activeModal === 'insumo' && (
+        {/* Modal compartilhado */}
+        {activeModal !== 'none' && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-6 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-              <h2 className="text-xl font-bold mb-4">
-                {editingInsumo ? 'Editar Insumo' : 'Novo Insumo'}
-              </h2>
+              <h2 className="text-xl font-bold mb-4">{modalTitle}</h2>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
@@ -667,10 +693,33 @@ export default function EstoquePage() {
                     onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
                     className="w-full px-3 py-2 border rounded-md"
                   >
-                    <option value="insumo">Insumo</option>
-                    <option value="embalagem">Embalagem</option>
+                    {categoriaOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
+
+                <div>
+                  <label className="text-sm">Unidade</label>
+                  <select
+                    value={formData.unidade}
+                    onChange={(e) => {
+                      const unit = e.target.value
+                      const newBase = unit === 'kg' ? 'g' : unit === 'l' ? 'ml' : unit
+                      setFormData({ ...formData, unidade: unit, unidade_medida_base: newBase })
+                    }}
+                    className="w-full px-3 py-2 border rounded-md"
+                  >
+                    {unidadeOptions.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="text-sm">Fornecedor</label>
                   <input
@@ -687,6 +736,7 @@ export default function EstoquePage() {
                     type="text"
                     value={formData.codigo_barras}
                     onChange={(e) => setFormData({ ...formData, codigo_barras: e.target.value })}
+                    required={isVarejoModal}
                     className="w-full px-3 py-2 border rounded-md"
                   />
                 </div>
@@ -730,7 +780,6 @@ export default function EstoquePage() {
                   />
                 </div>
 
-                {/* Campos específicos para Insumo: quantidade do pacote, unidade base, quantidade mínima e preço unitário calculado */}
                 <div>
                   <label className="text-sm">Quantidade do Pacote</label>
                   <input
@@ -777,155 +826,19 @@ export default function EstoquePage() {
                   <input
                     type="text"
                     readOnly
-                    value={precoUnitarioCalculado ? `R$ ${formatPreco(precoUnitarioCalculado)}` : (formData.preco_pacote ? '-' : '-')}
+                    value={
+                      precoUnitarioCalculado
+                        ? `R$ ${formatPreco(precoUnitarioCalculado)}`
+                        : formData.preco_pacote
+                          ? '-'
+                          : '-'
+                    }
                     className="w-full px-3 py-2 border rounded-md bg-gray-50"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Cálculo automático baseado no pacote e na unidade selecionada.
+                  </p>
                 </div>
-
-                <div>
-                  <label className="text-sm">Peso do Pacote</label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={formData.peso_pacote}
-                    onChange={(e) => setFormData({ ...formData, peso_pacote: e.target.value })}
-                    onFocus={handleNumberFocus}
-                    onBlur={handleNumberBlur}
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                </div>
-
-                <div className="flex space-x-4 pt-4">
-                  <button type="submit" className="flex-1 bg-orange-600 text-white py-2 rounded-md">
-                    {editingInsumo ? 'Atualizar' : 'Salvar'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModal('none')}
-                    className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-md"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Modal Varejo */}
-        {activeModal === 'varejo' && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-              <h2 className="text-xl font-bold mb-4">
-                {editingInsumo ? 'Editar Varejo' : 'Novo Varejo'}
-              </h2>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="text-sm">Nome</label>
-                  <input
-                    type="text"
-                    value={formData.nome}
-                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm">Categoria</label>
-                  <select
-                    value={formData.categoria}
-                    onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md"
-                  >
-                    <option value="varejo">Varejo</option>
-                    <option value="outro">Outro</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm">Unidade</label>
-                  <select
-                    value={formData.unidade}
-                    onChange={(e) => {
-                      const unit = e.target.value
-                      const newBase = unit === 'kg' ? 'g' : unit === 'l' ? 'ml' : unit
-                      setFormData({ ...formData, unidade: unit, unidade_medida_base: newBase })
-                    }}
-                    className="w-full px-3 py-2 border rounded-md"
-                  >
-                    <option value="kg">kg</option>
-                    <option value="g">g</option>
-                    <option value="l">l</option>
-                    <option value="ml">ml</option>
-                    <option value="un">un</option>
-                    <option value="cx">cx</option>
-                    <option value="pct">pct</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm">Fornecedor</label>
-                  <input
-                    type="text"
-                    value={formData.fornecedor}
-                    onChange={(e) => setFormData({ ...formData, fornecedor: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm">Código de Barras</label>
-                  <input
-                    type="text"
-                    value={formData.codigo_barras}
-                    onChange={(e) => setFormData({ ...formData, codigo_barras: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm">Estoque Atual</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.estoque_atual}
-                    onChange={(e) => setFormData({ ...formData, estoque_atual: e.target.value })}
-                    onFocus={handleNumberFocus}
-                    onBlur={handleNumberBlur}
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm">Estoque Mínimo</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.estoque_minimo}
-                    onChange={(e) => setFormData({ ...formData, estoque_minimo: e.target.value })}
-                    onFocus={handleNumberFocus}
-                    onBlur={handleNumberBlur}
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                </div>
-
-
-                <div>
-                  <label className="text-sm">Preço do Pacote</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.preco_pacote}
-                    onChange={(e) => setFormData({ ...formData, preco_pacote: e.target.value })}
-                    onFocus={handleNumberFocus}
-                    onBlur={handleNumberBlur}
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                </div>
-                {/* Campos de pacote removidos para Varejo (quantidade/unidade/preço unitário) */}
 
                 <div>
                   <label className="text-sm">Peso do Pacote</label>

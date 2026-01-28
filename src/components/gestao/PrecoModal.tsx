@@ -1,6 +1,8 @@
 'use client'
 
+import { useEffect } from 'react'
 import { Receita, Insumo, ItemPrecoVenda } from '@/types/gestao'
+import { AutocompleteItem } from '@/types/selects'
 
 interface PrecoModalProps {
   isOpen: boolean
@@ -13,13 +15,14 @@ interface PrecoModalProps {
     margem_lucro: string
     preco_custo_unitario: string
     nome_item?: string
+    custo_origem?: string
   }
   onFormChange: (field: string, value: string) => void
   onSubmit: (e: React.FormEvent) => void
   termoPesquisa: string
   onTermoChange: (termo: string) => void
-  itensFiltrados: Array<Receita | Insumo>
-  onSelecionarItem: (item: Receita | Insumo, tipo?: 'receita' | 'varejo') => void
+  itensFiltrados: AutocompleteItem[]
+  onSelecionarItem: (item: AutocompleteItem, tipo?: 'receita' | 'varejo') => void
   onMostrarTodos: () => void
   loadingDetalhes?: boolean
   loadingPesquisa?: boolean
@@ -74,7 +77,7 @@ export default function PrecoModal({
   }
 
   // Ao selecionar um item na lista, delega ao parent a busca/preenchimento
-  const handleSelecionarItemInterno = (item: Receita | Insumo) => {
+  const handleSelecionarItemInterno = (item: AutocompleteItem) => {
     // passa o tipo atual para garantir que o parent busque na tabela correta
     onSelecionarItem(item, formData.tipo)
   }
@@ -114,8 +117,21 @@ export default function PrecoModal({
     }
   }
 
-  // Flag que indica se um custo válido (> 0) foi calculado
-  const hasCustoCalculado = parseFloat(formData.preco_custo_unitario || '0') > 0
+  // Recalcular automaticamente quando o custo unitário mudar (vindo do parent)
+  useEffect(() => {
+    if (formData.preco_custo_unitario && formData.preco_venda) {
+      const precoVenda = parseFloat(formData.preco_venda)
+      const custoUnitario = parseFloat(formData.preco_custo_unitario)
+      
+      if (precoVenda > 0 && custoUnitario > 0) {
+        const margemCalculada = calcularMargemLucro(precoVenda, custoUnitario)
+        // Só atualiza se for significativamente diferente para evitar loops ou sobrescrever digitação
+        if (Math.abs(parseFloat(formData.margem_lucro || '0') - margemCalculada) > 0.01) {
+          onFormChange('margem_lucro', margemCalculada.toFixed(5))
+        }
+      }
+    }
+  }, [formData.preco_custo_unitario])
 
   if (!isOpen) return null
 
@@ -127,17 +143,6 @@ export default function PrecoModal({
             {editingPreco ? 'Editar Preço de Venda' : 'Novo Preço de Venda'}
           </h2>
 
-          {/* Instruções de uso */}
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="text-sm text-blue-800">
-              <div className="font-medium mb-2">💡 Como usar o cálculo automático:</div>
-              <div className="space-y-1 text-xs">
-                <div>• <strong>Digite o preço de venda</strong> → A margem de lucro é calculada automaticamente</div>
-                <div>• <strong>Digite a margem de lucro</strong> → O preço de venda é calculado automaticamente</div>
-                <div>• Os cálculos são feitos em tempo real conforme você digita</div>
-              </div>
-            </div>
-          </div>
           <form id="preco-form" onSubmit={onSubmit} className="space-y-6">
             <div>
               <label className="block text-lg font-medium text-gray-900 mb-2">Tipo de Item</label>
@@ -146,7 +151,7 @@ export default function PrecoModal({
                 onChange={(e) => onFormChange('tipo', e.target.value)}
                 className="mt-1 block w-full border-2 border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 text-base"
               >
-                <option value="varejo">Produto Varejo</option>
+                <option value="varejo">Varejo</option>
                 <option value="receita">Receita</option>
               </select>
             </div>
@@ -187,7 +192,7 @@ export default function PrecoModal({
                 <div className="mt-3 max-h-40 overflow-y-auto border-2 border-gray-200 rounded-xl">
                   {itensFiltrados.map((item) => (
                     <div
-                      key={item.id}
+                      key={`${item.table ?? 'item'}_${item.id}`}
                       onClick={() => handleSelecionarItemInterno(item)}
                       className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors duration-150"
                     >
@@ -244,55 +249,57 @@ export default function PrecoModal({
               )}
               {/* Resumo dos cálculos */}
               {formData.item_id && (
-                hasCustoCalculado ? (
-                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="text-sm font-medium text-blue-800 mb-2">Resumo dos Cálculos:</div>
-                    <div className="text-xs text-blue-700 space-y-1">
-                      <div>Custo unitário: R$ {formData.preco_custo_unitario}</div>
-                      {formData.preco_venda && (
-                        <div>Preço de venda: R$ {formData.preco_venda}</div>
-                      )}
-                      {formData.margem_lucro && (
-                        <div>Margem de lucro: {formData.margem_lucro}%</div>
-                      )}
-                      {formData.preco_venda && parseFloat(formData.preco_venda) > parseFloat(formData.preco_custo_unitario) && (
-                        <div className="text-green-700 font-medium">
-                          Lucro por unidade: R$ {(parseFloat(formData.preco_venda) - parseFloat(formData.preco_custo_unitario)).toFixed(4)}
-                        </div>
-                      )}
-                      {formData.preco_venda && parseFloat(formData.preco_venda) <= parseFloat(formData.preco_custo_unitario) && (
-                        <div className="text-red-700 font-medium">
-                          ⚠️ Preço deve ser maior que o custo unitário
-                        </div>
-                      )}
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm text-gray-700">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="text-xs text-blue-600 uppercase tracking-wide">Custo unitário</div>
+                    <div className="mt-1 font-semibold text-xl text-blue-800">R$ {formData.preco_custo_unitario || '0.0000'}</div>
+                  </div>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div className="text-xs text-green-600 uppercase tracking-wide">Preço de venda</div>
+                    <div className="mt-1 font-semibold text-xl text-green-800">
+                      R$ {formData.preco_venda || '0.0000'}
                     </div>
                   </div>
-                ) : (
-                  <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                    Ainda não há custo calculado para este item. Mantivemos o campo de custo em 0.0000 para manter o formulário controlado. Quando o sistema calcular o custo baseado na receita ou insumos vinculados, o resumo (custo, lucro e margem) será exibido automaticamente.
+                  <div className="bg-white border border-gray-200 rounded-lg p-3">
+                    <div className="text-xs text-gray-500 uppercase tracking-wide">Margem & lucro</div>
+                    <div className="mt-1 font-semibold text-xl text-gray-800">
+                      {formData.margem_lucro ? `${formData.margem_lucro}%` : '0.00%'}
+                    </div>
+                    {formData.preco_venda && formData.preco_custo_unitario && (
+                      <div className={`mt-1 text-xs font-medium ${parseFloat(formData.preco_venda) >= parseFloat(formData.preco_custo_unitario) ? 'text-emerald-600' : 'text-red-600'}`}>
+                        Lucro: R$ {(parseFloat(formData.preco_venda || '0') - parseFloat(formData.preco_custo_unitario || '0')).toFixed(4)}
+                      </div>
+                    )}
                   </div>
-                )
+                </div>
               )}
             </div>
 
             <div>
               <label className="block text-lg font-medium text-gray-900 mb-2">Preço de Custo Unitário</label>
               <div className="relative">
-                <div className="mt-1 block w-full px-4 py-3 bg-gray-100 border-2 border-gray-300 rounded-xl text-gray-900 text-base">
+                <div className="mt-1 block w-full px-4 py-3 bg-gray-100 border-2 border-gray-300 rounded-xl text-gray-900 text-base flex justify-between items-center">
                   {loadingDetalhes ? (
                     <div className="flex items-center">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
                       <span>Calculando custo...</span>
                     </div>
                   ) : (
-                    <>R$ {formData.preco_custo_unitario || '0.0000'}</>
+                    <>
+                      <span>R$ {formData.preco_custo_unitario || '0.0000'}</span>
+                      {formData.custo_origem && (
+                        <span className="text-xs font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded-md uppercase tracking-wider">
+                          {formData.custo_origem}
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
               <p className="text-sm text-gray-500 mt-1">
                 {formData.tipo === 'receita'
                   ? 'Custo unitário calculado automaticamente (custo total ÷ rendimento)'
-                  : 'Custo unitário calculado automaticamente (preço do pacote ÷ peso do pacote)'
+                  : 'Custo unitário determinado automaticamente pelo sistema'
                 }
               </p>
             </div>
@@ -315,13 +322,6 @@ export default function PrecoModal({
               <p className="text-sm text-gray-500 mt-1">
                 Digite o preço de venda (até 6 casas decimais) e a margem será calculada automaticamente
               </p>
-              {formData.preco_venda && hasCustoCalculado && (
-                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="text-xs text-blue-700">
-                    <strong>Margem calculada:</strong> {formData.margem_lucro ? `${formData.margem_lucro}%` : 'Calculando...'}
-                  </div>
-                </div>
-              )}
             </div>
 
             <div>
@@ -342,21 +342,6 @@ export default function PrecoModal({
               <p className="text-sm text-gray-500 mt-1">
                 Digite a margem desejada (até 5 casas decimais) e o preço será calculado automaticamente
               </p>
-              {formData.margem_lucro && hasCustoCalculado && (
-                <>
-                  <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="text-xs text-green-700">
-                      <strong>Preço calculado:</strong> R$ {formData.preco_venda ? formData.preco_venda : 'Calculando...'}
-                    </div>
-                  </div>
-                  <div className="mt-1 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="text-xs text-yellow-700">
-                      <strong>Lucro por unidade:</strong> R$ {formData.preco_venda && hasCustoCalculado ?
-                        (parseFloat(formData.preco_venda) - parseFloat(formData.preco_custo_unitario)).toFixed(4) : 'Calculando...'}
-                    </div>
-                  </div>
-                </>
-              )}
             </div>
           </form>
         </div>

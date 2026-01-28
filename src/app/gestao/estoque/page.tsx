@@ -181,6 +181,7 @@ export default function EstoquePage() {
         const { data: varejoData, error: varejoError } = await supabase!
         .from('varejo')
           .select('id, nome, categoria, marca, fornecedor, unidade, unidade_medida_base, quantidade_pacote, preco_venda, preco_pacote, preco_unitario, peso_pacote, quantidade_minima, estoque_atual, estoque_minimo, codigo_barras, ativo, created_at, updated_at')
+          .eq('ativo', true)
           .order('nome', { ascending: true })
         if (varejoError) throw varejoError
         const varejoMapped: Insumo[] = (varejoData || []).map((v: any) => {
@@ -464,13 +465,25 @@ export default function EstoquePage() {
 
   const handleDeleteConfirm = async () => {
     if (!confirmDelete) return
+    const { id, tipo_estoque } = confirmDelete
     try {
-      const { error } = confirmDelete.tipo_estoque === 'varejo'
-        ? await supabase!.from('varejo').delete().eq('id', confirmDelete.id)
-        : await supabase!.from('insumos').delete().eq('id', confirmDelete.id)
-      if (error) throw error
-      showToast(`${confirmDelete.tipo_estoque === 'insumo' ? 'Insumo' : 'Item de Varejo'} excluído com sucesso!`, 'success')
-      carregarItens()
+      if (tipo_estoque === 'varejo') {
+        const { error } = await supabase!
+          .from('varejo')
+          .update({ ativo: false })
+          .eq('id', id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase!.from('insumos').delete().eq('id', id)
+        if (error) throw error
+      }
+
+      setInsumos((prev) =>
+        prev.filter((item) => !(item.id === id && item.tipo_estoque === tipo_estoque))
+      )
+
+      showToast(`${tipo_estoque === 'insumo' ? 'Insumo' : 'Item de Varejo'} excluído com sucesso!`, 'success')
+      void carregarItens()
     } catch {
       showToast('Erro ao deletar item', 'error')
     } finally {

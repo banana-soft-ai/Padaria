@@ -33,13 +33,12 @@ export default function SistemaCaixa({ onCaixaChange }: SistemaCaixaProps) {
     try {
       setLoading(true)
 
-      // Buscar o caixa aberto mais recente
+      // Buscar TODOS os caixas abertos para detectar inconsistências
       const { data: caixas, error } = await supabase
         .from('caixa_diario')
         .select('*')
         .eq('status', 'aberto')
-        .order('id', { ascending: false })
-        .limit(1)
+        .order('created_at', { ascending: false })
 
       if (error) {
         console.error('❌ Erro ao carregar caixa:', error)
@@ -47,21 +46,34 @@ export default function SistemaCaixa({ onCaixaChange }: SistemaCaixaProps) {
         return
       }
 
-      const caixaAberto = caixas && caixas.length > 0 ? caixas[0] : null
-
-      if (!caixaAberto) {
+      if (!caixas || caixas.length === 0) {
         console.log('❌ Nenhum caixa aberto encontrado')
         setCaixaHoje(null)
         return
       }
 
+      // Se houver mais de um caixa aberto, mantemos apenas o mais recente e fechamos os outros
+      let activeCaixa = caixas[0]
+      if (caixas.length > 1) {
+        console.warn(`Detectados ${caixas.length} caixas abertos. Corrigindo inconsistência...`)
+        const idsParaFechar = caixas.slice(1).map(c => c.id)
+        await supabase
+          .from('caixa_diario')
+          .update({ 
+            status: 'fechado', 
+            observacoes_fechamento: 'Limpeza automática: múltiplos caixas abertos' 
+          })
+          .in('id', idsParaFechar)
+      }
+
+      const caixaAberto = activeCaixa;
       console.log('✅ Caixa encontrado:', caixaAberto)
 
-      // Calcular totais das vendas do dia
+      // Calcular totais das vendas da sessão do caixa
       const { data: vendasHoje, error: vendasError } = await supabase
         .from('vendas')
         .select('id, valor_total, forma_pagamento, valor_pago, valor_debito')
-        .eq('data', caixaAberto.data)
+        .eq('caixa_diario_id', caixaAberto.id)
 
       if (!vendasError && vendasHoje) {
         // Vendas reais (excluindo caderneta)
@@ -82,7 +94,7 @@ export default function SistemaCaixa({ onCaixaChange }: SistemaCaixaProps) {
         const { data: saidasData } = await supabase
           .from('fluxo_caixa')
           .select('valor')
-          .eq('data', caixaAberto.data)
+          .eq('caixa_diario_id', caixaAberto.id)
           .eq('tipo', 'saida')
           .eq('categoria', 'caixa')
 
@@ -137,25 +149,25 @@ export default function SistemaCaixa({ onCaixaChange }: SistemaCaixaProps) {
     observacoes: string
   }) => {
     try {
+      // Validação: impedir abertura se JÁ houver um caixa aberto (independente da data)
       const { data: existingCaixa, error: checkError } = await supabase
         .from('caixa_diario')
         .select('*')
-        .eq('data', formData.data_selecionada)
-        .single()
+        .eq('status', 'aberto')
+        .limit(1)
+        .maybeSingle()
 
-      if (checkError && checkError.code !== 'PGRST116') {
+      if (checkError) {
         throw checkError
       }
 
-      let result
       if (existingCaixa) {
-        // NÃO permitir reabrir/atualizar caixa existente: regra 1x por dia
-        alert('Já existe um caixa registrado para a data selecionada. Abertura permitida apenas 1 vez por dia.')
+        alert('Já existe um caixa aberto no sistema.')
         setShowModalAbertura(false)
         return
       } else {
         // Criar novo caixa
-        result = await supabase
+        const result = await supabase
           .from('caixa_diario')
           .insert<Database['public']['Tables']['caixa_diario']['Insert']>([{
             data: formData.data_selecionada,
@@ -166,13 +178,30 @@ export default function SistemaCaixa({ onCaixaChange }: SistemaCaixaProps) {
           }])
           .select()
           .single()
+
+        if (result.error) throw result.error
+
+        // Criar o primeiro turno do operador para rastreabilidade
+        const { error: turnoError } = await supabase
+          .from('turno_operador')
+          .insert({
+            caixa_diario_id: result.data.id,
+            operador_nome: 'Sistema',
+            status: 'aberto',
+            data_inicio: new Date().toISOString(),
+            valor_abertura: parseFloat(formData.valor_inicial),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+
+        if (turnoError) {
+          console.warn('Erro ao criar turno inicial do operador no Gestão:', turnoError)
+        }
+
+        setShowModalAbertura(false)
+        await carregarCaixaHoje()
+        alert('Caixa aberto com sucesso!')
       }
-
-      if (result.error) throw result.error
-
-      setShowModalAbertura(false)
-      await carregarCaixaHoje()
-      alert('Caixa aberto com sucesso!')
     } catch (error) {
       try {
         console.error('Erro ao abrir caixa:', JSON.parse(JSON.stringify(error)))
@@ -197,11 +226,11 @@ export default function SistemaCaixa({ onCaixaChange }: SistemaCaixaProps) {
     if (!caixaHoje) return
 
     try {
-      // Calcular totais das vendas do dia
+      // Calcular totais das vendas da sessão do caixa
       const { data: vendasHoje, error: vendasError } = await supabase
         .from('vendas')
         .select('*')
-        .eq('data', caixaHoje.data)
+        .eq('caixa_diario_id', caixaHoje.id)
 
       if (vendasError) throw vendasError
 
@@ -212,14 +241,13 @@ export default function SistemaCaixa({ onCaixaChange }: SistemaCaixaProps) {
       const totalCaderneta = vendasHoje?.filter(v => v.forma_pagamento === 'caderneta').reduce((sum, v) => sum + (v.valor_debito || 0), 0) || 0
 
       // Total de entradas apenas de vendas reais (excluindo caderneta)
-      const vendasReais = vendasHoje?.filter(v => v.forma_pagamento !== 'caderneta') || []
-      const totalEntradas = vendasReais.reduce((sum, v) => sum + (v.valor_pago || 0), 0)
+      const totalEntradas = totalPix + totalDebito + totalCredito + totalDinheiro
 
-      // Recalcular saídas
+      // Recalcular saídas vinculadas ao caixa
       const { data: saidasFluxo } = await supabase
         .from('fluxo_caixa')
         .select('valor')
-        .eq('data', caixaHoje.data)
+        .eq('caixa_diario_id', caixaHoje.id)
         .eq('tipo', 'saida')
         .eq('categoria', 'caixa')
       const totalSaidas = (saidasFluxo || []).reduce((sum: number, r: { valor: number }) => sum + (Number(r.valor) || 0), 0)
@@ -264,8 +292,8 @@ export default function SistemaCaixa({ onCaixaChange }: SistemaCaixaProps) {
       if (error) throw error
 
       setShowModalFechamento(false)
-      await carregarCaixaHoje()
       alert('Caixa fechado com sucesso!')
+      await carregarCaixaHoje()
     } catch (error) {
       try {
         console.error('Erro ao fechar caixa:', JSON.parse(JSON.stringify(error)))

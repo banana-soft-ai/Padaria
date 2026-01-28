@@ -402,13 +402,17 @@ export function useVendas() {
         const vendaId = inserted?.id
         if (vendaId && Array.isArray(dadosVenda.itens) && dadosVenda.itens.length > 0) {
           for (const item of dadosVenda.itens) {
-            const dadosItem = {
+            const dadosItem: any = {
               venda_id: vendaId,
-              tipo: item.tipo,
-              item_id: item.item_id,
               quantidade: item.quantidade,
               preco_unitario: item.preco_unitario,
-              preco_total: item.quantidade * item.preco_unitario
+              subtotal: item.quantidade * item.preco_unitario
+            }
+            
+            if (item.tipo === 'varejo') {
+              dadosItem.varejo_id = item.item_id
+            } else {
+              dadosItem.produto_id = item.item_id
             }
 
             const { error: itemError } = await supabase
@@ -424,7 +428,16 @@ export function useVendas() {
       } else {
         await offlineStorage.addPendingOperation({ type: 'INSERT', table: 'vendas', data: dadosVendaInsert })
         for (const item of dadosVenda.itens) {
-          const dadosItem = { tipo: item.tipo, item_id: item.item_id, quantidade: item.quantidade, preco_unitario: item.preco_unitario, preco_total: item.quantidade * item.preco_unitario }
+          const dadosItem: any = { 
+            quantidade: item.quantidade, 
+            preco_unitario: item.preco_unitario, 
+            subtotal: item.quantidade * item.preco_unitario 
+          }
+          if (item.tipo === 'varejo') {
+            dadosItem.varejo_id = item.item_id
+          } else {
+            dadosItem.produto_id = item.item_id
+          }
           await offlineStorage.addPendingOperation({ type: 'INSERT', table: 'venda_itens', data: dadosItem })
         }
       }

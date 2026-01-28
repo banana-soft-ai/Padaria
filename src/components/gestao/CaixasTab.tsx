@@ -36,11 +36,11 @@ export default function CaixasTab({ caixasDiarios, onCaixaReaberto }: CaixasTabP
       setRecalculando(true)
       const novos: Record<number, number> = {}
       for (const caixa of caixasDiarios) {
-        // Buscar vendas do dia
+        // Buscar vendas vinculadas ao caixa
         const { data: vendas } = await supabase
           .from('vendas')
           .select('forma_pagamento, valor_pago, valor_debito')
-          .eq('data', caixa.data)
+          .eq('caixa_diario_id', caixa.id)
 
         const entradas = (vendas || [])
           .filter(v => v.forma_pagamento !== 'caderneta')
@@ -65,7 +65,7 @@ export default function CaixasTab({ caixasDiarios, onCaixaReaberto }: CaixasTabP
         const { data: vendas } = await supabase
           .from('vendas')
           .select('forma_pagamento, valor_pago')
-          .eq('data', caixa.data)
+          .eq('caixa_diario_id', caixa.id)
 
         const entradas = (vendas || [])
           .filter(v => v.forma_pagamento !== 'caderneta')
@@ -156,6 +156,12 @@ export default function CaixasTab({ caixasDiarios, onCaixaReaberto }: CaixasTabP
                 Data
               </th>
               <th className="px-2 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                Hora
+              </th>
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                Operador
+              </th>
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                 Status
               </th>
               <th className="px-2 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
@@ -197,6 +203,20 @@ export default function CaixasTab({ caixasDiarios, onCaixaReaberto }: CaixasTabP
                       return '-'
                     }
                   })()}
+                </td>
+                <td className="px-2 py-2 whitespace-nowrap text-gray-900">
+                  {(() => {
+                    const dataRaw = caixa.data_fechamento ?? caixa.data_abertura ?? caixa.created_at
+                    if (!dataRaw) return '-'
+                    try {
+                      return new Date(dataRaw).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
+                    } catch (e) {
+                      return '-'
+                    }
+                  })()}
+                </td>
+                <td className="px-2 py-2 whitespace-nowrap text-gray-900 font-medium uppercase text-[10px]">
+                  {caixa.usuario_fechamento || caixa.usuario_abertura || '-'}
                 </td>
                 <td className="px-2 py-2 whitespace-nowrap">
                   <span className={`inline-flex px-3 py-2 text-sm font-semibold rounded-full ${caixa.status === 'aberto' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'

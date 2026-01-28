@@ -13,11 +13,13 @@ DECLARE
   v_caixa_id INTEGER;
   v_valor NUMERIC := COALESCE(NEW.valor_total, 0);
 BEGIN
-  -- Tenta encontrar caixa_diario aberto para a data da venda
+  -- Tenta encontrar caixa_diario aberto
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='caixa_diario') THEN
-    SELECT id INTO v_caixa_id FROM caixa_diario WHERE data = NEW.data AND status = 'aberto' LIMIT 1;
+    -- Primeiro tenta o aberto na data da venda
+    SELECT id INTO v_caixa_id FROM caixa_diario WHERE data = NEW.data AND status = 'aberto' ORDER BY created_at DESC LIMIT 1;
+    -- Se não achar, pega QUALQUER caixa aberto (o mais recente)
     IF v_caixa_id IS NULL THEN
-      SELECT id INTO v_caixa_id FROM caixa_diario WHERE status = 'aberto' LIMIT 1;
+      SELECT id INTO v_caixa_id FROM caixa_diario WHERE status = 'aberto' ORDER BY created_at DESC LIMIT 1;
     END IF;
   ELSE
     v_caixa_id := NULL;

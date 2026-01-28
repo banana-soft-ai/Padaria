@@ -20,70 +20,41 @@ export async function GET(request: Request) {
     )
     try {
         const hoje = obterDataLocal()
-
-        // 1) Vendas do dia: preferir valores reportados em `caixa_diario` (PDV)
-        const { data: caixaHoje, error: caixaError } = await supabase
-            .from('caixa_diario')
-            .select('total_entradas, total_vendas')
-            .eq('data', hoje)
-            .limit(1)
-            .maybeSingle()
-
-        if (caixaError) console.error('Erro ao buscar caixa do dia:', caixaError)
-
-        // Se não houver registro de caixa, calcular a partir da tabela `vendas`
-        let vendasHojeTotal = 0
-        let vendasHojeCount = 0
-
-        if (caixaHoje) {
-            vendasHojeTotal = (caixaHoje.total_entradas as number) || (caixaHoje.total_vendas as number) || 0
-            // contar vendas do dia para exibir contagem
-            const { data: vendasHojeArr, error: vendasHojeErr } = await supabase
-                .from('vendas')
-                .select('id')
-                .eq('data', hoje)
-                .neq('forma_pagamento', 'caderneta')
-
-            if (vendasHojeErr) console.error('Erro ao contar vendas hoje:', vendasHojeErr)
-            vendasHojeCount = (vendasHojeArr && vendasHojeArr.length) || 0
-        } else {
-            const { data: vendasHojeArr, error: vendasHojeErr } = await supabase
-                .from('vendas')
-                .select('id, valor_pago')
-                .eq('data', hoje)
-                .neq('forma_pagamento', 'caderneta')
-
-            if (vendasHojeErr) console.error('Erro ao carregar vendas hoje:', vendasHojeErr)
-            if (vendasHojeArr && vendasHojeArr.length > 0) {
-                vendasHojeTotal = vendasHojeArr.reduce((s, v) => s + ((v.valor_pago as number) || 0), 0)
-                vendasHojeCount = vendasHojeArr.length
-            }
-        }
-
-        // 2) Vendas do mês (somar `valor_pago` em `vendas` entre início do mês e hoje)
         const inicioMes = obterInicioMes()
+
+        // 1) Vendas do dia
+        const { data: vendasHojeArr, error: vendasHojeErr } = await supabase
+            .from('vendas')
+            .select('id, valor_pago, valor_debito, forma_pagamento')
+            .eq('data', hoje)
+
+        if (vendasHojeErr) console.error('Erro ao carregar vendas hoje:', vendasHojeErr)
+        
+        const vendasHojeTotal = (vendasHojeArr || []).reduce((s, v) => {
+            const valor = v.forma_pagamento === 'caderneta' ? (Number(v.valor_debito) || 0) : (Number(v.valor_pago) || 0)
+            return s + valor
+        }, 0)
+        const vendasHojeCount = (vendasHojeArr || []).length
+
+        // 2) Vendas do mês
         const { data: vendasMesArr, error: vendasMesErr } = await supabase
             .from('vendas')
-            .select('valor_pago')
+            .select('id, valor_pago, valor_debito, forma_pagamento')
             .gte('data', inicioMes)
             .lte('data', hoje)
-            .neq('forma_pagamento', 'caderneta')
 
         if (vendasMesErr) console.error('Erro ao carregar vendas do mês:', vendasMesErr)
 
-        const totalMesGestao = (vendasMesArr || []).reduce((s, v) => s + ((v.valor_pago as number) || 0), 0)
+        const totalMesGestao = (vendasMesArr || []).reduce((s, v) => {
+            const valor = v.forma_pagamento === 'caderneta' ? (Number(v.valor_debito) || 0) : (Number(v.valor_pago) || 0)
+            return s + valor
+        }, 0)
+        const vendasMesCount = (vendasMesArr || []).length
 
-        // 3) Itens vendidos hoje (somar `quantidade` em `venda_itens` para vendas de hoje)
+        // 3) Itens vendidos hoje
         let itensVendidosHoje = 0
         if (vendasHojeCount > 0) {
-            // buscar ids das vendas de hoje
-            const { data: vendaIdsData } = await supabase
-                .from('vendas')
-                .select('id')
-                .eq('data', hoje)
-                .neq('forma_pagamento', 'caderneta')
-
-            const vendaIds = (vendaIdsData || []).map((r: any) => r.id).filter(Boolean)
+            const vendaIds = (vendasHojeArr || []).map((r: any) => r.id).filter(Boolean)
             if (vendaIds.length > 0) {
                 const { data: itensData, error: itensErr } = await supabase
                     .from('venda_itens')
@@ -91,22 +62,22 @@ export async function GET(request: Request) {
                     .in('venda_id', vendaIds)
 
                 if (itensErr) console.error('Erro ao buscar itens vendidos hoje:', itensErr)
-                itensVendidosHoje = (itensData || []).reduce((sum, it) => sum + ((it.quantidade as number) || 0), 0)
+                itensVendidosHoje = (itensData || []).reduce((sum, it) => sum + (Number(it.quantidade) || 0), 0)
             }
         }
 
-        // 4) Ticket médio hoje = totalPagoHoje / vendasCountHoje
+        // 4) Ticket médio hoje
         const ticketMedioHoje = vendasHojeCount > 0 ? vendasHojeTotal / vendasHojeCount : 0
 
         return NextResponse.json({
             vendasHoje: {
                 total: vendasHojeTotal,
                 count: vendasHojeCount,
-                fonte: caixaHoje ? 'caixa' : 'vendas'
+                fonte: 'vendas'
             },
             vendasMes: {
                 total: totalMesGestao,
-                count: (vendasMesArr || []).length,
+                count: vendasMesCount,
                 fonte: 'vendas'
             },
             itensVendidosHoje,

@@ -4,9 +4,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
-import { TrendingUp, DollarSign, Calculator, AlertTriangle, CheckCircle } from 'lucide-react'
+import { TrendingUp, DollarSign, Calculator, AlertTriangle, CheckCircle, Trash2, Search } from 'lucide-react'
 import { obterInicioMes } from '@/lib/dateUtils'
 import { fetchItensPorVendaIds, fetchVendasPorPeriodo } from '@/repositories/vendas.repository'
+import toast from 'react-hot-toast'
 
 import { processarLucratividadePorProduto } from '@/services/lucratividadeService'
 
@@ -64,6 +65,8 @@ export default function LucratividadePage() {
   // Estados para custos fixos
   const [custosFixos, setCustosFixos] = useState<CustoFixo[]>([])
   const [showCustoModal, setShowCustoModal] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [custoToDelete, setCustoToDelete] = useState<number | null>(null)
   const [editingCusto, setEditingCusto] = useState<CustoFixo | null>(null)
   const [formCusto, setFormCusto] = useState({
     nome: '',
@@ -75,6 +78,7 @@ export default function LucratividadePage() {
 
   // Estados para análise de lucratividade
   const [itensLucratividade, setItensLucratividade] = useState<ItemLucratividade[]>([])
+  const [buscaProduto, setBuscaProduto] = useState('')
 
   // Estados para controle de vendas
   const [vendasReais, setVendasReais] = useState<VendaRegistro[]>([])
@@ -98,8 +102,8 @@ export default function LucratividadePage() {
     try {
       setError(null)
       setLoading(true)
-      await carregarCustosFixos()
-      await carregarAnaliseLucratividade()
+      const custos = await carregarCustosFixos()
+      await carregarAnaliseLucratividade(custos)
     } catch (error) {
       console.error('Erro ao carregar dados:', error)
       setError('Erro ao carregar dados de lucratividade')
@@ -118,15 +122,18 @@ export default function LucratividadePage() {
 
       if (error) {
         setCustosFixos([])
-        return
+        return []
       }
-      setCustosFixos(data || [])
+      const listaCustos = data || []
+      setCustosFixos(listaCustos)
+      return listaCustos
     } catch (error) {
       setCustosFixos([])
+      return []
     }
   }
 
-  const carregarAnaliseLucratividade = async () => {
+  const carregarAnaliseLucratividade = async (custosIniciais?: CustoFixo[]) => {
     try {
       const dataInicio = obterDataInicioPeriodo(periodo)
       const dataFim = obterDataFimPeriodo(periodo)
@@ -180,11 +187,12 @@ export default function LucratividadePage() {
         supabase!.from('insumos').select('*'),
         supabase!.from('receitas').select('*').eq('ativo', true),
         supabase!.from('composicao_receitas').select('*'),
-        supabase!.from('precos_venda').select('*').eq('ativo', true),
+        supabase!.from('precos_venda').select('*'),
         supabase!.from('varejo').select('*').eq('ativo', true)
       ])
 
-      const custosFixosTotal = custosFixos.reduce((sum, custo) => sum + (custo.valor_mensal || 0), 0)
+      const listaParaCalculo = custosIniciais || custosFixos
+      const custosFixosTotal = listaParaCalculo.reduce((sum, custo) => sum + (custo.valor_mensal || 0), 0)
 
       // 2. Usar o novo serviço de lucratividade
       const { itens, resumo } = processarLucratividadePorProduto({
@@ -273,13 +281,13 @@ export default function LucratividadePage() {
   const handleSubmitCusto = async () => {
     try {
       if (!formCusto.nome || !formCusto.valor_mensal || !formCusto.data_vencimento) {
-        alert('Por favor, preencha todos os campos obrigatórios.')
+        toast.error('Por favor, preencha todos os campos obrigatórios.')
         return
       }
       const valor = parseFloat(formCusto.valor_mensal)
       const diaVencimento = parseInt(formCusto.data_vencimento)
       if (valor <= 0 || isNaN(diaVencimento) || diaVencimento < 1 || diaVencimento > 31) {
-        alert('Dados inválidos.')
+        toast.error('Dados inválidos.')
         return
       }
       const dadosCusto = {
@@ -293,27 +301,40 @@ export default function LucratividadePage() {
       if (editingCusto) {
         const { error } = await supabase!.from('custos_fixos').update(dadosCusto).eq('id', editingCusto.id)
         if (error) throw error
+        toast.success('Custo fixo atualizado com sucesso')
       } else {
         const { error } = await supabase!.from('custos_fixos').insert(dadosCusto)
         if (error) throw error
+        toast.success('Custo fixo adicionado com sucesso')
       }
       setShowCustoModal(false)
       setFormCusto({ nome: '', valor_mensal: '', categoria: 'outros', data_vencimento: '1', observacoes: '' })
       setEditingCusto(null)
-      await carregarCustosFixos()
+      const novosCustos = await carregarCustosFixos()
+      await carregarAnaliseLucratividade(novosCustos)
     } catch (error) {
-      alert('Erro ao salvar custo fixo.')
+      toast.error('Erro ao salvar custo fixo.')
     }
   }
 
-  const handleDeleteCusto = async (id: number) => {
-    if (!confirm('Tem certeza?')) return
+  const handleDeleteCusto = (id: number) => {
+    setCustoToDelete(id)
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDeleteCusto = async () => {
+    if (!custoToDelete) return
     try {
-      const { error } = await supabase!.from('custos_fixos').delete().eq('id', id)
+      const { error } = await supabase!.from('custos_fixos').delete().eq('id', custoToDelete)
       if (error) throw error
-      await carregarCustosFixos()
+      toast.success('custo fixo excluído com sucesso')
+      const novosCustos = await carregarCustosFixos()
+      await carregarAnaliseLucratividade(novosCustos)
     } catch (error) {
-      alert('Erro ao excluir.')
+      toast.error('Erro ao excluir.')
+    } finally {
+      setShowDeleteConfirm(false)
+      setCustoToDelete(null)
     }
   }
 
@@ -329,6 +350,10 @@ export default function LucratividadePage() {
     }
     return labels[categoria] || categoria
   }
+
+  const itensFiltrados = itensLucratividade.filter(item => 
+    item.item.toLowerCase().includes(buscaProduto.toLowerCase())
+  )
 
   if (loading) {
     return (
@@ -457,12 +482,24 @@ export default function LucratividadePage() {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-6 border-b">
-            <h2 className="text-lg font-semibold">Análise por Produto (Mais Vendidos 🔥)</h2>
+          <div className="p-6 border-b flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold">Análise por Produto</h2>
+            <div className="relative w-full md:w-64">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Pesquisar produto..."
+                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                value={buscaProduto}
+                onChange={(e) => setBuscaProduto(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <table className="min-w-full divide-y divide-gray-200 sticky-header">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Produto</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Qtd</th>
@@ -473,20 +510,28 @@ export default function LucratividadePage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {itensLucratividade.map((item, index) => (
-                  <tr key={index}>
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.item}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{item.quantidadeVendida}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{formatarMoeda(item.receitaTotal)}</td>
-                    <td className="px-6 py-4 text-sm text-red-600">{formatarMoeda(item.custoTotal)}</td>
-                    <td className="px-6 py-4 text-sm text-green-600">{formatarMoeda(item.lucroBruto)}</td>
-                    <td className="px-6 py-4 text-sm">
-                      <span className={`px-2 py-1 text-xs rounded-full ${item.margemLucro >= 30 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {formatarPercentual(item.margemLucro)}
-                      </span>
+                {itensFiltrados.length > 0 ? (
+                  itensFiltrados.map((item, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.item}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{item.quantidadeVendida}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{formatarMoeda(item.receitaTotal)}</td>
+                      <td className="px-6 py-4 text-sm text-red-600">{formatarMoeda(item.custoTotal)}</td>
+                      <td className="px-6 py-4 text-sm text-green-600">{formatarMoeda(item.lucroBruto)}</td>
+                      <td className="px-6 py-4 text-sm">
+                        <span className={`px-2 py-1 text-xs rounded-full ${item.margemLucro >= 30 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                          {formatarPercentual(item.margemLucro)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
+                      Nenhum produto encontrado.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -510,6 +555,38 @@ export default function LucratividadePage() {
               <div className="flex justify-end space-x-3 mt-6">
                 <button onClick={() => setShowCustoModal(false)} className="px-4 py-2 bg-gray-100 rounded">Cancelar</button>
                 <button onClick={handleSubmitCusto} className="px-4 py-2 bg-blue-600 text-white rounded">Salvar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-[60]">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+              <div className="flex items-center mb-4 text-red-600">
+                <AlertTriangle className="h-6 w-6 mr-2" />
+                <h3 className="text-lg font-bold">Confirmar Exclusão</h3>
+              </div>
+              <p className="text-gray-600 mb-6">
+                Tem certeza que deseja excluir este custo fixo? Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button 
+                  onClick={() => {
+                    setShowDeleteConfirm(false)
+                    setCustoToDelete(null)
+                  }} 
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={confirmDeleteCusto} 
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Excluir
+                </button>
               </div>
             </div>
           </div>

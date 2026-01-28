@@ -113,43 +113,93 @@ export default function GestaoOperadores() {
 
       // Buscar dados de caixa_diario para cada turno
       const caixaIds = Array.from(new Set(turnosRaw.map((t: any) => t.caixa_diario_id)));
+      const validCaixaIdsForCaixas = caixaIds.filter(id => id !== null && id !== undefined);
       const { data: caixas } = await supabase
         .from('caixa_diario')
-        .select('id, usuario_abertura, usuario_fechamento, valor_abertura, valor_fechamento, total_vendas, total_pix, total_dinheiro, total_debito, total_credito')
-        .in('id', caixaIds);
+        .select('id, usuario_abertura, usuario_fechamento, valor_abertura, valor_fechamento, total_vendas, total_pix, total_dinheiro, total_debito, total_credito, total_entradas, total_caderneta')
+        .in('id', validCaixaIdsForCaixas.length ? validCaixaIdsForCaixas : [0]);
       const caixaMap = new Map((caixas || []).map((c: any) => [c.id, c]));
 
-      // Buscar vendas por caixa_diario_id e operador (operador_nome)
+      // Buscar vendas do dia (mais robusto que filtrar por ID de caixa no query)
+      // Buscamos um range de 2 dias para garantir turnos que viram a noite
+      const startDate = new Date(filterDate);
+      startDate.setDate(startDate.getDate() - 1);
+      const startDateStr = startDate.toISOString().split('T')[0];
+      
       const vendasResp = await supabase
         .from('vendas')
-        .select('id, caixa_diario_id, valor_total, forma_pagamento, created_at, operador_nome')
-        .in('caixa_diario_id', caixaIds)
-        .gte('created_at', `${filterDate}T00:00:00`)
-        .lte('created_at', `${filterDate}T23:59:59`);
+        .select('id, caixa_diario_id, valor_total, forma_pagamento, created_at, operador_nome, usuario')
+        .gte('data', startDateStr)
+        .lte('data', filterDate);
       const vendas = vendasResp.data || [];
 
       // Buscar itens vendidos por venda
       const vendaIds = vendas.map((v: any) => v.id);
       const { data: itensVendidosRaw } = await supabase
         .from('venda_itens')
-        .select('venda_id, quantidade, preco_unitario, tipo, item_id')
-        .in('venda_id', vendaIds);
+        .select('venda_id, quantidade, preco_unitario, varejo_id, item_id, tipo')
+        .in('venda_id', vendaIds.length ? vendaIds : [0]);
 
       // Buscar nomes dos produtos/receitas
-      const receitaIds = (itensVendidosRaw || []).filter(i => i.tipo === 'receita').map(i => i.item_id);
-      const varejoIds = (itensVendidosRaw || []).filter(i => i.tipo === 'varejo').map(i => i.item_id);
-      const [receitasResp, varejoResp] = await Promise.all([
+      const receitaIds = Array.from(new Set((itensVendidosRaw || []).filter(i => i.tipo === 'receita').map(i => i.item_id)));
+      const varejoIds = Array.from(new Set((itensVendidosRaw || []).filter(i => i.tipo === 'varejo').map(i => i.varejo_id || i.item_id)));
+      
+      const [receitasResp, varejoResp, sangriasResp] = await Promise.all([
         receitaIds.length ? supabase.from('receitas').select('id, nome').in('id', receitaIds) : Promise.resolve({ data: [] }),
-        varejoIds.length ? supabase.from('varejo').select('id, nome').in('id', varejoIds) : Promise.resolve({ data: [] })
+        varejoIds.length ? supabase.from('varejo').select('id, nome').in('id', varejoIds) : Promise.resolve({ data: [] }),
+        supabase.from('fluxo_caixa').select('caixa_diario_id, valor, usuario, created_at')
+          .gte('data', startDateStr)
+          .lte('data', filterDate)
+          .eq('tipo', 'saida')
       ]);
       const receitasMap = new Map((receitasResp.data || []).map((r: any) => [r.id, r.nome]));
       const varejoMap = new Map((varejoResp.data || []).map((v: any) => [v.id, v.nome]));
+      const sangrias = sangriasResp.data || [];
 
       // Montar estrutura final dos turnos
       const turnosUI: TurnoUI[] = turnosRaw.map((t: any) => {
         const caixa = caixaMap.get(t.caixa_diario_id);
-        // Vendas deste operador neste caixa
-        const vendasTurno = vendas.filter((v: any) => v.caixa_diario_id === t.caixa_diario_id && v.operador_nome === t.operador_nome);
+        
+        // Normalização de datas para evitar problemas de fuso horário
+        const parseDate = (d: string | null) => {
+          if (!d) return null;
+          // Se a data não terminar com Z e não tiver offset, assume que é UTC vindo do banco
+          const iso = (d.includes('Z') || d.includes('+') || d.includes('-')) ? d : `${d.replace(' ', 'T')}Z`;
+          return new Date(iso).getTime();
+        };
+
+        const shiftStart = parseDate(t.data_inicio) || 0;
+        const shiftEnd = parseDate(t.data_fim) || new Date().getTime();
+
+        const vendasTurno = vendas.filter((v: any) => {
+          const vTime = new Date(v.created_at).getTime();
+          const opNomeTurno = (t.operador_nome || '').trim().toLowerCase();
+          const opNomeVenda = (v.operador_nome || v.usuario || '').trim().toLowerCase();
+
+          // 1. Match obrigatório: horário do turno (com margem de 10s para segurança)
+          const matchHorario = vTime >= (shiftStart - 10000) && vTime <= (shiftEnd + 10000);
+          
+          // 2. Vínculo por Caixa ou por Operador
+          const matchCaixa = v.caixa_diario_id && t.caixa_diario_id ? v.caixa_diario_id === t.caixa_diario_id : true;
+          const matchOperador = opNomeVenda === opNomeTurno || !opNomeVenda; 
+
+          return matchHorario && matchCaixa && matchOperador;
+        });
+
+        // Sangrias deste operador neste turno
+        const sangriasTurno = sangrias.filter((s: any) => {
+          const sTime = new Date(s.created_at).getTime();
+          const userSangria = (s.usuario || '').trim().toLowerCase();
+          const opNomeTurno = (t.operador_nome || '').trim().toLowerCase();
+
+          const matchHorario = sTime >= (shiftStart - 10000) && sTime <= (shiftEnd + 10000);
+          const matchCaixa = s.caixa_diario_id && t.caixa_diario_id ? s.caixa_diario_id === t.caixa_diario_id : true;
+          const matchOperador = userSangria === opNomeTurno || !userSangria;
+
+          return matchHorario && matchCaixa && matchOperador;
+        });
+        const sangriasTotal = sangriasTurno.reduce((acc: number, s: any) => acc + (s.valor || 0), 0);
+
         const vendasTotal = vendasTurno.reduce((acc: number, v: any) => acc + (v.valor_total || 0), 0);
         // Itens vendidos deste operador
         const vendaIdsTurno = vendasTurno.map((v: any) => v.id);
@@ -157,7 +207,7 @@ export default function GestaoOperadores() {
         // Agrupar itens por nome
         const itensVendidos = Object.values(
           itensTurno.reduce((acc: any, item: any) => {
-            const nome = item.tipo === 'receita' ? receitasMap.get(item.item_id) : varejoMap.get(item.item_id);
+            const nome = item.tipo === 'receita' ? receitasMap.get(item.item_id) : varejoMap.get(item.varejo_id || item.item_id);
             if (!nome) return acc;
             if (!acc[nome]) acc[nome] = { nome, qtd: 0, total: 0 };
             acc[nome].qtd += item.quantidade;
@@ -168,25 +218,34 @@ export default function GestaoOperadores() {
         // Pagamentos
         const pagamentos = { dinheiro: 0, pix: 0, cartao: 0 };
         vendasTurno.forEach((v: any) => {
-          if (v.forma_pagamento === 'dinheiro') pagamentos.dinheiro += v.valor_total || 0;
-          if (v.forma_pagamento === 'pix') pagamentos.pix += v.valor_total || 0;
-          if (v.forma_pagamento === 'cartao_debito' || v.forma_pagamento === 'cartao_credito') pagamentos.cartao += v.valor_total || 0;
+          const forma = String(v.forma_pagamento || '').toLowerCase();
+          const valor = Number(v.valor_total || 0);
+          if (forma.includes('dinheiro')) pagamentos.dinheiro += valor;
+          else if (forma.includes('pix')) pagamentos.pix += valor;
+          else if (forma.includes('cartao') || forma.includes('debito') || forma.includes('credito')) pagamentos.cartao += valor;
         });
+
+        // Tentar buscar saldo contado se for o fechamento final do caixa
+        const isUltimoTurno = t.status === 'finalizado' && caixa?.usuario_fechamento === t.operador_nome;
+        const saldoInformado = isUltimoTurno ? (caixa?.valor_fechamento || 0) : (t.valor_fechamento || 0);
+        
+        const sistemaEsperava = vendasTotal - sangriasTotal + (t.valor_abertura || (caixa?.valor_abertura || 0));
+
         return {
           id: t.id,
           operador: t.operador_nome,
-          caixa: t.caixa_diario_id ? `Caixa ${t.caixa_diario_id}` : '',
+          caixa: t.caixa_diario_id ? `Caixa #${t.caixa_diario_id}` : 'Sem Caixa',
           inicio: t.data_inicio,
           fim: t.data_fim,
           tipoEncerramento: t.status === 'finalizado' ? 'fechamento_caixa' : t.status === 'aberto' ? null : t.status,
-          saldoInicial: caixa?.valor_abertura || 0,
+          saldoInicial: t.valor_abertura || (caixa?.valor_abertura || 0),
           vendas: vendasTotal,
-          sangrias: 0, // TODO: buscar sangrias se necessário
-          saldoEsperado: caixa?.valor_fechamento || 0,
-          saldoContado: caixa?.valor_fechamento || 0,
-          diferenca: (caixa?.valor_fechamento || 0) - (caixa?.total_vendas || 0),
+          sangrias: sangriasTotal,
+          saldoEsperado: sistemaEsperava,
+          saldoContado: saldoInformado,
+          diferenca: t.diferenca || (saldoInformado ? (saldoInformado - sistemaEsperava) : 0),
           pagamentos,
-          cancelamentos: 0, // TODO: buscar cancelamentos se necessário
+          cancelamentos: 0, 
           itensVendidos,
         };
       });

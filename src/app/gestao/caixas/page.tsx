@@ -91,7 +91,7 @@ export default function CaixasPage() {
       let query = supabase!
         .from('caixa_diario')
         .select('*')
-        .order('data', { ascending: false })
+        .order('created_at', { ascending: false })
 
       if (dataInicio) {
         query = query.gte('data', dataInicio)

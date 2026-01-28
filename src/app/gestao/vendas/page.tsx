@@ -171,8 +171,8 @@ export default function VendasPage() {
 
       // Carregar nomes dos produtos separadamente
       if (data && data.length > 0) {
-        const receitaIds = data.filter(item => item.tipo === 'receita').map(item => item.item_id)
-        const insumoIds = data.filter(item => item.tipo === 'varejo').map(item => item.item_id)
+        const receitaIds = data.filter(item => item.produto_id).map(item => item.produto_id)
+        const varejoIds = data.filter(item => item.varejo_id).map(item => item.varejo_id)
 
         let receitas: { id: number; nome: string }[] = []
         let insumos: { id: number; nome: string }[] = []
@@ -186,11 +186,11 @@ export default function VendasPage() {
           receitas = receitasData || []
         }
 
-        if (insumoIds.length > 0) {
+        if (varejoIds.length > 0) {
           const { data: insumosData } = await supabase!
             .from('insumos')
             .select('id, nome')
-            .in('id', insumoIds)
+            .in('id', varejoIds)
           insumos = insumosData || []
         }
 
@@ -200,10 +200,10 @@ export default function VendasPage() {
 
         // Adicionar nomes aos itens
         data.forEach(item => {
-          if (item.tipo === 'receita') {
-            item.nome_produto = receitasMap.get(item.item_id) || `Receita ${item.item_id}`
+          if (item.produto_id) {
+            item.nome_produto = receitasMap.get(item.produto_id) || `Receita ${item.produto_id}`
           } else {
-            item.nome_produto = insumosMap.get(item.item_id) || `Produto ${item.item_id}`
+            item.nome_produto = insumosMap.get(item.varejo_id) || `Produto ${item.varejo_id}`
           }
         })
       }
@@ -235,7 +235,7 @@ export default function VendasPage() {
         const vendasMap = new Map(vendasData?.map(v => [v.id, v]) || [])
 
         data.forEach((item: Record<string, unknown>) => {
-          const itemKey = `${item.tipo}_${item.item_id}`
+          const itemKey = `${item.produto_id ? 'receita' : 'varejo'}_${item.produto_id || item.varejo_id}`
           const vendaId = item.venda_id as number
           const venda = vendasMap.get(vendaId)
 

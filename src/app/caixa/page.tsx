@@ -38,7 +38,7 @@ import { clientConfig } from '@/lib/config'
 import AbrirCaixaModal from '@/components/AbrirCaixaModal'
 import TurnoOperadorModal from '@/components/TurnoOperadorModal'
 import { trocarOperador } from '@/services/turnoOperadorService'
-import { getTurnoOperadorAtual } from '@/repositories/turnoOperadorRepository'
+import { getTurnoOperadorAtual, finalizarTurnoOperador } from '@/repositories/turnoOperadorRepository'
 
 // Se true, o banco (trigger) fará a atualização de caixa automaticamente.
 // Quando habilitado, o cliente NÃO fará updates em `caixa_diario`, `caixa_movimentacoes` ou `fluxo_caixa`.
@@ -186,36 +186,49 @@ export default function PDVPage() {
     }
 
     // Função reutilizável para restaurar caixa aberto (pode ser chamada em mount e em focus)
-    const restaurarCaixaAberto = async (opts?: { changeView?: boolean }) => {
+    async function restaurarCaixaAberto(opts?: { changeView?: boolean }) {
         const changeView = opts?.changeView ?? true
         try {
-            const hojeISO = getLocalDateString()
-            // Busca apenas o caixa ABERTO do dia
-            const { data, error } = await getSupabase()
+            // Busca TODOS os caixas abertos para detectar inconsistências
+            const { data: openCaixas, error } = await getSupabase()
                 .from('caixa_diario')
                 .select('*')
-                .eq('data', hojeISO)
                 .eq('status', 'aberto')
                 .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle()
 
-            if (error || !data) {
+            if (error) throw error
+
+            if (!openCaixas || openCaixas.length === 0) {
                 setCaixaAberto(false)
                 if (changeView && view !== 'caderneta') setView('abertura')
-                return
+                return null
+            }
+
+            // Se houver mais de um caixa aberto, mantemos apenas o mais recente
+            // e encerramos os outros automaticamente para limpar o banco.
+            let activeCaixa = openCaixas[0]
+            if (openCaixas.length > 1) {
+                console.warn(`Detectados ${openCaixas.length} caixas abertos. Corrigindo inconsistência...`)
+                const idsParaFechar = openCaixas.slice(1).map(c => c.id)
+                await getSupabase()
+                    .from('caixa_diario')
+                    .update({ 
+                        status: 'fechado', 
+                        observacoes_fechamento: 'Fechamento automático por detecção de múltiplos caixas abertos (limpeza de sessão)' 
+                    })
+                    .in('id', idsParaFechar)
             }
 
             setCaixaAberto(true)
-            setSaldoInicial(Number(data.valor_abertura) || 0)
-            setCaixaDiaISO(data.data || getLocalDateString())
-            setCaixaDiarioId(data.id || null)
+            setSaldoInicial(Number(activeCaixa.valor_abertura) || 0)
+            setCaixaDiaISO(activeCaixa.data || getLocalDateString())
+            setCaixaDiarioId(activeCaixa.id || null)
 
             // Busca o operador do turno atual (status 'aberto')
-            let operadorNome = data.usuario_abertura || '';
-            if (data.id) {
+            let operadorNome = activeCaixa.usuario_abertura || '';
+            if (activeCaixa.id) {
                 try {
-                    const turno = await getTurnoOperadorAtual(data.id);
+                    const turno = await getTurnoOperadorAtual(activeCaixa.id);
                     if (turno && turno.operador_nome) {
                         operadorNome = turno.operador_nome;
                     }
@@ -226,14 +239,14 @@ export default function PDVPage() {
             setOperador(operadorNome);
 
             try {
-                if (data.data) {
-                    const d = new Date(data.data + 'T00:00:00')
+                if (activeCaixa.data) {
+                    const d = new Date(activeCaixa.data + 'T00:00:00')
                     setDataHoje(d.toLocaleDateString('pt-BR'))
                 } else {
                     setDataHoje(new Date().toLocaleDateString('pt-BR'))
                 }
-                if (data.created_at) {
-                    setHoraAbertura(new Date(data.created_at).toLocaleTimeString('pt-BR'))
+                if (activeCaixa.created_at) {
+                    setHoraAbertura(new Date(activeCaixa.created_at).toLocaleTimeString('pt-BR'))
                 } else {
                     setHoraAbertura(new Date().toLocaleTimeString('pt-BR'))
                 }
@@ -242,10 +255,12 @@ export default function PDVPage() {
                 setHoraAbertura(new Date().toLocaleTimeString('pt-BR'))
             }
             if (changeView && view !== 'caderneta') setView('venda')
+            return activeCaixa
         } catch (err) {
             setCaixaAberto(false)
             if (changeView && view !== 'caderneta') setView('abertura')
             console.error('Falha ao restaurar caixa aberto:', err)
+            return null
         }
     }
 
@@ -268,15 +283,17 @@ export default function PDVPage() {
         }
     }
 
-    const refreshAll = async (opts?: { changeView?: boolean }) => {
+    async function refreshAll(opts?: { changeView?: boolean }) {
         const changeView = opts?.changeView ?? true
         setIsRefreshing(true)
         try {
+            await carregarProdutos();
+            const caixa = await restaurarCaixaAberto({ changeView });
+            const idToUse = caixa?.id || caixaDiarioId;
+            
             await Promise.all([
-                carregarProdutos(),
-                carregarVendasHoje(caixaDiaISO || undefined),
-                restaurarCaixaAberto({ changeView }),
-                carregarSaidasDoDia(caixaDiaISO || undefined)
+                carregarVendasHoje(idToUse),
+                carregarSaidasDoDia(idToUse)
             ])
             // Também atualiza a listagem de caixas do dia (para agregação/report)
             try { await carregarCaixasDoDia(caixaDiaISO || undefined) } catch (e) { console.warn('carregarCaixasDoDia falhou:', e) }
@@ -575,8 +592,9 @@ export default function PDVPage() {
     const scanningLockRef = useRef<number>(0)
     const audioCtxRef = useRef<AudioContext | null>(null)
 
-    // refs para evitar re-subscription e ler caixaDiaISO atual
+    // refs para evitar re-subscription e ler valores atuais
     const carregarVendasHojeRef = useRef<any>(null)
+    const caixaDiarioIdRef = useRef<number | null>(null)
     const caixaDiaISORef = useRef<string | null>(null)
     // Timeout ref usado para debouncing de recarga de vendas ao receber eventos realtime
     const refreshVendasTimeoutRef = useRef<number | null>(null)
@@ -586,52 +604,46 @@ export default function PDVPage() {
     }, [carregarVendasHoje])
 
     useEffect(() => {
+        caixaDiarioIdRef.current = caixaDiarioId
+    }, [caixaDiarioId])
+
+    useEffect(() => {
         caixaDiaISORef.current = caixaDiaISO
     }, [caixaDiaISO])
 
-    // Carrega histórico de vendas do dia baseado na coluna DATE `data` (corrige timezone)
-    async function carregarVendasHoje(baseDateISO?: string) {
+    // Carrega histórico de vendas do dia baseado na sessão do caixa (caixa_diario_id)
+    async function carregarVendasHoje(caixaId?: number | null) {
         try {
-            const base = parseBaseDateToLocal(baseDateISO)
-            // Usa a coluna DATE `data` no formato YYYY-MM-DD (data local) para evitar problemas de timezone
-            const y = base.getFullYear()
-            const m = String(base.getMonth() + 1).padStart(2, '0')
-            const day = String(base.getDate()).padStart(2, '0')
-            const dateStr = `${y}-${m}-${day}`
+            const idToUse = caixaId || caixaDiarioId
+            if (!idToUse) {
+                setVendasHoje([])
+                return
+            }
 
-            // Busca mais robusta: aceita vendas onde a coluna `data` bate com a data-base
-            // ou onde `created_at` caiu dentro do intervalo do dia (ajuda com timezone e carregamentos imediatos)
-            const startOfDay = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, 0, 0, 0).toISOString()
-            const endOfDay = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 23, 59, 59, 999).toISOString()
-
-            console.debug('carregarVendasHoje: dateStr, startOfDay, endOfDay', { dateStr, startOfDay, endOfDay })
+            console.debug('carregarVendasHoje: buscando vendas para o caixa_diario_id', idToUse)
             const { data, error } = await getSupabase()
                 .from('vendas')
                 .select('*')
-                // Correção: usar o operador lógico `and(...)` dentro do `or(...)` para
-                // representar: data = dateStr OR (created_at >= startOfDay AND created_at <= endOfDay)
-                .or(`data.eq.${dateStr},and(created_at.gte.${startOfDay},created_at.lte.${endOfDay})`)
+                .eq('caixa_diario_id', idToUse)
                 .order('created_at', { ascending: false })
 
             if (error) throw error
 
             if (data) {
-                try {
-                    const formas = Array.from(new Set((data as any[]).map(d => String(d.forma_pagamento || '').toLowerCase())))
-                    console.debug('carregarVendasHoje: vendas retornadas:', (data as any[]).length, 'formas:', formas)
-                } catch (e) { console.debug('carregarVendasHoje: erro ao logar formas', e) }
                 setVendasHoje(data.map((v: any) => ({
                     id: v.id,
                     data: v.created_at ? new Date(v.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '---',
                     total: v.valor_total || 0,
-                    forma_pagamento: (v.forma_pagamento || '').replace('_', ' ')
+                    forma_pagamento: (v.forma_pagamento || '').replace('_', ' '),
+                    operador_nome: v.operador_nome || v.usuario,
+                    created_at: v.created_at
                 })))
-                // Buscar pagamentos registrados no fluxo_caixa como 'caderneta' para essa data
+                // Buscar pagamentos registrados no fluxo_caixa como 'caderneta' para essa sessão de caixa
                 try {
                     const { data: pagamentosFluxo, error: errPag } = await getSupabase()
                         .from('fluxo_caixa')
                         .select('valor')
-                        .eq('data', dateStr)
+                        .eq('caixa_diario_id', idToUse)
                         .eq('tipo', 'entrada')
                         .eq('categoria', 'caderneta')
                     if (!errPag && pagamentosFluxo) {
@@ -647,32 +659,22 @@ export default function PDVPage() {
                 setVendasHoje([])
             }
         } catch (err: any) {
-            // Log mais informativo para ajudar debugging (Supabase retorna objetos não-enumeráveis às vezes)
-            try {
-                console.error('Erro ao carregar vendas do dia:', err)
-                console.error('Erro (stringified):', JSON.stringify(err))
-            } catch (e) {
-                console.error('Erro ao serializar erro de vendas:', e)
-            }
-            // Propriedades comuns do Supabase
-            if (err) {
-                console.error('err.message:', err?.message)
-                console.error('err.code:', err?.code)
-                console.error('err.details:', err?.details)
-                console.error('err.hint:', err?.hint)
-            }
+            console.error('Erro ao carregar vendas do caixa:', err)
             setVendasHoje([])
         }
     }
 
-    // Carrega saídas registradas no `fluxo_caixa` para a data do caixa
-    async function carregarSaidasDoDia(baseDateISO?: string) {
+    async function carregarSaidasDoDia(caixaId?: number | null) {
         try {
-            const dataCaixa = baseDateISO || caixaDiaISO || getLocalDateString()
+            const idToUse = caixaId || caixaDiarioId
+            if (!idToUse) {
+                setSaidasDoDia([])
+                return
+            }
             const { data, error } = await getSupabase()
                 .from('fluxo_caixa')
                 .select('id, data, usuario, valor, observacoes, created_at')
-                .eq('data', dataCaixa)
+                .eq('caixa_diario_id', idToUse)
                 .eq('tipo', 'saida')
                 .order('created_at', { ascending: false })
 
@@ -744,10 +746,12 @@ export default function PDVPage() {
         // Primeiro restaura o estado do caixa (permitindo trocar para 'venda' imediatamente se estiver aberto)
         // Depois carrega produtos e vendas em background para evitar bloquear a navegação inicial.
         ;(async () => {
-            await restaurarCaixaAberto({ changeView: true })
+            const caixa = await restaurarCaixaAberto({ changeView: true })
+            const idToUse = caixa?.id
             // Carrega o resto dos dados sem forçar troca de view
             carregarProdutos().catch(() => {})
-            carregarVendasHoje(undefined).catch(() => {})
+            carregarVendasHoje(idToUse).catch(() => {})
+            carregarSaidasDoDia(idToUse).catch(() => {})
         })()
 
         return () => clearInterval(timer)
@@ -760,7 +764,9 @@ export default function PDVPage() {
     useEffect(() => {
         const onVisible = () => {
             carregarProdutos()
-            carregarVendasHoje(caixaDiaISO || undefined)
+            const idToUse = caixaDiarioId
+            carregarVendasHoje(idToUse)
+            carregarSaidasDoDia(idToUse)
             carregarCaixasDoDia(caixaDiaISO || undefined)
             try {
                 // Atualizar lista de clientes/movimentações caso tenham sido alteradas na aba de gestão
@@ -788,23 +794,23 @@ export default function PDVPage() {
     useEffect(() => {
         if (view === 'venda' || view === 'historico') {
             carregarProdutos()
-            carregarVendasHoje(caixaDiaISO || undefined)
+            carregarVendasHoje(caixaDiarioId)
         }
-    }, [view, caixaDiaISO])
+    }, [view, caixaDiarioId])
 
     // Ao abrir a view 'saida' ou 'caixa' (aba principal do caixa),
     // recarrega as saídas do dia para garantir que o total exibido
     // esteja sempre atualizado mesmo se o usuário não acessar a aba 'Saída'.
     useEffect(() => {
         if (view === 'saida' || view === 'caixa') {
-            carregarSaidasDoDia(caixaDiaISO || undefined)
+            carregarSaidasDoDia(caixaDiarioId)
         }
-    }, [view, caixaDiaISO])
+    }, [view, caixaDiarioId])
 
     // --- Integração com Supabase (Dados Reais) ---
 
     // Carrega produtos do estoque de varejo (mesma lógica da pág. código de barras)
-    const carregarProdutos = async () => {
+    async function carregarProdutos() {
         try {
             const { data, error } = await getSupabase()
                 .from('varejo')
@@ -832,7 +838,7 @@ export default function PDVPage() {
     const handleRefreshRelatorio = async () => {
         setIsRefreshing(true)
         try {
-            await carregarVendasHoje(caixaDiaISO || undefined)
+            await carregarVendasHoje(caixaDiarioId)
             showToast('Relatório atualizado', 'success')
         } catch (e) {
             console.error('Erro ao atualizar relatório:', e)
@@ -869,7 +875,12 @@ export default function PDVPage() {
                                 const d = String(base.getDate()).padStart(2, '0')
                                 const baseStr = `${y}-${m}-${d}`
 
-                                if (!caixaDiaISORef.current || recDate === baseStr) {
+                                // Verifica se a venda pertence ao caixa atual (preferencialmente por ID, fallback por data)
+                                const pertenceAoCaixa = record.caixa_diario_id 
+                                    ? record.caixa_diario_id === caixaDiarioIdRef.current
+                                    : (!caixaDiaISORef.current || recDate === baseStr)
+
+                                if (pertenceAoCaixa) {
                                     const hora = record.created_at ? new Date(record.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                                     const novaVenda = {
                                         id: record.id,
@@ -892,7 +903,7 @@ export default function PDVPage() {
                         // Fallback: agendar recarga curta para atualizar relatório (debounce 250ms)
                         try { if (refreshVendasTimeoutRef.current) { window.clearTimeout(refreshVendasTimeoutRef.current); refreshVendasTimeoutRef.current = null } } catch {}
                         refreshVendasTimeoutRef.current = window.setTimeout(() => {
-                            carregarVendasHojeRef.current?.(caixaDiaISORef.current || undefined).catch(() => { })
+                            carregarVendasHojeRef.current?.(caixaDiarioIdRef.current).catch(() => { })
                         }, 250)
                     } catch (e) {
                         console.warn('Erro no handler realtime vendas:', e)
@@ -1181,6 +1192,8 @@ export default function PDVPage() {
                     desconto: descontoAplicado,
                     forma_pagamento: formaPagamentoDB,
                     usuario: operador || null,
+                    operador_nome: operador || null,
+                    caixa_diario_id: caixaDiarioId,
                     status: 'finalizada',
                     cliente_caderneta_id: clienteCadernetaSelecionado ? Number(clienteCadernetaSelecionado) : null
                 })
@@ -1191,15 +1204,13 @@ export default function PDVPage() {
 
             if (!vendaData) throw new Error('Erro: Venda criada mas sem dados de retorno.')
 
-            // 2. Registrar Itens na tabela 'venda_itens' (schema atualizado: sem coluna 'tipo')
+            // 2. Registrar Itens na tabela 'venda_itens'
             const itensVenda = carrinho.map(item => ({
                 venda_id: vendaData.id,
                 varejo_id: item.id,
                 quantidade: item.qtdCarrinho,
                 preco_unitario: item.preco,
                 subtotal: item.qtdCarrinho * item.preco
-                // Observação: 'produto_id' é opcional e referencia 'produtos'.
-                // Como estamos usando itens de 'varejo', omitimos para evitar erro de FK.
             }))
 
             const { error: itensError } = await getSupabase()
@@ -1789,8 +1800,8 @@ export default function PDVPage() {
         // Fixa o dia do turno para relatórios (data local YYYY-MM-DD)
         const agoraLocal = getLocalDateString()
         setCaixaDiaISO(agoraLocal)
-        // Recarrega relatório exclusivamente para o dia fixado
-        carregarVendasHoje(agoraLocal)
+        // Recarrega relatório exclusivamente para o novo turno (inicialmente vazio)
+        carregarVendasHoje(null)
         setView('venda')
             // Persiste abertura do caixa no Supabase (cria linha com status 'aberto')
             try {
@@ -1952,15 +1963,34 @@ export default function PDVPage() {
                     status: 'fechado',
                     valor_abertura: Number((saldoInicial || 0)),
                     valor_fechamento: Number((totalCorrigidoCents / 100).toFixed(2)),
-                    total_entradas: Number((totalCorrigidoCents / 100).toFixed(2)),
-                    total_caderneta: Number((metricasCaixa.caderneta || 0)),
-                    valor_saidas: 0,
+                    
+                    // Totais esperados pelo sistema (baseados nas vendas registradas)
+                    total_entradas: Number((metricasTotalEntradasCents / 100).toFixed(2)),
+                    total_vendas: Number((metricasCaixa.totalGeral || 0).toFixed(2)),
+                    total_caderneta: Number((metricasCaixa.caderneta || 0).toFixed(2)),
+                    total_dinheiro: Number((metricasCaixa.dinheiro || 0).toFixed(2)),
+                    total_pix: Number((metricasCaixa.pix || 0).toFixed(2)),
+                    total_debito: Number((metricasCaixa.debito || 0).toFixed(2)),
+                    total_credito: Number((metricasCaixa.credito || 0).toFixed(2)),
+                    
+                    // Valores informados pelo funcionário na conferência
+                    valor_dinheiro_informado: Number((totalDinheiroCorrigidoCents / 100).toFixed(2)),
+                    valor_pix_informado: Number((totalPixCorrigidoCents / 100).toFixed(2)),
+                    valor_debito_informado: Number((totalDebitoCorrigidoCents / 100).toFixed(2)),
+                    valor_credito_informado: Number((totalCreditoCorrigidoCents / 100).toFixed(2)),
+                    
+                    // Diferenças calculadas
                     diferenca: Number((diferencaCents / 100).toFixed(2)),
-                    total_pix: Number((totalPixCorrigidoCents / 100).toFixed(2)),
-                    total_debito: Number((totalDebitoCorrigidoCents / 100).toFixed(2)),
-                    total_credito: Number((totalCreditoCorrigidoCents / 100).toFixed(2)),
-                    total_dinheiro: Number((totalDinheiroCorrigidoCents / 100).toFixed(2)),
-                    usuario_fechamento: operador || null
+                    diferenca_dinheiro: Number(((ajusteDinheiroCents - Math.round((metricasCaixa.dinheiro || 0) * 100)) / 100).toFixed(2)),
+                    diferenca_pix: Number(((ajustePixCents - Math.round((metricasCaixa.pix || 0) * 100)) / 100).toFixed(2)),
+                    diferenca_debito: Number(((ajusteDebitoCents - Math.round((metricasCaixa.debito || 0) * 100)) / 100).toFixed(2)),
+                    diferenca_credito: Number(((ajusteCreditoCents - Math.round((metricasCaixa.credito || 0) * 100)) / 100).toFixed(2)),
+                    
+                    // Saídas e Usuário
+                    valor_saidas: Number(totalSaidasDoDia || 0),
+                    total_saidas: Number(totalSaidasDoDia || 0),
+                    usuario_fechamento: operador || null,
+                    data_fechamento: new Date().toISOString()
                 }
         try {
             const dataISO = getLocalDateString()
@@ -1969,6 +1999,7 @@ export default function PDVPage() {
             setModalFechamento(false)
             setCaixaAberto(false)
             setView('abertura')
+            setOperador('')
             setCarrinho([])
             setVendasHoje([])
             setCaixaDiarioId(null)
@@ -1976,68 +2007,86 @@ export default function PDVPage() {
             setHoraAbertura('')
             showToast('Processando fechamento do caixa...', 'info')
 
-            // Verifica se já existe fechamento para o dia (em background)
-            const { data: closed, error: closedErr } = await getSupabase()
-                .from('caixa_diario')
-                .select('id, status')
-                .eq('data', dataISO)
-                .eq('status', 'fechado')
-                .limit(1)
-                .single()
+            if (!caixaDiarioId) {
+                showToast('Erro: ID do caixa não encontrado.', 'error')
+                return
+            }
 
-            let updateOk = false
-            if (caixaDiarioId) {
-                const { error: upErr, data: upData } = await getSupabase()
-                    .from('caixa_diario')
-                    .update<Database['public']['Tables']['caixa_diario']['Update']>(payload)
-                    .eq('id', caixaDiarioId)
-                    .select()
-                    .single()
-                if (upErr) {
-                    showToast('Erro ao fechar o caixa (update por id)', 'error')
-                    console.error('Erro ao fechar caixa (update por id):', upErr)
-                    return
-                }
-                updateOk = !!upData
-            } else {
-                const { data: open, error: openErr } = await getSupabase()
-                    .from('caixa_diario')
-                    .select('id')
-                    .eq('data', dataISO)
-                    .eq('status', 'aberto')
-                    .limit(1)
-                    .single()
-                if (!openErr && open && open.id) {
-                    const { error: upErr, data: upData } = await getSupabase()
-                        .from('caixa_diario')
-                        .update<Database['public']['Tables']['caixa_diario']['Update']>(payload)
-                        .eq('id', open.id)
-                        .select()
-                        .single()
-                    if (upErr) {
-                        showToast('Erro ao fechar o caixa (update por data)', 'error')
-                        console.error('Erro ao fechar caixa (update por data):', upErr)
-                        return
-                    }
-                    updateOk = !!upData
-                } else {
-                    // Não criar um novo registro de caixa ao fechar: o fechamento
-                    // deve atualizar um caixa existente. Se não houver caixa aberto,
-                    // abortamos e avisamos o operador.
-                    showToast('Nenhum caixa aberto encontrado para hoje. Não é permitido criar fechamento sem abertura prévia.', 'error')
-                    return
-                }
+            // 1. Fecha o caixa atual no banco
+            const { error: upErr } = await getSupabase()
+                .from('caixa_diario')
+                .update<Database['public']['Tables']['caixa_diario']['Update']>({
+                    ...payload,
+                    status: 'fechado'
+                })
+                .eq('id', caixaDiarioId)
+                .eq('status', 'aberto') // Segurança extra: só atualiza se ainda estiver aberto
+
+            if (upErr) {
+                showToast('Erro ao fechar o caixa no banco.', 'error')
+                console.error('Erro ao fechar caixa:', upErr)
+                return
             }
-            if (updateOk) {
-                showToast('Caixa fechado no banco com sucesso', 'success')
-            } else {
-                showToast('Atenção: fechamento pode não ter sido salvo no banco', 'warning')
+
+            // 2. Finaliza o turno do operador atual
+            try {
+                const turnoAtual = await getTurnoOperadorAtual(caixaDiarioId)
+                if (turnoAtual) {
+                    // Calcular totais do turno para auditoria
+                    const start = new Date(turnoAtual.data_inicio).getTime();
+                    const end = new Date().getTime();
+                    const opNome = (turnoAtual.operador_nome || '').trim().toLowerCase();
+
+                    const vendasTurno = vendasHoje.filter(v => {
+                        const vTime = v.created_at ? new Date(v.created_at).getTime() : 0;
+                        const vOp = (v.operador_nome || '').trim().toLowerCase();
+                        return vOp === opNome && vTime >= (start - 5000) && vTime <= (end + 5000);
+                    });
+
+                    const audit = {
+                        total_vendas: vendasTurno.reduce((acc, v) => acc + v.total, 0),
+                        total_dinheiro: vendasTurno.filter(v => v.forma_pagamento.toLowerCase().includes('dinheiro')).reduce((acc, v) => acc + v.total, 0),
+                        total_pix: vendasTurno.filter(v => v.forma_pagamento.toLowerCase().includes('pix')).reduce((acc, v) => acc + v.total, 0),
+                        total_debito: vendasTurno.filter(v => v.forma_pagamento.toLowerCase().includes('debito')).reduce((acc, v) => acc + v.total, 0),
+                        total_credito: vendasTurno.filter(v => v.forma_pagamento.toLowerCase().includes('credito')).reduce((acc, v) => acc + v.total, 0),
+                        total_caderneta: vendasTurno.filter(v => v.forma_pagamento.toLowerCase().includes('caderneta')).reduce((acc, v) => acc + v.total, 0),
+                        valor_fechamento: totalCorrigido
+                    };
+
+                    await finalizarTurnoOperador(turnoAtual.id, audit);
+                }
+            } catch (turnoErr) {
+                console.warn('Erro ao finalizar turno do operador durante fechamento de caixa:', turnoErr)
             }
-            // Força refresh para garantir que o estado local reflita o banco
-            await refreshAll({ changeView: true })
+
+            showToast('Caixa fechado com sucesso!', 'success')
+
+            // 3. Limpa estados e garante que a interface mostre o modal de abertura
+            setConfDinheiro('')
+            setConfPix('')
+            setConfDebito('')
+            setConfCredito('')
+            setFechamentoFieldErrors({})
+            setFechamentoError('')
+            
+            // Forçamos o estado de fechado e view de abertura
+            setCaixaAberto(false)
+            setCaixaDiarioId(null)
+            setView('abertura')
+            setOperador('')
+            setSaldoInicial(0)
+            setVendasHoje([])
+            setSaidasDoDia([])
+            
+            // Recarrega apenas produtos e lista de caixas (histórico)
+            await Promise.all([
+                carregarProdutos(),
+                carregarCaixasDoDia()
+            ])
+            
         } catch (err) {
-            showToast('Erro ao fechar o caixa', 'error')
-            console.error('Erro ao fechar o caixa:', err)
+            showToast('Erro crítico ao fechar o caixa', 'error')
+            console.error('Erro no fechamento de caixa:', err)
         }
     }
 
@@ -2061,10 +2110,10 @@ export default function PDVPage() {
 
     // Quando o dia-base do caixa mudar, atualiza o relatório
     useEffect(() => {
-        if (caixaDiaISO) {
-            carregarVendasHoje(caixaDiaISO)
+        if (caixaDiarioId) {
+            carregarVendasHoje(caixaDiarioId)
         }
-    }, [caixaDiaISO])
+    }, [caixaDiarioId])
 
     const handlePagamentoDinheiro = () => {
         const valor = parseFloat(valorRecebido.replace(',', '.')) || 0

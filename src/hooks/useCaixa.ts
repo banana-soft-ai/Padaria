@@ -18,81 +18,70 @@ export function useCaixa() {
       const hoje = obterDataLocal()
       console.log('🔍 Carregando caixa - Status online:', isOnline)
       toast.dismiss()
-      toast.loading('Carregando caixa...')
 
-        if (isOnline) {
-        // Online: buscar do Supabase
-        console.log('🌐 Modo online - buscando dados do Supabase')
-        const { data, error } = await supabase
+      if (isOnline) {
+        // Busca TODOS os caixas abertos para detectar inconsistências
+        const { data: openCaixas, error } = await supabase
           .from('caixa_diario')
           .select('*')
-          .eq('data', hoje)
+          .eq('status', 'aberto')
           .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
 
-        if (error && error.code === 'PGRST116') {
-          console.log('📊 Nenhum caixa encontrado para hoje')
-          toast.dismiss()
-          toast('Nenhum caixa encontrado para hoje', { icon: '📊' })
+        if (error) throw error
+
+        if (!openCaixas || openCaixas.length === 0) {
           setCaixaHoje(null)
-        } else if (error) {
-          console.error('❌ Erro ao carregar caixa:', error)
-          toast.dismiss()
-          toast.error('Erro ao carregar caixa')
-          setCaixaHoje(null)
-        } else {
-          console.log('✅ Caixa encontrado:', data)
-          toast.dismiss()
-          toast.success('Caixa carregado')
-          try {
-            const { data: saidasData } = await supabase
-              .from('fluxo_caixa')
-              .select('valor')
-              .eq('data', hoje)
-              .eq('tipo', 'saida')
+          return
+        }
 
-            const totalSaidas = (saidasData || []).reduce((sum, r) => sum + (Number(r.valor) || 0), 0)
+        // Se houver múltiplos abertos, fecha os antigos (limpeza)
+        let activeCaixa = openCaixas[0]
+        if (openCaixas.length > 1) {
+          const idsParaFechar = openCaixas.slice(1).map(c => c.id)
+          await supabase
+            .from('caixa_diario')
+            .update({ status: 'fechado', observacoes_fechamento: 'Limpeza automática: múltiplos caixas abertos' })
+            .in('id', idsParaFechar)
+        }
 
-            const { error: updateErr } = await supabase
-              .from('caixa_diario')
-              .update<Database['public']['Tables']['caixa_diario']['Update']>({ valor_saidas: totalSaidas })
-              .eq('id', data.id)
+        const data = activeCaixa;
+        // ... resto da lógica original de cálculo de saídas e cache
+        try {
+          // Calcular saídas vinculadas a este caixa específico
+          const { data: saidasData } = await supabase
+            .from('fluxo_caixa')
+            .select('valor')
+            .eq('caixa_diario_id', data.id)
+            .eq('tipo', 'saida')
 
-            if (updateErr) {
-              console.warn('Erro ao atualizar valor_saidas do caixa:', updateErr)
-              toast('Erro ao atualizar saídas do caixa', { icon: '⚠️' })
-            }
+          const totalSaidas = (saidasData || []).reduce((sum, r) => sum + (Number(r.valor) || 0), 0)
 
-            const caixaCompleto = { ...data, valor_saidas: totalSaidas }
-            const caixaCompletoCorrigido = {
-              ...caixaCompleto,
-              data_abertura: caixaCompleto.data_abertura ?? ''
-            }
-            setCaixaHoje(toCaixaDiario(caixaCompletoCorrigido))
+          const { error: updateErr } = await supabase
+            .from('caixa_diario')
+            .update<Database['public']['Tables']['caixa_diario']['Update']>({ valor_saidas: totalSaidas })
+            .eq('id', data.id)
 
-            // Salvar no cache offline
-            try {
-              await offlineStorage.init()
-              await offlineStorage.saveOfflineData('caixa_hoje', caixaCompleto)
-              console.log('💾 Dados salvos no cache offline')
-              toast('Dados do caixa salvos em cache offline', { icon: '💾' })
-            } catch (cacheError) {
-              console.warn('⚠️ Erro ao salvar no cache offline:', cacheError)
-              toast.error('Erro ao salvar cache offline')
-            }
-          } catch (e) {
-            console.warn('Não foi possível calcular saídas do dia:', e)
-            toast('Não foi possível calcular saídas do dia', { icon: '⚠️' })
-            setCaixaHoje(toCaixaDiario(data))
-            try {
-              await offlineStorage.init()
-              await offlineStorage.saveOfflineData('caixa_hoje', data)
-            } catch (cacheError) {
-              console.warn('⚠️ Erro ao salvar no cache offline:', cacheError)
-              toast.error('Erro ao salvar cache offline')
-            }
+          if (updateErr) {
+            console.warn('Erro ao atualizar valor_saidas do caixa:', updateErr)
           }
+
+          const caixaCompleto = { ...data, valor_saidas: totalSaidas }
+          const caixaCompletoCorrigido = {
+            ...caixaCompleto,
+            data_abertura: caixaCompleto.data_abertura ?? ''
+          }
+          setCaixaHoje(toCaixaDiario(caixaCompletoCorrigido))
+
+          // Salvar no cache offline
+          try {
+            await offlineStorage.init()
+            await offlineStorage.saveOfflineData('caixa_hoje', caixaCompleto)
+          } catch (cacheError) {
+            console.warn('⚠️ Erro ao salvar no cache offline:', cacheError)
+          }
+        } catch (e) {
+          console.warn('Não foi possível calcular saídas do dia:', e)
+          setCaixaHoje(toCaixaDiario(data))
         }
       } else {
         // Offline: usar dados do cache
@@ -152,24 +141,22 @@ export function useCaixa() {
     try {
       const hoje = obterDataLocal()
 
-      // Validação: impedir abertura mais de uma vez por dia.
+      // Validação: impedir abertura se JÁ houver um caixa aberto (independente da data)
       try {
         const { data: existing, error: selErr } = await supabase
           .from('caixa_diario')
           .select('id, status')
-          .eq('data', hoje)
-          .order('created_at', { ascending: false })
+          .eq('status', 'aberto')
           .limit(1)
           .maybeSingle()
 
         if (!selErr && existing && existing.status === 'aberto') {
           toast.dismiss()
-          toast.error('Já existe um caixa aberto hoje.')
+          toast.error('Já existe um caixa aberto no sistema.')
           return false
         }
       } catch (checkErr) {
         console.warn('Falha ao verificar caixa existente antes de abrir:', checkErr)
-        // continuar e deixar o insert falhar se houver conflito no DB
       }
 
       const dadosCaixa = {

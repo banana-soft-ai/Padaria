@@ -47,17 +47,17 @@ export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
     setLoading(true)
     try {
       const dataISO = getLocalDateString()
+      // Validação: impedir abertura se JÁ houver um caixa aberto (independente da data)
       const { data: existing, error: checkErr } = await supabase
         .from('caixa_diario')
         .select('id, status')
-        .eq('data', dataISO)
-        .order('created_at', { ascending: false })
+        .eq('status', 'aberto')
         .limit(1)
         .maybeSingle()
 
       if (checkErr) throw checkErr
       if (existing && existing.status === 'aberto') {
-        setErro('Já existe um caixa aberto hoje.')
+        setErro('Já existe um caixa aberto no sistema.')
         return
       }
 
@@ -75,6 +75,26 @@ export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
         .single()
 
       if (error || !inserted) throw error || new Error('Não foi possível abrir o caixa.')
+
+      // Criar o primeiro turno do operador para rastreabilidade
+      const funcionario = funcionarios.find(f => f.nome === operador)
+      const valorAberturaNum = Number(String(saldoInicial || '0').replace(',', '.')) || 0
+      const { error: turnoError } = await supabase
+        .from('turno_operador')
+        .insert({
+          caixa_diario_id: inserted.id,
+          operador_id: funcionario?.id || null,
+          operador_nome: operador,
+          status: 'aberto',
+          data_inicio: new Date().toISOString(),
+          valor_abertura: valorAberturaNum,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+
+      if (turnoError) {
+        console.warn('Erro ao criar turno inicial do operador:', turnoError)
+      }
 
       if (onCaixaAberto) await onCaixaAberto()
       if (onClose) onClose()

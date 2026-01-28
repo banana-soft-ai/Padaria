@@ -16,13 +16,14 @@ export async function getTurnoOperadorAtual(caixa_diario_id: number): Promise<Tu
 }
 
 // Finaliza turno atual (define data_fim e status)
-export async function finalizarTurnoOperador(turno_id: number): Promise<boolean> {
+export async function finalizarTurnoOperador(turno_id: number, dadosAudit?: any): Promise<boolean> {
   const { error } = await supabase
     .from('turno_operador')
     .update({
       status: 'finalizado',
       data_fim: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      ...dadosAudit
     })
     .eq('id', turno_id)
   return !error

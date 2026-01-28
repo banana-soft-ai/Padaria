@@ -703,23 +703,87 @@ export default function PrecosPage() {
 
       try {
         if (p.tipo === 'varejo') {
-          await supabase.from('produtos').update({ preco_venda: precoNum, updated_at: new Date().toISOString() }).eq('id', p.item_id)
+          // Atualiza a tabela varejo diretamente
+          const { error } = await supabase.from('varejo').update({ 
+            preco_venda: precoNum, 
+            ativo: true, // Garante que o item esteja ativo ao aplicar preço no estoque
+            updated_at: new Date().toISOString() 
+          }).eq('id', p.item_id)
+          
+          if (error) throw error
         } else if (p.tipo === 'receita') {
-          await supabase.from('receitas').update({ preco_venda: precoNum, updated_at: new Date().toISOString() }).eq('id', p.item_id)
+          // 1. Atualiza o preço na tabela de receitas
+          const { error: err1 } = await supabase.from('receitas').update({ 
+            preco_venda: precoNum, 
+            updated_at: new Date().toISOString() 
+          }).eq('id', p.item_id)
+          
+          if (err1) throw err1
+
+          // 2. Verifica se a receita existe no estoque de varejo (tabela varejo) para poder vender
+          // Usamos o nome para buscar, já que receitas e varejo são tabelas separadas
+          const nomeBusca = (p.itemNome || '').trim()
+          if (!nomeBusca) {
+            console.warn('Item de receita sem nome para sincronizar no varejo:', p)
+            continue
+          }
+
+          const { data: existingVarejo, error: err2 } = await supabase
+            .from('varejo')
+            .select('id')
+            .eq('nome', nomeBusca)
+            .maybeSingle()
+
+          if (err2) throw err2
+
+          // Categorias permitidas na tabela varejo (baseado no CHECK constraint)
+          const categoriasValidas = ['varejo', 'outro']
+          const categoriaVarejo = categoriasValidas.includes(p.categoria || '') ? p.categoria : 'varejo'
+
+          if (existingVarejo) {
+            // Se já existe, apenas atualiza o preço e garante que esteja ativo
+            const { error: err3 } = await supabase.from('varejo').update({
+              preco_venda: precoNum,
+              ativo: true, // Reativa o item se ele foi removido anteriormente da UI de estoque
+              categoria: categoriaVarejo,
+              unidade: p.unidade || 'un',
+              updated_at: new Date().toISOString()
+            }).eq('id', existingVarejo.id)
+            
+            if (err3) throw err3
+          } else {
+            // Se não existe, cria o item no varejo
+            const { error: err4 } = await supabase.from('varejo').insert({
+              nome: nomeBusca,
+              preco_venda: precoNum,
+              categoria: categoriaVarejo,
+              unidade: p.unidade || 'un',
+              estoque_atual: 0,
+              ativo: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            
+            if (err4) throw err4
+          }
         }
         successCount++
-      } catch (err) {
-        console.error('Erro ao aplicar preço para item', p.item_id, err)
+      } catch (err: any) {
+        console.error('Erro detalhado ao aplicar preço para item:', p.item_id, p.itemNome, err)
+        const errorMsg = err?.message || (typeof err === 'string' ? err : 'Erro desconhecido')
+        toast.error(`Erro em ${p.itemNome || 'Item'}: ${errorMsg}`, { duration: 5000 })
         failCount++
       }
     }
 
     if (failCount === 0) {
-      // atualiza UI local (opcional) e feedback
       setError(null)
-      console.log(`Aplicados ${successCount} preços no estoque`)
+      toast.success(`Aplicados ${successCount} preços no estoque com sucesso`)
+      carregarDados() // recarrega para refletir mudanças se necessário
     } else {
-      setError(`${successCount} aplicados com sucesso, ${failCount} falharam`)
+      const msg = `${successCount} aplicados com sucesso, ${failCount} falharam`
+      setError(msg)
+      toast.error(msg)
     }
   }
 

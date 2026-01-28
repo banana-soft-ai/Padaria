@@ -97,7 +97,7 @@ async function verificarECriarTabelas() {
         const { data: adminUser } = await supabase
             .from('usuarios')
             .select('*')
-            .eq('email', 'liliannoguei001@gmail.com')
+            .eq('email', 'admin@gmail.com')
             .single()
 
         if (adminUser) {

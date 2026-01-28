@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import ProtectedLayout from '@/components/ProtectedLayout'
+import RouteGuard from '@/components/RouteGuard'
 import { DollarSign, TrendingUp, Package, BarChart3, TrendingDown, Calculator, ShoppingCart, User } from 'lucide-react'
 import Link from 'next/link'
 
@@ -117,8 +118,9 @@ export default function GestaoPage() {
   ]
 
   return (
-    <ProtectedLayout>
-      <div className="page-container">
+    <RouteGuard>
+      <ProtectedLayout>
+        <div className="page-container">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Gestão</h1>
@@ -244,6 +246,7 @@ export default function GestaoPage() {
           </div>
         </div>
       </div>
-    </ProtectedLayout>
+      </ProtectedLayout>
+    </RouteGuard>
   )
 }

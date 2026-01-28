@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { OfflineProvider } from '@/components/OfflineProvider'
 import { Toaster } from 'react-hot-toast'
+import ThemeConfigurator from '@/components/ThemeConfigurator'
 
 const inter = Inter({ subsets: ['latin'], display: 'swap' })
 
@@ -48,6 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={inter.className}>
+        <ThemeConfigurator />
         <OfflineProvider>
           {children}
           <Toaster position="top-right" />

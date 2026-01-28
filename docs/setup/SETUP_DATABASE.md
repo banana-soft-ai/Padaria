@@ -26,7 +26,7 @@ Após executar o SQL, você precisa criar o usuário administrador:
 1. No Supabase Dashboard, vá para **Authentication** > **Users**
 2. Clique em **Add user**
 3. Preencha:
-   - **Email**: `liliannoguei001@gmail.com`
+   - **Email**: `admin@gmail.com`
    - **Password**: `Reginaldo153*`
    - **Confirm email**: ✅ (marque para confirmar automaticamente)
 4. Clique em **Create user**
@@ -64,7 +64,7 @@ O script já insere:
 
 ## 🔐 Credenciais Padrão
 
-- **Email**: `liliannoguei001@gmail.com`
+- **Email**: `admin@gmail.com`
 - **Senha**: `Reginaldo153*`
 
 ## 🚨 Troubleshooting

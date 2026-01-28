@@ -69,7 +69,7 @@ testarConexao().then(sucesso => {
   if (sucesso) {
     console.log('\n🎉 Sistema pronto para uso!')
     console.log('🌐 Acesse: http://localhost:3000/login')
-    console.log('📧 Email: liliannoguei001@gmail.com')
+    console.log('📧 Email: admin@gmail.com')
   } else {
     console.log('\n❌ Sistema não está pronto. Verifique a configuração.')
   }

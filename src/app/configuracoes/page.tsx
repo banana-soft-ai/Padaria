@@ -4,9 +4,13 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import { Settings, User, Shield, Database, Info } from 'lucide-react'
+import ConfiguracoesAvancadasModal from '@/components/ConfiguracoesAvancadasModal'
+import SobreSistemaModal from '@/components/SobreSistemaModal'
 
 export default function ConfiguracoesPage() {
   const [loading, setLoading] = useState(true)
+  const [isAdvancedModalOpen, setIsAdvancedModalOpen] = useState(false)
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
   const [user, setUser] = useState<{
     id: string
     email?: string
@@ -134,94 +138,38 @@ export default function ConfiguracoesPage() {
               </div>
             </div>
           </div>
-
-          {/* Banco de Dados */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center">
-                <Database className="h-5 w-5 text-purple-600 mr-3" />
-                <h2 className="text-xl font-semibold text-gray-900">Banco de Dados</h2>
-              </div>
-            </div>
-            <div className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
-                  <div>
-                    <p className="text-sm font-medium text-purple-900">Status</p>
-                    <p className="text-xs text-purple-700">Conectado</p>
-                  </div>
-                  <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
-                  <div>
-                    <p className="text-sm font-medium text-yellow-900">Backup</p>
-                    <p className="text-xs text-yellow-700">Automático ativo</p>
-                  </div>
-                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                </div>
-                <div className="text-xs text-gray-500">
-                  <p>• Dados sincronizados em tempo real</p>
-                  <p>• Backup automático diário</p>
-                  <p>• Criptografia de dados ativa</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Informações do Sistema */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center">
-                <Info className="h-5 w-5 text-gray-600 mr-3" />
-                <h2 className="text-xl font-semibold text-gray-900">Informações do Sistema</h2>
-              </div>
-            </div>
-            <div className="p-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-900">Versão</label>
-                  <p className="text-sm text-gray-600 mt-1">1.0.0</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-900">Plataforma</label>
-                  <p className="text-sm text-gray-600 mt-1">Next.js + Supabase</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-900">Última Atualização</label>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {new Date().toLocaleDateString('pt-BR', {
-                      timeZone: 'America/Sao_Paulo'
-                    })}
-                  </p>
-                </div>
-                <div className="text-xs text-gray-500">
-                  <p>• Sistema de gestão para confeitarias</p>
-                  <p>• Controle de estoque e vendas</p>
-                  <p>• Gestão de receitas e caderneta</p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Ações do Sistema */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mt-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Ações do Sistema</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button className="flex items-center justify-center p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <Settings className="h-5 w-5 mr-3 text-blue-500" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button 
+              onClick={() => setIsAdvancedModalOpen(true)}
+              className="flex items-center justify-center p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Settings className="h-5 w-5 mr-3 text-primary" />
               <span className="text-sm text-gray-700 font-medium">Configurações Avançadas</span>
             </button>
-            <button className="flex items-center justify-center p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <Database className="h-5 w-5 mr-3 text-green-500" />
-              <span className="text-sm text-gray-700 font-medium">Backup Manual</span>
-            </button>
-            <button className="flex items-center justify-center p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <button 
+              onClick={() => setIsAboutModalOpen(true)}
+              className="flex items-center justify-center p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
               <Info className="h-5 w-5 mr-3 text-purple-500" />
               <span className="text-sm text-gray-700 font-medium">Sobre o Sistema</span>
             </button>
           </div>
         </div>
+
+        {/* Modais */}
+        <ConfiguracoesAvancadasModal 
+          isOpen={isAdvancedModalOpen} 
+          onClose={() => setIsAdvancedModalOpen(false)} 
+        />
+        <SobreSistemaModal 
+          isOpen={isAboutModalOpen} 
+          onClose={() => setIsAboutModalOpen(false)} 
+        />
       </div>
     </ProtectedLayout>
   )

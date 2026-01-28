@@ -710,7 +710,7 @@ USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated')
 
 -- Inserir usuário administrador padrão
 INSERT INTO usuarios (email, nome, role) VALUES 
-('liliannoguei001@gmail.com', 'Lilian', 'admin')
+('admin@gmail.com', 'Administrador', 'admin')
 ON CONFLICT (email) DO NOTHING;
 
 -- Inserir insumos básicos

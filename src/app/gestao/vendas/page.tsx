@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
+import RouteGuard from '@/components/RouteGuard'
 import VendasTab from '@/components/gestao/VendasTab'
 import { RelatorioVendas, RankingVendas } from '@/types/gestao'
 import { obterInicioMes, obterInicioSemana, obterDataLocal } from '@/lib/dateUtils'
@@ -458,71 +459,69 @@ export default function VendasPage() {
     }
   }
 
-  if (loading) {
-    return (
+  return (
+    <RouteGuard>
       <ProtectedLayout>
         <div className="page-container">
-          <div className="animate-pulse">
-            <div className="h-6 bg-gray-200 rounded w-1/4 mb-4"></div>
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="bg-white p-4 rounded-lg shadow">
-                  <div className="h-3 bg-gray-200 rounded w-1/3 mb-2"></div>
-                  <div className="h-2 bg-gray-200 rounded w-1/2"></div>
-                </div>
-              ))}
-            </div>
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Gestão - Vendas</h1>
+            <p className="text-sm text-gray-600 mt-1">Relatórios e análises de vendas</p>
           </div>
+
+          {loading ? (
+            <div className="animate-pulse">
+              <div className="h-6 bg-gray-200 rounded w-1/4 mb-4"></div>
+              <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="bg-white p-4 rounded-lg shadow">
+                    <div className="h-3 bg-gray-200 rounded w-1/3 mb-2"></div>
+                    <div className="h-2 bg-gray-200 rounded w-1/2"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Erro se houver */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-4 w-4 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800">Erro ao carregar dados</h3>
+                      <p className="text-sm text-red-700 mt-1">{error}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={carregarDados}
+                    className="mt-3 text-sm text-red-600 hover:text-red-800 underline"
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              )}
+
+              {/* Conteúdo */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-6">
+                  <VendasTab
+                    periodoVendas={periodoVendas}
+                    relatorioVendas={relatorioVendas}
+                    rankingVendas={rankingVendas}
+                    onPeriodoChange={setPeriodoVendas}
+                    metricasResumo={metricasResumo}
+                  />
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </ProtectedLayout>
-    )
-  }
-
-  return (
-    <ProtectedLayout>
-      <div className="page-container">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Gestão - Vendas</h1>
-          <p className="text-sm text-gray-600 mt-1">Relatórios e análises de vendas</p>
-        </div>
-
-        {/* Erro se houver */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <svg className="h-4 w-4 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Erro ao carregar dados</h3>
-                <p className="text-sm text-red-700 mt-1">{error}</p>
-              </div>
-            </div>
-            <button
-              onClick={carregarDados}
-              className="mt-3 text-sm text-red-600 hover:text-red-800 underline"
-            >
-              Tentar novamente
-            </button>
-          </div>
-        )}
-
-        {/* Conteúdo */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-6">
-            <VendasTab
-              periodoVendas={periodoVendas}
-              relatorioVendas={relatorioVendas}
-              rankingVendas={rankingVendas}
-              onPeriodoChange={setPeriodoVendas}
-              metricasResumo={metricasResumo}
-            />
-          </div>
-        </div>
-      </div>
-    </ProtectedLayout>
+    </RouteGuard>
   )
 }

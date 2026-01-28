@@ -20,9 +20,20 @@ async function setupUsers() {
 
         // Array de usuários a serem criados
         const users = [
-            { email: 'liliannoguei001@gmail.com', password: '@101222Tlc', nome: 'Lilian', role: 'admin' },
-            { email: 'edmilsonnoguei001@gmail.com', password: '@101222Tlc', nome: 'Usuario 1', role: 'funcionario' },
-            { email: 'usuario2@email.com', password: 'Senha456!', nome: 'Usuario 2', role: 'funcionario' }
+            // Usuário Operacional (Colaborador)
+            { 
+                email: 'liliannogue001@gmail.com', 
+                password: '@101222Tlc', 
+                nome: 'Lilian', 
+                role: 'funcionario'  // Role operacional - não pode desbloquear menu admin
+            },
+            // Usuário Administrador
+            { 
+                email: 'admin@gmail.com', 
+                password: 'Adminrdp1234@', 
+                nome: 'Administrador', 
+                role: 'admin'  // Role admin - pode desbloquear menu administrativo
+            }
             // Roles válidos: 'admin', 'gerente', 'funcionario', 'caixa'
         ]
 
@@ -76,7 +87,14 @@ async function setupUsers() {
 
         console.log('\n🎉 Configuração concluída com sucesso!')
         console.log('\n📝 Credenciais de acesso:')
-        users.forEach(u => console.log(`   Email: ${u.email} | Senha: ${u.password}`))
+        console.log('\n👤 USUÁRIO OPERACIONAL (Colaborador):')
+        console.log(`   Email: liliannogue001@gmail.com`)
+        console.log(`   Senha: @101222Tlc`)
+        console.log(`   Role: funcionario (acesso apenas ao bloco Colaborador)`)
+        console.log('\n👨‍💼 USUÁRIO ADMINISTRADOR:')
+        console.log(`   Email: admin@gmail.com`)
+        console.log(`   Senha: Adminrdp1234@`)
+        console.log(`   Role: admin (pode desbloquear menu administrativo)`)
         console.log('\n🌐 Acesse o sistema em: http://localhost:3000/login')
 
     } catch (error) {

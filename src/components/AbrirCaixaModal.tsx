@@ -106,7 +106,7 @@ export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
   }
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center z-[9999]">
+    <div className="fixed md:absolute inset-0 flex items-center justify-center z-20 md:z-0">
       <div className="absolute inset-0 bg-black/50" />
       <div className="w-full max-w-md shadow-2xl rounded-3xl bg-white border-b-8 border-blue-600 p-8 z-[10000]">
         <div className="flex flex-col items-center mb-6">

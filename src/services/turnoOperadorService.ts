@@ -21,8 +21,8 @@ export async function trocarOperador({
   // 1. Busca turno atual aberto
   const turnoAtual = await getTurnoOperadorAtual(caixa_diario_id)
   if (turnoAtual) {
-    // 2. Finaliza turno atual
-    const finalizado = await finalizarTurnoOperador(turnoAtual.id)
+    // 2. Finaliza turno atual com status de troca
+    const finalizado = await finalizarTurnoOperador(turnoAtual.id, null, 'troca_turno')
     if (!finalizado) return { ok: false, erro: 'Erro ao finalizar turno atual' }
   }
   // 3. Cria novo turno

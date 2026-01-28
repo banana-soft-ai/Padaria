@@ -111,8 +111,8 @@ export default function CaixasPage() {
       const caixas = (data || []) as CaixaDiario[]
 
       try {
-        // Buscar saídas agrupadas por data para popular `valor_saidas` quando não estiver preenchido
-        let saidasQuery = supabase!.from('fluxo_caixa').select('data, valor').eq('tipo', 'saida').eq('categoria', 'caixa')
+        // Buscar saídas vinculadas ao caixa_diario para popular `valor_saidas` quando não estiver preenchido corretamente
+        let saidasQuery = supabase!.from('fluxo_caixa').select('caixa_diario_id, valor').eq('tipo', 'saida').eq('categoria', 'caixa')
 
         if (dataInicio) saidasQuery = saidasQuery.gte('data', dataInicio)
         if (dataFim) saidasQuery = saidasQuery.lte('data', dataFim)
@@ -120,21 +120,27 @@ export default function CaixasPage() {
         const { data: saidasData, error: saidasError } = await saidasQuery
 
         if (!saidasError) {
-          const mapaSaidas: Record<string, number> = {}
+          const mapaSaidas: Record<number, number> = {}
           ;(saidasData || []).forEach((r: any) => {
-            const d = r.data
+            const caixaId = r.caixa_diario_id
+            if (!caixaId) return
             const v = Number(r.valor) || 0
-            mapaSaidas[d] = (mapaSaidas[d] || 0) + v
+            mapaSaidas[caixaId] = (mapaSaidas[caixaId] || 0) + v
           })
 
-          const caixasComSaidas = caixas.map(c => ({ ...c, valor_saidas: (c.valor_saidas ?? 0) + (mapaSaidas[c.data as string] || 0) }))
+          const caixasComSaidas = caixas.map(c => {
+            const valorSaidasFluxo = mapaSaidas[c.id] || 0
+            // Prioriza o valor do fluxo_caixa se o valor_saidas do banco estiver zerado ou menor (para garantir que sangrias apareçam)
+            const valorFinal = Math.max(c.valor_saidas || 0, valorSaidasFluxo)
+            return { ...c, valor_saidas: valorFinal }
+          })
           setCaixasDiarios(caixasComSaidas)
         } else {
           console.warn('Erro ao buscar saídas para caixas:', saidasError)
           setCaixasDiarios(caixas)
         }
       } catch (e) {
-        console.warn('Erro ao agregar saídas por data:', e)
+        console.warn('Erro ao agregar saídas por ID do caixa:', e)
         setCaixasDiarios(caixas)
       }
     } catch (error) {

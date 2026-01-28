@@ -29,7 +29,8 @@ import {
   Package,
   ReceiptText,
   Pencil,
-  Trash2
+  Trash2,
+  Unlock
 } from 'lucide-react';
 // removerColaborador foi movida para dentro do componente para ter acesso a carregarColaboradores e ao estado local.
 
@@ -91,8 +92,17 @@ export default function GestaoOperadores() {
       }
       setModalRemoverColab({ open: false, colab: null });
     };
-  
-  
+
+  // Normalização de datas para evitar problemas de fuso horário
+  const parseDate = (d: string | null) => {
+    if (!d) return null;
+    // Forçar interpretação como UTC para consistência com o que vem do Supabase
+    // Se não tiver informação de fuso (Z ou +-00:00), adicionamos Z
+    const hasTimezone = d.includes('Z') || /([+-]\d{2}:?\d{2})$/.test(d);
+    const iso = hasTimezone ? d : `${d.replace(' ', 'T')}Z`;
+    return new Date(iso).getTime();
+  };
+
     useEffect(() => {
       async function fetchData() {
         setLoading(true);
@@ -105,6 +115,7 @@ export default function GestaoOperadores() {
         .gte('data_inicio', `${filterDate}T00:00:00`)
         .lte('data_inicio', `${filterDate}T23:59:59`)
         .order('data_inicio', { ascending: true });
+
       if (error || !turnosRaw) {
         setTurnos([]);
         setLoading(false);
@@ -116,7 +127,7 @@ export default function GestaoOperadores() {
       const validCaixaIdsForCaixas = caixaIds.filter(id => id !== null && id !== undefined);
       const { data: caixas } = await supabase
         .from('caixa_diario')
-        .select('id, usuario_abertura, usuario_fechamento, valor_abertura, valor_fechamento, total_vendas, total_pix, total_dinheiro, total_debito, total_credito, total_entradas, total_caderneta')
+        .select('id, status, usuario_abertura, usuario_fechamento, valor_abertura, valor_fechamento, total_vendas, total_pix, total_dinheiro, total_debito, total_credito, total_entradas, total_caderneta')
         .in('id', validCaixaIdsForCaixas.length ? validCaixaIdsForCaixas : [0]);
       const caixaMap = new Map((caixas || []).map((c: any) => [c.id, c]));
 
@@ -137,12 +148,12 @@ export default function GestaoOperadores() {
       const vendaIds = vendas.map((v: any) => v.id);
       const { data: itensVendidosRaw } = await supabase
         .from('venda_itens')
-        .select('venda_id, quantidade, preco_unitario, varejo_id, item_id, tipo')
+        .select('venda_id, quantidade, preco_unitario, varejo_id, produto_id')
         .in('venda_id', vendaIds.length ? vendaIds : [0]);
 
       // Buscar nomes dos produtos/receitas
-      const receitaIds = Array.from(new Set((itensVendidosRaw || []).filter(i => i.tipo === 'receita').map(i => i.item_id)));
-      const varejoIds = Array.from(new Set((itensVendidosRaw || []).filter(i => i.tipo === 'varejo').map(i => i.varejo_id || i.item_id)));
+      const receitaIds = Array.from(new Set((itensVendidosRaw || []).filter(i => i.produto_id).map(i => i.produto_id)));
+      const varejoIds = Array.from(new Set((itensVendidosRaw || []).filter(i => i.varejo_id).map(i => i.varejo_id)));
       
       const [receitasResp, varejoResp, sangriasResp] = await Promise.all([
         receitaIds.length ? supabase.from('receitas').select('id, nome').in('id', receitaIds) : Promise.resolve({ data: [] }),
@@ -159,14 +170,6 @@ export default function GestaoOperadores() {
       // Montar estrutura final dos turnos
       const turnosUI: TurnoUI[] = turnosRaw.map((t: any) => {
         const caixa = caixaMap.get(t.caixa_diario_id);
-        
-        // Normalização de datas para evitar problemas de fuso horário
-        const parseDate = (d: string | null) => {
-          if (!d) return null;
-          // Se a data não terminar com Z e não tiver offset, assume que é UTC vindo do banco
-          const iso = (d.includes('Z') || d.includes('+') || d.includes('-')) ? d : `${d.replace(' ', 'T')}Z`;
-          return new Date(iso).getTime();
-        };
 
         const shiftStart = parseDate(t.data_inicio) || 0;
         const shiftEnd = parseDate(t.data_fim) || new Date().getTime();
@@ -176,14 +179,19 @@ export default function GestaoOperadores() {
           const opNomeTurno = (t.operador_nome || '').trim().toLowerCase();
           const opNomeVenda = (v.operador_nome || v.usuario || '').trim().toLowerCase();
 
-          // 1. Match obrigatório: horário do turno (com margem de 10s para segurança)
-          const matchHorario = vTime >= (shiftStart - 10000) && vTime <= (shiftEnd + 10000);
+          // 1. Match por Caixa (Prioridade total se ambos tiverem ID)
+          const matchCaixa = v.caixa_diario_id && t.caixa_diario_id ? v.caixa_diario_id === t.caixa_diario_id : false;
           
-          // 2. Vínculo por Caixa ou por Operador
-          const matchCaixa = v.caixa_diario_id && t.caixa_diario_id ? v.caixa_diario_id === t.caixa_diario_id : true;
-          const matchOperador = opNomeVenda === opNomeTurno || !opNomeVenda; 
+          // 2. Match por Horário (Com margem maior para cobrir viradas de turno e delays)
+          const matchHorario = vTime >= (shiftStart - 120000) && vTime <= (shiftEnd + 120000);
+          
+          // 3. Match por Operador
+          const matchOperador = !v.operador_nome || opNomeVenda === opNomeTurno;
 
-          return matchHorario && matchCaixa && matchOperador;
+          // Se bater o Caixa e o Operador, ignoramos a restrição rigorosa de horário
+          if (matchCaixa && matchOperador) return true;
+
+          return matchHorario && matchOperador;
         });
 
         // Sangrias deste operador neste turno
@@ -192,22 +200,43 @@ export default function GestaoOperadores() {
           const userSangria = (s.usuario || '').trim().toLowerCase();
           const opNomeTurno = (t.operador_nome || '').trim().toLowerCase();
 
-          const matchHorario = sTime >= (shiftStart - 10000) && sTime <= (shiftEnd + 10000);
+          const matchHorario = sTime >= (shiftStart - 60000) && sTime <= (shiftEnd + 60000);
           const matchCaixa = s.caixa_diario_id && t.caixa_diario_id ? s.caixa_diario_id === t.caixa_diario_id : true;
-          const matchOperador = userSangria === opNomeTurno || !userSangria;
+          const matchOperador = !s.usuario || userSangria === opNomeTurno;
 
           return matchHorario && matchCaixa && matchOperador;
         });
-        const sangriasTotal = sangriasTurno.reduce((acc: number, s: any) => acc + (s.valor || 0), 0);
+        const sangriasTotal = t.valor_saidas || sangriasTurno.reduce((acc: number, s: any) => acc + (s.valor || 0), 0);
 
-        const vendasTotal = vendasTurno.reduce((acc: number, v: any) => acc + (v.valor_total || 0), 0);
+        // Pagamentos - Priorizar colunas de auditoria da tabela turno_operador
+        const pagamentos = { 
+          dinheiro: Number(t.total_dinheiro || 0), 
+          pix: Number(t.total_pix || 0), 
+          cartao: Number(t.total_debito || 0) + Number(t.total_credito || 0) 
+        };
+
+        // Se os valores auditados estiverem zerados, usamos o cálculo em memória (fallback)
+        if (pagamentos.dinheiro === 0 && pagamentos.pix === 0 && pagamentos.cartao === 0) {
+          vendasTurno.forEach((v: any) => {
+            const forma = String(v.forma_pagamento || '').toLowerCase();
+            const valor = Number(v.valor_total || 0);
+
+            if (forma.includes('dinheiro')) pagamentos.dinheiro += valor;
+            else if (forma.includes('pix')) pagamentos.pix += valor;
+            else if (forma.includes('cartao') || forma.includes('debito') || forma.includes('credito')) pagamentos.cartao += valor;
+          });
+        }
+
+        const vendasTotal = t.total_vendas || vendasTurno.reduce((acc: number, v: any) => acc + (v.valor_total || 0), 0);
+        
         // Itens vendidos deste operador
         const vendaIdsTurno = vendasTurno.map((v: any) => v.id);
         const itensTurno = (itensVendidosRaw || []).filter((i: any) => vendaIdsTurno.includes(i.venda_id));
+
         // Agrupar itens por nome
         const itensVendidos = Object.values(
           itensTurno.reduce((acc: any, item: any) => {
-            const nome = item.tipo === 'receita' ? receitasMap.get(item.item_id) : varejoMap.get(item.varejo_id || item.item_id);
+            const nome = item.produto_id ? receitasMap.get(item.produto_id) : varejoMap.get(item.varejo_id);
             if (!nome) return acc;
             if (!acc[nome]) acc[nome] = { nome, qtd: 0, total: 0 };
             acc[nome].qtd += item.quantidade;
@@ -215,22 +244,13 @@ export default function GestaoOperadores() {
             return acc;
           }, {})
         ) as { nome: string; qtd: number; total: number }[];
-        // Pagamentos
-        const pagamentos = { dinheiro: 0, pix: 0, cartao: 0 };
-        vendasTurno.forEach((v: any) => {
-          const forma = String(v.forma_pagamento || '').toLowerCase();
-          const valor = Number(v.valor_total || 0);
-          if (forma.includes('dinheiro')) pagamentos.dinheiro += valor;
-          else if (forma.includes('pix')) pagamentos.pix += valor;
-          else if (forma.includes('cartao') || forma.includes('debito') || forma.includes('credito')) pagamentos.cartao += valor;
-        });
 
         // Tentar buscar saldo contado se for o fechamento final do caixa
         const isUltimoTurno = t.status === 'finalizado' && caixa?.usuario_fechamento === t.operador_nome;
         const saldoInformado = isUltimoTurno ? (caixa?.valor_fechamento || 0) : (t.valor_fechamento || 0);
         
-        const sistemaEsperava = vendasTotal - sangriasTotal + (t.valor_abertura || (caixa?.valor_abertura || 0));
-
+        const sistemaEsperava = Number(vendasTotal) - Number(sangriasTotal) + (t.valor_abertura || (caixa?.valor_abertura || 0));
+        
         return {
           id: t.id,
           operador: t.operador_nome,
@@ -239,11 +259,11 @@ export default function GestaoOperadores() {
           fim: t.data_fim,
           tipoEncerramento: t.status === 'finalizado' ? 'fechamento_caixa' : t.status === 'aberto' ? null : t.status,
           saldoInicial: t.valor_abertura || (caixa?.valor_abertura || 0),
-          vendas: vendasTotal,
-          sangrias: sangriasTotal,
+          vendas: Number(vendasTotal),
+          sangrias: Number(sangriasTotal),
           saldoEsperado: sistemaEsperava,
-          saldoContado: saldoInformado,
-          diferenca: t.diferenca || (saldoInformado ? (saldoInformado - sistemaEsperava) : 0),
+          saldoContado: Number(saldoInformado),
+          diferenca: t.diferenca !== null && t.diferenca !== undefined ? Number(t.diferenca) : (saldoInformado ? (Number(saldoInformado) - sistemaEsperava) : 0),
           pagamentos,
           cancelamentos: 0, 
           itensVendidos,
@@ -256,12 +276,19 @@ export default function GestaoOperadores() {
   }, [filterDate]);
 
   const turnosFiltrados = useMemo(() => {
-    return turnos.filter(t => {
-      const matchesSearch = t.operador.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.caixa.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesDate = filterDate ? t.inicio.startsWith(filterDate) : true;
-      return matchesSearch && matchesDate;
-    });
+    return turnos
+      .filter(t => {
+        const matchesSearch = t.operador.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          t.caixa.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesDate = filterDate ? t.inicio.startsWith(filterDate) : true;
+        return matchesSearch && matchesDate;
+      })
+      .sort((a, b) => {
+        // Ordenar por horário de início (mais antigo primeiro)
+        const timeA = parseDate(a.inicio) || 0;
+        const timeB = parseDate(b.inicio) || 0;
+        return timeA - timeB;
+      });
   }, [searchTerm, filterDate, turnos]);
 
   const stats = useMemo(() => {
@@ -415,16 +442,45 @@ export default function GestaoOperadores() {
                     {turnosFiltrados.map((turno) => (
                       <tr key={turno.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4 text-center">
-                          {turno.tipoEncerramento === 'troca_turno' ? <ArrowRightLeft className="w-4 h-4 text-blue-500 mx-auto" /> : <Lock className="w-4 h-4 text-slate-700 mx-auto" />}
+                          {!turno.fim ? (
+                            <span title="Turno Aberto">
+                              <Unlock className="w-4 h-4 text-emerald-500 mx-auto" />
+                            </span>
+                          ) : turno.tipoEncerramento === 'troca_turno' ? (
+                            <span title="Troca de Turno">
+                              <ArrowRightLeft className="w-4 h-4 text-blue-500 mx-auto" />
+                            </span>
+                          ) : (
+                            <span title="Turno Finalizado">
+                              <Lock className="w-4 h-4 text-slate-400 mx-auto" />
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4 font-bold">{turno.operador}</td>
                         <td className="px-6 py-4 text-xs text-slate-500">
-                          {/* Exibe hora real de abertura/fechamento do caixa */}
+                          {/* Exibe hora real de abertura/fechamento do caixa com fuso horário correto */}
                           {(() => {
-                            const inicio = turno.inicio ? new Date(turno.inicio) : null;
-                            const fim = turno.fim ? new Date(turno.fim) : null;
-                            const horaAbertura = inicio ? inicio.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
-                            const horaFechamento = fim ? fim.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Aberto';
+                            const options: Intl.DateTimeFormatOptions = { 
+                              hour: '2-digit', 
+                              minute: '2-digit', 
+                              timeZone: 'America/Sao_Paulo' 
+                            };
+                            
+                            const parseUTC = (d: string | null) => {
+                              if (!d) return null;
+                              const hasTimezone = d.includes('Z') || /([+-]\d{2}:?\d{2})$/.test(d);
+                              const iso = hasTimezone ? d : `${d.replace(' ', 'T')}Z`;
+                              return new Date(iso);
+                            };
+
+                            const rawInicio = turno.inicio;
+                            const hasTimezone = rawInicio ? (rawInicio.includes('Z') || /([+-]\d{2}:?\d{2})$/.test(rawInicio)) : false;
+                            const iso = (rawInicio && !hasTimezone) ? `${rawInicio.replace(' ', 'T')}Z` : rawInicio;
+                            const inicio = iso ? new Date(iso) : null;
+                            const fim = parseUTC(turno.fim);
+
+                            const horaAbertura = inicio ? inicio.toLocaleTimeString('pt-BR', options) : '--:--';
+                            const horaFechamento = fim ? fim.toLocaleTimeString('pt-BR', options) : 'Aberto';
                             return `${horaAbertura} - ${horaFechamento}`;
                           })()}
                         </td>
@@ -577,14 +633,18 @@ export default function GestaoOperadores() {
                     <div className="space-y-6">
                       {/* Resultado da Auditoria */}
                       <div className="bg-slate-900 text-white p-6 rounded-2xl">
-                        <div className="grid grid-cols-2 gap-8 mb-6">
+                        <div className="grid grid-cols-3 gap-4 mb-6">
+                          <div>
+                            <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Fundo de Caixa</p>
+                            <p className="text-xl font-bold">R$ {selectedTurno.saldoInicial.toFixed(2)}</p>
+                          </div>
                           <div>
                             <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Sistema Esperava</p>
-                            <p className="text-2xl font-bold">R$ {selectedTurno.saldoEsperado.toFixed(2)}</p>
+                            <p className="text-xl font-bold">R$ {selectedTurno.saldoEsperado.toFixed(2)}</p>
                           </div>
                           <div>
                             <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Operador Declarou</p>
-                            <p className="text-2xl font-bold">R$ {selectedTurno.saldoContado.toFixed(2)}</p>
+                            <p className="text-xl font-bold">R$ {selectedTurno.saldoContado.toFixed(2)}</p>
                           </div>
                         </div>
                         <div className={`pt-4 border-t border-slate-800 flex justify-between items-center ${selectedTurno.diferenca < 0 ? 'text-red-400' : 'text-emerald-400'}`}>

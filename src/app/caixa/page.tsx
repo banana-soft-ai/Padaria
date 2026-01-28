@@ -1,4 +1,3 @@
-
 'use client'
 declare global {
     interface BarcodeDetector {
@@ -65,6 +64,8 @@ interface VendaRegistrada {
     data: string
     total: number
     forma_pagamento: string
+    created_at?: string | Date
+    operador_nome?: string // Adicionado para refletir o uso no fechamento do caixa
 }
 
 export default function PDVPage() {
@@ -1470,7 +1471,7 @@ export default function PDVPage() {
                 postSaleIssue = true
             }
 
-            // Somente se não houve problemas no pós-processamento, abrimos o modal de impressão
+            // Somente se não houver problemas no pós-processamento, abrimos o modal de impressão
             if (!postSaleIssue) {
                 abrirModalPosVendaComDelay(2000)
             } else {
@@ -3812,5 +3813,5 @@ export default function PDVPage() {
                 {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
             </div>
         </ProtectedLayout>
-    )
+    );
 }

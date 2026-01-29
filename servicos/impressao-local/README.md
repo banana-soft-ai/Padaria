@@ -1,4 +1,4 @@
-# Serviço de impressão local (Elgin i9)
+# Serviço de impressão local (Elgin i9.)
 
 Serviço Node.js que recebe o cupom fiscal e envia direto para a impressora (Elgin i9 ou outra), sem abrir o diálogo de impressão do navegador.
 

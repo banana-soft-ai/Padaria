@@ -416,7 +416,7 @@ export default function PDVPage() {
         }
     }
     // --- Estados de UI e Dados ---
-    const [view, setView] = useState<'abertura' | 'venda' | 'historico' | 'estoque' | 'caixa' | 'saida' | 'caderneta' | 'nfce'>('abertura')
+    const [view, setView] = useState<'abertura' | 'venda' | 'historico' | 'estoque' | 'caixa' | 'saida' | 'caderneta'>('abertura')
     const [caixaAberto, setCaixaAberto] = useState(false)
     const [operador, setOperador] = useState('')
     const [saldoInicial, setSaldoInicial] = useState(0)
@@ -577,8 +577,8 @@ export default function PDVPage() {
         }
     }, [])
 
-    // Abre o modal pós-venda com um delay (padronizado em 2000ms)
-    const abrirModalPosVendaComDelay = (delay = 2000) => {
+    // Abre o modal pós-venda com um delay curto (300ms) para não bloquear a UI
+    const abrirModalPosVendaComDelay = (delay = 300) => {
         try { if (postVendaTimerRef.current) window.clearTimeout(postVendaTimerRef.current) } catch (e) {}
         postVendaTimerRef.current = window.setTimeout(() => {
             setModalPosVenda(true)
@@ -712,6 +712,7 @@ export default function PDVPage() {
 
     const tocarBeep = async () => {
         try {
+            if (typeof window !== 'undefined' && localStorage.getItem('scanner-beep') === 'false') return
             // @ts-ignore
             const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext
             if (!AudioCtx) return
@@ -1108,21 +1109,17 @@ export default function PDVPage() {
         }
     }
 
-    // Função para imprimir cupom fiscal no formato NFC-e
+    // Função para imprimir cupom fiscal
     const printCupomFiscalNFCe = async (vendaId: number) => {
         try {
             const [{ data: vendaRow }, { data: itens }] = await Promise.all([
-                getSupabase().from('vendas').select('id, created_at, valor_total, forma_pagamento').eq('id', vendaId).single(),
+                getSupabase().from('vendas').select('id, created_at, valor_total, forma_pagamento, operador_nome, valor_pago, valor_troco, desconto').eq('id', vendaId).single(),
                 getSupabase().from('venda_itens').select('quantidade, preco_unitario, subtotal, varejo (id, nome, codigo_barras)').eq('venda_id', vendaId)
             ])
 
             const venda = (vendaRow as any) || {}
             const itensVenda = (itens as any) || []
             const dataVenda = venda.created_at ? new Date(venda.created_at) : new Date()
-
-            // Gera chave de acesso simulada (44 dígitos)
-            const chaveAcesso = Array.from({ length: 44 }, () => Math.floor(Math.random() * 10)).join('')
-            const chaveFormatada = chaveAcesso.replace(/(\d{4})/g, '$1 ').trim()
 
             // Formata forma de pagamento
             const formaPagamentoMap: Record<string, string> = {
@@ -1134,95 +1131,104 @@ export default function PDVPage() {
             }
             const formaPagamentoDisplay = formaPagamentoMap[venda.forma_pagamento?.toLowerCase()] || venda.forma_pagamento || 'Não informado'
 
-            // Gera itens do cupom
+            // Dados do cupom (configuráveis)
+            const esc = (s: string) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+            const nomeLoja = typeof window !== 'undefined' ? (localStorage.getItem('cupom-nome-loja') || 'REY DOS PÃES') : 'REY DOS PÃES'
+            const cnpjCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-cnpj') || '00.000.000/0001-00') : '00.000.000/0001-00'
+            const enderecoCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-endereco') || 'Endereço da Loja') : 'Endereço da Loja'
+            const cidadeUfCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-cidade-uf') || 'Cidade - UF') : 'Cidade - UF'
+            const mensagemCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-mensagem') || 'REY DOS PÃES - PDV') : 'REY DOS PÃES - PDV'
+
+            const dataFormatada = dataVenda.toLocaleDateString('pt-BR')
+            const horaFormatada = `${String(dataVenda.getHours()).padStart(2, '0')}:${String(dataVenda.getMinutes()).padStart(2, '0')}:${String(dataVenda.getSeconds()).padStart(2, '0')}`
+
+            // Itens no formato do modelo: ITEM CÓD. DESCRIÇÃO | VALOR + linha "QTD UN x unitário" (qtd como 1, 2, 3)
             const htmlItems = itensVenda.map((it: any, idx: number) => {
-                const codigo = it.varejo?.codigo_barras || it.varejo?.id || (idx + 1)
-                const nome = it.varejo?.nome || 'Item'
+                const codigo = String(it.varejo?.codigo_barras || it.varejo?.id || (idx + 1))
+                const nome = (it.varejo?.nome || 'Item').toUpperCase()
                 const qtd = Number(it.quantidade)
                 const unitario = Number(it.preco_unitario)
                 const subtotal = Number(it.subtotal ?? qtd * unitario)
+                const qtdExibir = Number.isInteger(qtd) ? String(qtd) : qtd.toFixed(3)
+                const descLinha = `${qtdExibir} UN x ${unitario.toFixed(2)}`
                 return `
-                    <tr style="border-bottom: 1px dashed #ccc;">
-                        <td style="padding: 2px 0; font-size: 10px;">${String(idx + 1).padStart(3, '0')}</td>
-                        <td style="padding: 2px 4px; font-size: 10px;">${codigo}</td>
-                        <td style="padding: 2px 4px; font-size: 10px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${nome}</td>
-                        <td style="padding: 2px 4px; font-size: 10px; text-align: right;">${qtd.toFixed(3)}</td>
-                        <td style="padding: 2px 4px; font-size: 10px; text-align: right;">${unitario.toFixed(2)}</td>
-                        <td style="padding: 2px 4px; font-size: 10px; text-align: right; font-weight: bold;">${subtotal.toFixed(2)}</td>
+                    <tr style="border-bottom: 1px dotted #999;">
+                        <td style="padding: 2px 0; font-size: 10px; vertical-align: top;">${idx + 1} ${codigo} ${nome}</td>
+                        <td style="padding: 2px 0 2px 6px; font-size: 10px; text-align: right; vertical-align: top; white-space: nowrap;">${subtotal.toFixed(2)}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px dotted #999;">
+                        <td style="padding: 0 0 4px 0; font-size: 9px; color: #555;">${descLinha}</td>
+                        <td style="padding: 0 0 4px 6px; font-size: 9px;"></td>
                     </tr>
                 `
             }).join('')
 
-            const totalItens = itensVenda.reduce((acc: number, it: any) => acc + Number(it.quantidade), 0)
             const valorTotal = Number(venda.valor_total ?? 0)
+            const valorDesconto = Number(venda.desconto ?? 0)
+            const subtotalBruto = valorTotal + valorDesconto
+            const operadorNome = (venda.operador_nome || '').trim() || '—'
+            const isDinheiro = (venda.forma_pagamento || '').toLowerCase() === 'dinheiro'
+            const valorRecebidoDinheiro = Number(venda.valor_pago ?? 0)
+            const valorTroco = Number(venda.valor_troco ?? 0)
 
             const html = `
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <meta charset="UTF-8">
-                    <title>Cupom Fiscal - NFC-e #${vendaId}</title>
+                    <title>Cupom Fiscal #${vendaId}</title>
                     <style>
                         * { margin: 0; padding: 0; box-sizing: border-box; }
                         body {
                             font-family: 'Courier New', monospace;
-                            font-size: 11px;
+                            font-size: 10px;
                             width: 280px;
-                            padding: 10px;
+                            padding: 8px;
                             background: #fff;
+                            line-height: 1.2;
                         }
                         .center { text-align: center; }
                         .right { text-align: right; }
                         .bold { font-weight: bold; }
-                        .divider { border-top: 1px dashed #000; margin: 8px 0; }
-                        .header { margin-bottom: 10px; }
-                        .empresa { font-size: 14px; font-weight: bold; }
-                        .info { font-size: 9px; color: #333; }
-                        table { width: 100%; border-collapse: collapse; }
-                        .total-line { font-size: 14px; font-weight: bold; }
-                        .chave { font-size: 8px; word-break: break-all; }
-                        .qrcode-placeholder {
-                            width: 100px;
-                            height: 100px;
-                            border: 1px solid #000;
-                            margin: 10px auto;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            font-size: 8px;
-                        }
+                        .divider { border-top: 1px dashed #000; margin: 6px 0; }
+                        .header-cupom { margin-bottom: 6px; }
+                        .empresa { font-size: 12px; font-weight: bold; margin-bottom: 2px; }
+                        .endereco { font-size: 9px; color: #333; margin-bottom: 2px; }
+                        .cnpj-data { font-size: 9px; color: #333; display: flex; justify-content: space-between; align-items: center; }
+                        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+                        .col-desc { width: 70%; word-break: break-word; }
+                        .col-valor { width: 30%; }
+                        .total-line { font-size: 12px; font-weight: bold; }
                         @media print {
-                            body { width: 80mm; }
+                            body { width: 80mm; padding: 4px; font-size: 9px; }
                             @page { margin: 0; size: 80mm auto; }
                         }
                     </style>
                 </head>
                 <body>
-                    <div class="header center">
-                        <div class="empresa">REY DOS PÃES</div>
-                        <div class="info">CNPJ: 00.000.000/0001-00</div>
-                        <div class="info">Endereço da Loja</div>
-                        <div class="info">Cidade - UF</div>
+                    <div class="header-cupom center">
+                        <div class="empresa">${esc(nomeLoja)}</div>
+                        <div class="endereco">${esc(enderecoCupom)} / ${esc(cidadeUfCupom)}</div>
+                        <div class="cnpj-data">
+                            <span>CNPJ: ${esc(cnpjCupom)}</span>
+                            <span>${dataFormatada} ${horaFormatada}</span>
+                        </div>
                     </div>
 
                     <div class="divider"></div>
 
-                    <div class="center bold" style="font-size: 12px;">
-                        DANFE NFC-e - Documento Auxiliar
+                    <div class="center bold" style="font-size: 11px; margin-bottom: 2px;">
+                        CUPOM FISCAL
                     </div>
-                    <div class="center info">da Nota Fiscal de Consumidor Eletrônica</div>
+                    <div class="center" style="font-size: 9px; color: #333;">Comprovante de Venda</div>
 
                     <div class="divider"></div>
 
                     <table>
                         <thead>
                             <tr style="border-bottom: 1px solid #000;">
-                                <th style="font-size: 9px; text-align: left;">#</th>
-                                <th style="font-size: 9px; text-align: left;">CÓD</th>
-                                <th style="font-size: 9px; text-align: left;">DESCRIÇÃO</th>
-                                <th style="font-size: 9px; text-align: right;">QTD</th>
-                                <th style="font-size: 9px; text-align: right;">UN</th>
-                                <th style="font-size: 9px; text-align: right;">TOTAL</th>
+                                <th style="font-size: 9px; text-align: left;">ITEM CÓD. DESCRIÇÃO</th>
+                                <th style="font-size: 9px; text-align: right;">VALOR</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1232,63 +1238,45 @@ export default function PDVPage() {
 
                     <div class="divider"></div>
 
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                        <span>Qtd. total de itens:</span>
-                        <span class="bold">${totalItens}</span>
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span>SUBTOTAL R$</span>
+                        <span>${subtotalBruto.toFixed(2)}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between;" class="total-line">
-                        <span>VALOR TOTAL R$</span>
+                    ${isDinheiro && valorRecebidoDinheiro > 0 ? `
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span>DINHEIRO R$</span>
+                        <span>${valorRecebidoDinheiro.toFixed(2)}</span>
+                    </div>
+                    ${valorTroco > 0 ? `
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span>TROCO R$</span>
+                        <span>${valorTroco.toFixed(2)}</span>
+                    </div>
+                    ` : ''}
+                    ` : `
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span>${formaPagamentoDisplay} R$</span>
+                        <span>${valorTotal.toFixed(2)}</span>
+                    </div>
+                    `}
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span>DESCONTO R$</span>
+                        <span>${valorDesconto > 0 ? '-' : ''}${valorDesconto.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 2px;" class="total-line">
+                        <span>TOTAL R$</span>
                         <span>${valorTotal.toFixed(2)}</span>
                     </div>
 
                     <div class="divider"></div>
-
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
-                        <span>FORMA DE PAGAMENTO:</span>
-                        <span class="bold">${formaPagamentoDisplay}</span>
+                    <div style="font-size: 9px; color: #333; margin-bottom: 8px;">
+                        OPERADOR: ${esc(operadorNome)}
                     </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
-                        <span>Valor Pago R$:</span>
-                        <span>${valorTotal.toFixed(2)}</span>
+                    <div class="center bold" style="font-size: 11px; margin: 8px 0;">
+                        OBRIGADO, VOLTE SEMPRE!
                     </div>
-
-                    <div class="divider"></div>
-
-                    <div class="center">
-                        <div class="qrcode-placeholder">
-                            [QR Code]<br/>NFC-e
-                        </div>
-                    </div>
-
-                    <div class="center info" style="margin-top: 8px;">
-                        <div class="bold">Consulte pela Chave de Acesso em:</div>
-                        <div>www.nfce.fazenda.gov.br/portal</div>
-                    </div>
-
-                    <div class="divider"></div>
-
-                    <div class="center chave">
-                        <div class="bold">CHAVE DE ACESSO</div>
-                        <div>${chaveFormatada}</div>
-                    </div>
-
-                    <div class="divider"></div>
-
-                    <div class="center info">
-                        <div>Nº ${String(vendaId).padStart(9, '0')} | Série 001</div>
-                        <div>Emissão: ${dataVenda.toLocaleDateString('pt-BR')} ${dataVenda.toLocaleTimeString('pt-BR')}</div>
-                        <div style="margin-top: 4px;">Protocolo de Autorização:</div>
-                        <div>${Date.now()}${vendaId}</div>
-                    </div>
-
-                    <div class="divider"></div>
-
-                    <div class="center info" style="margin-top: 10px;">
-                        <div class="bold">CONSUMIDOR NÃO IDENTIFICADO</div>
-                    </div>
-
-                    <div class="center info" style="margin-top: 10px; font-size: 8px;">
-                        Tributos Totais Incidentes (Lei Federal 12.741/2012): R$ ${(valorTotal * 0.32).toFixed(2)}
+                    <div class="center" style="font-size: 9px; color: #333;">
+                        ${esc(mensagemCupom)}
                     </div>
                 </body>
                 </html>
@@ -1305,9 +1293,85 @@ export default function PDVPage() {
             return true
         } catch (err) {
             console.error('printCupomFiscalNFCe erro:', err)
-            showToast('Erro ao imprimir cupom fiscal', 'error')
+            showToast('Erro ao imprimir comprovante', 'error')
             throw err
         }
+    }
+
+    // Gera linhas de texto do cupom para impressora térmica (serviço local Elgin i9)
+    const getCupomFiscalLinhas = async (vendaId: number): Promise<string[]> => {
+        const [{ data: vendaRow }, { data: itens }] = await Promise.all([
+            getSupabase().from('vendas').select('id, created_at, valor_total, forma_pagamento, operador_nome, valor_pago, valor_troco, desconto').eq('id', vendaId).single(),
+            getSupabase().from('venda_itens').select('quantidade, preco_unitario, subtotal, varejo (id, nome, codigo_barras)').eq('venda_id', vendaId)
+        ])
+        const venda = (vendaRow as any) || {}
+        const itensVenda = (itens as any) || []
+        const dataVenda = venda.created_at ? new Date(venda.created_at) : new Date()
+        const formaPagamentoMap: Record<string, string> = {
+            'dinheiro': 'Dinheiro', 'pix': 'PIX', 'cartao_debito': 'Cartão Débito', 'cartao_credito': 'Cartão Crédito', 'caderneta': 'Caderneta'
+        }
+        const formaPagamentoDisplay = formaPagamentoMap[venda.forma_pagamento?.toLowerCase()] || venda.forma_pagamento || 'Não informado'
+        const nomeLoja = typeof window !== 'undefined' ? (localStorage.getItem('cupom-nome-loja') || 'REY DOS PAES') : 'REY DOS PAES'
+        const cnpjCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-cnpj') || '00.000.000/0001-00') : '00.000.000/0001-00'
+        const enderecoCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-endereco') || 'Endereco da Loja') : 'Endereco da Loja'
+        const cidadeUfCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-cidade-uf') || 'Cidade - UF') : 'Cidade - UF'
+        const mensagemCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-mensagem') || 'REY DOS PAES - PDV') : 'REY DOS PAES - PDV'
+        const dataFormatada = dataVenda.toLocaleDateString('pt-BR')
+        const horaFormatada = `${String(dataVenda.getHours()).padStart(2, '0')}:${String(dataVenda.getMinutes()).padStart(2, '0')}:${String(dataVenda.getSeconds()).padStart(2, '0')}`
+        const valorTotal = Number(venda.valor_total ?? 0)
+        const valorDesconto = Number(venda.desconto ?? 0)
+        const subtotalBruto = valorTotal + valorDesconto
+        const operadorNome = (venda.operador_nome || '').trim() || '-'
+        const isDinheiro = (venda.forma_pagamento || '').toLowerCase() === 'dinheiro'
+        const valorRecebidoDinheiro = Number(venda.valor_pago ?? 0)
+        const valorTroco = Number(venda.valor_troco ?? 0)
+
+        const linhas: string[] = []
+        const L = 48
+        const center = (s: string) => s.padStart(Math.floor((L + s.length) / 2)).padEnd(L)
+        const right = (s: string) => s.padStart(L)
+
+        linhas.push('')
+        linhas.push(center(nomeLoja))
+        linhas.push(center(`${enderecoCupom} / ${cidadeUfCupom}`))
+        linhas.push(`CNPJ: ${cnpjCupom}`)
+        linhas.push(right(`${dataFormatada} ${horaFormatada}`))
+        linhas.push('--------------------------------')
+        linhas.push(center('CUPOM FISCAL'))
+        linhas.push(center('Comprovante de Venda'))
+        linhas.push('--------------------------------')
+        linhas.push('ITEM COD. DESCRICAO        VALOR')
+        linhas.push('--------------------------------')
+        itensVenda.forEach((it: any, idx: number) => {
+            const codigo = String(it.varejo?.codigo_barras ?? it.varejo?.id ?? idx + 1)
+            const nome = String(it.varejo?.nome ?? 'Item').substring(0, 16)
+            const qtd = Number(it.quantidade)
+            const unitario = Number(it.preco_unitario)
+            const subtotal = Number(it.subtotal ?? qtd * unitario)
+            const qtdExibir = Number.isInteger(qtd) ? String(qtd) : qtd.toFixed(3)
+            const descLinha = `${idx + 1} ${codigo} ${nome}`.substring(0, 28).padEnd(28)
+            linhas.push(descLinha + subtotal.toFixed(2).padStart(8))
+            linhas.push(`  ${qtdExibir} UN x ${unitario.toFixed(2)}`)
+        })
+        linhas.push('--------------------------------')
+        linhas.push(`SUBTOTAL R$`.padEnd(L - 12) + subtotalBruto.toFixed(2))
+        if (isDinheiro && valorRecebidoDinheiro > 0) {
+            linhas.push(`DINHEIRO R$`.padEnd(L - 12) + valorRecebidoDinheiro.toFixed(2))
+            if (valorTroco > 0) linhas.push(`TROCO R$`.padEnd(L - 12) + valorTroco.toFixed(2))
+        } else {
+            linhas.push(`${formaPagamentoDisplay} R$`.padEnd(L - 12) + valorTotal.toFixed(2))
+        }
+        linhas.push(`DESCONTO R$`.padEnd(L - 12) + (valorDesconto > 0 ? '-' : '') + valorDesconto.toFixed(2))
+        linhas.push('--------------------------------')
+        linhas.push(`TOTAL R$`.padEnd(L - 12) + valorTotal.toFixed(2))
+        linhas.push('--------------------------------')
+        linhas.push(`OPERADOR: ${operadorNome}`)
+        linhas.push('')
+        linhas.push(center('OBRIGADO, VOLTE SEMPRE!'))
+        linhas.push(center(mensagemCupom))
+        linhas.push('')
+        linhas.push('')
+        return linhas
     }
 
     const finalizarVenda = async (formaPagamento: string, opts?: { skipCadernetaConfirm?: boolean }) => {
@@ -1423,14 +1487,16 @@ export default function PDVPage() {
 
             if (itensError) throw itensError
 
-            // 3. Baixa no Estoque (Atualiza 'varejo')
-            for (const item of carrinho) {
-                const novoEstoque = item.estoque - item.qtdCarrinho
-                await getSupabase()
-                    .from('varejo')
-                    .update<Database['public']['Tables']['varejo']['Update']>({ estoque_atual: novoEstoque })
-                    .eq('id', item.id)
-            }
+            // 3. Baixa no Estoque (Atualiza 'varejo') — em paralelo
+            await Promise.all(
+                carrinho.map((item) => {
+                    const novoEstoque = item.estoque - item.qtdCarrinho
+                    return getSupabase()
+                        .from('varejo')
+                        .update<Database['public']['Tables']['varejo']['Update']>({ estoque_atual: novoEstoque })
+                        .eq('id', item.id)
+                })
+            )
 
             // Sucesso: notificar. Agendaremos o modal de impressão APENAS se todas as
             // etapas de pós-processamento (caderneta, caixa, fluxo) ocorrerem sem erros.
@@ -1666,17 +1732,14 @@ export default function PDVPage() {
             setClienteCadernetaSelecionado('')
             setValorAbaterCaderneta('')
 
-            // Atualiza dados locais (usando refreshAll para atualizar produtos, vendas e caixa)
-            try {
-                await refreshAll({ changeView: false })
-            } catch (e) {
+            // Atualiza dados locais em background (não bloqueia o modal pós-venda)
+            refreshAll({ changeView: false }).catch((e) => {
                 console.error('Erro ao atualizar dados após venda:', e)
-                postSaleIssue = true
-            }
+            })
 
             // Somente se não houver problemas no pós-processamento, abrimos o modal de impressão
             if (!postSaleIssue) {
-                abrirModalPosVendaComDelay(2000)
+                abrirModalPosVendaComDelay(300)
             } else {
                 showToast('Venda registrada, mas ocorreram problemas no pós-processamento. Impressão desabilitada.', 'warning')
             }
@@ -2351,8 +2414,6 @@ export default function PDVPage() {
             if (key === 'F11') { e.preventDefault(); if (caixaAberto) setView('caderneta'); return }
             // Atalho para Saída: F10
             if (key === 'F10') { e.preventDefault(); if (caixaAberto) setView('saida'); return }
-            // Atalho para NFC-e: F12
-            if (key === 'F12') { e.preventDefault(); if (caixaAberto) setView('nfce'); return }
 
             // Focar busca (Ctrl+F)
             if ((e.ctrlKey || e.metaKey) && (key.toLowerCase() === 'f')) {
@@ -2649,51 +2710,50 @@ export default function PDVPage() {
                                 <button
                                     onClick={() => setView('venda')}
                                     title="Ir para Vendas (F1)"
-                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition uppercase ${view === 'venda' ? 'bg-blue-800' : 'hover:bg-blue-700'}`}
+                                    className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
+                                    style={{ backgroundColor: view === 'venda' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
                                 >
                                     Vendas (F1)
                                 </button>
                                 <button
                                     onClick={() => setView('historico')}
                                     title="Ir para Relatórios (F2)"
-                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition uppercase ${view === 'historico' ? 'bg-blue-800' : 'hover:bg-blue-700'}`}
+                                    className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
+                                    style={{ backgroundColor: view === 'historico' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
                                 >
                                     Relatórios (F2)
                                 </button>
                                 <button
                                     onClick={() => setView('estoque')}
                                     title="Ir para Estoque (F3)"
-                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition uppercase ${view === 'estoque' ? 'bg-blue-800' : 'hover:bg-blue-700'}`}
+                                    className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
+                                    style={{ backgroundColor: view === 'estoque' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
                                 >
                                     Estoque (F3)
                                 </button>
                                 <button
                                     onClick={() => setView('caixa')}
                                     title="Ir para Caixa (F4)"
-                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition uppercase ${view === 'caixa' ? 'bg-blue-800' : 'hover:bg-blue-700'}`}
+                                    className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
+                                    style={{ backgroundColor: view === 'caixa' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
                                 >
                                     Caixa (F4)
                                 </button>
                                 <button
                                     onClick={() => setView('caderneta')}
                                     title="Ir para Caderneta (F11)"
-                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition uppercase ${view === 'caderneta' ? 'bg-blue-800' : 'hover:bg-blue-700'}`}
+                                    className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
+                                    style={{ backgroundColor: view === 'caderneta' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
                                 >
                                     Caderneta (F11)
                                 </button>
                                 <button
                                     onClick={() => setView('saida')}
                                     title="Ir para Saída (F10)"
-                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition uppercase ${view === 'saida' ? 'bg-yellow-600 text-white' : 'hover:bg-yellow-500'}`}
+                                    className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
+                                    style={{ backgroundColor: view === 'saida' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
                                 >
                                     Saída (F10)
-                                </button>
-                                <button
-                                    onClick={() => setView('nfce')}
-                                    title="Ir para NFC-e (F12)"
-                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition uppercase ${view === 'nfce' ? 'bg-green-600 text-white' : 'hover:bg-green-500'}`}
-                                >
-                                    NFC-e (F12)
                                 </button>
                             </nav>
                         )}
@@ -2701,13 +2761,13 @@ export default function PDVPage() {
                             <button
                                 onClick={() => setMostrarAtalhos((v) => !v)}
                                 title="Mostrar/ocultar atalhos"
-                                className="px-3 py-1 rounded-lg text-xs font-bold bg-blue-800 hover:bg-blue-700"
+                                className="px-3 py-1 rounded-lg text-xs font-bold bg-blue-800 hover:bg-blue-700 text-white"
                             >
                                 Atalhos
                             </button>
                         )}
                         <div className="flex items-center gap-3">
-                            <div className="font-mono text-lg bg-blue-800 px-4 py-1 rounded-full shadow-inner">
+                            <div className="font-mono text-lg bg-blue-800 px-4 py-1 rounded-full shadow-inner text-white">
                                 {relogio}
                             </div>
                             {isRefreshing && (
@@ -2821,135 +2881,6 @@ export default function PDVPage() {
                                     )}
                                 </tbody>
                                 </table>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* VIEW NFC-e - Impressão de Cupom Fiscal */}
-                    {caixaAberto && view === 'nfce' && (
-                        <div className="flex flex-col gap-4 h-full">
-                            {/* Header */}
-                            <div className="bg-white rounded-2xl shadow-sm p-6 border border-green-100">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <h2 className="text-xl font-black text-gray-800">NFC-e - Nota Fiscal de Consumidor</h2>
-                                        <p className="text-sm text-gray-500">Impressão de cupom fiscal eletrônico</p>
-                                    </div>
-                                </div>
-                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                                    <p className="text-sm text-yellow-800">
-                                        <strong>Atenção:</strong> Este módulo está em desenvolvimento. Por enquanto, apenas a impressão de cupom fiscal está disponível.
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Lista de vendas para imprimir cupom */}
-                            <div className="bg-white rounded-2xl shadow-sm p-6 border border-green-100 flex-1 overflow-hidden">
-                                <h3 className="text-lg font-bold text-gray-800 mb-4">Vendas do dia - Selecione para imprimir cupom</h3>
-                                <div className="max-h-96 overflow-y-auto">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-green-50 border-b border-green-100 sticky top-0">
-                                            <tr>
-                                                <th className="p-3 font-black uppercase text-green-800">#</th>
-                                                <th className="p-3 font-black uppercase text-green-800">DATA/HORA</th>
-                                                <th className="p-3 font-black uppercase text-green-800 text-right">VALOR</th>
-                                                <th className="p-3 font-black uppercase text-green-800">PAGAMENTO</th>
-                                                <th className="p-3 font-black uppercase text-green-800 text-center">AÇÕES</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {vendasHoje.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={5} className="p-8 text-center text-gray-500">
-                                                        <div className="flex flex-col items-center gap-2">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                                            </svg>
-                                                            <span>Nenhuma venda registrada hoje.</span>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                vendasHoje.map(v => {
-                                                    const dataVenda = v.created_at ? new Date(v.created_at) : null
-                                                    const formaPagamentoMap: Record<string, string> = {
-                                                        'dinheiro': 'Dinheiro',
-                                                        'pix': 'PIX',
-                                                        'cartao_debito': 'Débito',
-                                                        'cartao_credito': 'Crédito',
-                                                        'caderneta': 'Caderneta'
-                                                    }
-                                                    const formaPagamentoDisplay = formaPagamentoMap[v.forma_pagamento?.toLowerCase()] || v.forma_pagamento || '—'
-                                                    return (
-                                                        <tr key={v.id} className="border-b border-green-50 hover:bg-green-50/50 transition">
-                                                            <td className="p-3 font-mono text-green-700">#{v.id}</td>
-                                                            <td className="p-3">
-                                                                {dataVenda ? (
-                                                                    <div>
-                                                                        <div className="font-semibold">{dataVenda.toLocaleDateString('pt-BR')}</div>
-                                                                        <div className="text-xs text-gray-500">{dataVenda.toLocaleTimeString('pt-BR')}</div>
-                                                                    </div>
-                                                                ) : '—'}
-                                                            </td>
-                                                            <td className="p-3 text-right font-black text-green-600">R$ {Number(v.total).toFixed(2)}</td>
-                                                            <td className="p-3">
-                                                                <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                                                    v.forma_pagamento?.toLowerCase() === 'pix' ? 'bg-purple-100 text-purple-700' :
-                                                                    v.forma_pagamento?.toLowerCase() === 'dinheiro' ? 'bg-green-100 text-green-700' :
-                                                                    v.forma_pagamento?.toLowerCase()?.includes('debito') ? 'bg-blue-100 text-blue-700' :
-                                                                    v.forma_pagamento?.toLowerCase()?.includes('credito') ? 'bg-orange-100 text-orange-700' :
-                                                                    'bg-gray-100 text-gray-700'
-                                                                }`}>
-                                                                    {formaPagamentoDisplay}
-                                                                </span>
-                                                            </td>
-                                                            <td className="p-3 text-center">
-                                                                <button
-                                                                    onClick={async () => {
-                                                                        showToast('Gerando cupom fiscal NFC-e...', 'info')
-                                                                        await printCupomFiscalNFCe(v.id)
-                                                                    }}
-                                                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-xs transition flex items-center gap-2 mx-auto"
-                                                                    title="Imprimir Cupom Fiscal NFC-e"
-                                                                >
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                                                                    </svg>
-                                                                    Imprimir NFC-e
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    )
-                                                })
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            {/* Resumo e estatísticas */}
-                            <div className="bg-white rounded-2xl shadow-sm p-6 border border-green-100">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="bg-green-50 rounded-xl p-4 text-center">
-                                        <div className="text-2xl font-black text-green-600">{vendasHoje.length}</div>
-                                        <div className="text-sm text-green-800 font-semibold">Vendas Hoje</div>
-                                    </div>
-                                    <div className="bg-green-50 rounded-xl p-4 text-center">
-                                        <div className="text-2xl font-black text-green-600">
-                                            R$ {vendasHoje.reduce((acc, v) => acc + Number(v.total), 0).toFixed(2)}
-                                        </div>
-                                        <div className="text-sm text-green-800 font-semibold">Total em Vendas</div>
-                                    </div>
-                                    <div className="bg-yellow-50 rounded-xl p-4 text-center">
-                                        <div className="text-2xl font-black text-yellow-600">—</div>
-                                        <div className="text-sm text-yellow-800 font-semibold">NFC-e Emitidas (em breve)</div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     )}
@@ -3481,7 +3412,16 @@ export default function PDVPage() {
 
                 {/* Modal Pagamento Dinheiro */}
                 {modalPagamento && (
-                    <div className="fixed inset-0 bg-blue-950/90 flex items-center justify-center z-50 backdrop-blur-sm p-4 overflow-y-auto">
+                    <div
+                        className="fixed inset-0 bg-blue-950/90 flex items-center justify-center z-50 backdrop-blur-sm p-4 overflow-y-auto"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (!loading) confirmarPagamentoAtivo()
+                            }
+                        }}
+                    >
                         <div className="bg-white p-6 rounded-[30px] w-full max-w-md shadow-2xl border-4 border-blue-500 my-auto max-h-[90vh] overflow-y-auto">
                             <div className="text-center mb-4">
                                 <span className="text-xs font-black text-blue-400 uppercase tracking-widest">Recebimento</span>
@@ -3527,6 +3467,12 @@ export default function PDVPage() {
                                         type="number"
                                         value={valorRecebido}
                                         onChange={(e) => setValorRecebido(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault()
+                                                if (!loading) handlePagamentoDinheiro()
+                                            }
+                                        }}
                                         className="w-full p-4 border-2 border-blue-50 rounded-3xl text-3xl font-black text-blue-600 outline-none focus:border-blue-500 bg-blue-50/20 text-center"
                                         autoFocus
                                     />
@@ -3862,7 +3808,16 @@ export default function PDVPage() {
 
                 {/* Modal Débito */}
                 {modalDebito && (
-                    <div className="fixed inset-0 bg-blue-950/90 flex items-center justify-center z-50 backdrop-blur-sm p-4 overflow-y-auto">
+                    <div
+                        className="fixed inset-0 bg-blue-950/90 flex items-center justify-center z-50 backdrop-blur-sm p-4 overflow-y-auto"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (!loading) finalizarVenda('debito')
+                            }
+                        }}
+                    >
                         <div className="bg-white p-6 rounded-[30px] w-full max-w-md shadow-2xl border-4 border-blue-500 my-auto max-h-[90vh] overflow-y-auto">
                             <div className="text-center mb-4">
                                 <span className="text-xs font-black text-blue-400 uppercase tracking-widest">Pagamento</span>
@@ -3936,7 +3891,16 @@ export default function PDVPage() {
 
                 {/* Modal Pix */}
                 {modalPix && (
-                    <div className="fixed inset-0 bg-blue-950/90 flex items-center justify-center z-50 backdrop-blur-sm p-4 overflow-y-auto">
+                    <div
+                        className="fixed inset-0 bg-blue-950/90 flex items-center justify-center z-50 backdrop-blur-sm p-4 overflow-y-auto"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (!loading) confirmarPagamentoAtivo()
+                            }
+                        }}
+                    >
                         <div className="bg-white p-6 rounded-[30px] w-full max-w-md shadow-2xl border-4 border-blue-500 my-auto max-h-[90vh] overflow-y-auto">
                             <div className="text-center mb-4">
                                 <span className="text-xs font-black text-blue-400 uppercase tracking-widest">Pagamento</span>
@@ -3973,7 +3937,17 @@ export default function PDVPage() {
 
                 {/* Modal Caderneta */}
                 {modalCaderneta && (
-                    <div className="fixed inset-0 bg-blue-950/90 flex items-center justify-center z-50 backdrop-blur-sm p-4 overflow-y-auto">
+                    <div
+                        className="fixed inset-0 bg-blue-950/90 flex items-center justify-center z-50 backdrop-blur-sm p-4 overflow-y-auto"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                const podeConfirmar = !loading && !!clienteCadernetaSelecionado && (parseFloat(String(valorAbaterCaderneta).replace(',', '.')) || 0) > 0
+                                if (podeConfirmar) confirmarPagamentoAtivo()
+                            }
+                        }}
+                    >
                         <div className="bg-white p-6 rounded-[30px] w-full max-w-md shadow-2xl border-4 border-blue-500 my-auto">
                             <div className="text-center mb-4">
                                 <span className="text-xs font-black text-blue-400 uppercase tracking-widest">Pagamento</span>
@@ -4107,22 +4081,38 @@ export default function PDVPage() {
                                 </button>
                             </div>
 
-                            <p className="text-gray-600 mb-6">Deseja imprimir o recibo agora?</p>
+                            <p className="text-gray-600 mb-6">Deseja imprimir o cupom fiscal?</p>
 
                             <div className="flex gap-3">
                                 <button
                                     onClick={async () => {
+                                        if (!lastVendaId) {
+                                            showToast('Venda não encontrada para impressão.', 'error')
+                                            return
+                                        }
+                                        const urlBase = (typeof window !== 'undefined' ? localStorage.getItem('impressao-local-url') : null) || 'http://127.0.0.1:3333'
                                         try {
-                                            setModalPosVenda(false)
-                                            if (!lastVendaId) {
-                                                showToast('Venda não encontrada para impressão.', 'error')
+                                            const linhas = await getCupomFiscalLinhas(lastVendaId)
+                                            const res = await fetch(`${urlBase}/imprimir-cupom`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ linhas }),
+                                            })
+                                            if (res.ok) {
+                                                setModalPosVenda(false)
+                                                showToast('Cupom enviado para impressora.', 'success')
                                                 return
                                             }
-                                            showToast('Iniciando impressão do recibo...', 'success')
-                                            await printReceipt(lastVendaId, 1)
-                                        } catch (e) {
-                                            console.error('Erro ao imprimir recibo:', e)
-                                            showToast('Falha ao iniciar impressão.', 'error')
+                                            throw new Error(await res.text())
+                                        } catch (_) {
+                                            try {
+                                                setModalPosVenda(false)
+                                                showToast('Impressora local indisponível. Abrindo impressão no navegador...', 'success')
+                                                await printCupomFiscalNFCe(lastVendaId)
+                                            } catch (e) {
+                                                console.error('Erro ao imprimir cupom fiscal:', e)
+                                                showToast('Falha ao imprimir cupom.', 'error')
+                                            }
                                         }
                                     }}
                                     className="flex-1 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase"

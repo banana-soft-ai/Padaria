@@ -1,6 +1,6 @@
 "use client"
 import React, { useState, useEffect } from 'react'
-import { X, Sun, Moon, Palette } from 'lucide-react'
+import { X, Sun, Moon, Palette, Volume2, VolumeX } from 'lucide-react'
 
 type Props = {
   isOpen: boolean
@@ -11,16 +11,20 @@ export default function ConfiguracoesAvancadasModal({ isOpen, onClose }: Props) 
   const [fontSize, setFontSize] = useState('medium')
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [primaryColor, setPrimaryColor] = useState('#d97706') // Amber-600 (default)
+  const [scannerBeep, setScannerBeep] = useState(true) // bip ao escanear produto
 
   useEffect(() => {
     // Carregar configurações do localStorage
     const savedFontSize = localStorage.getItem('font-size') || 'medium'
     const savedTheme = localStorage.getItem('theme') || 'light'
     const savedColor = localStorage.getItem('primary-color') || '#d97706'
+    const savedBeep = localStorage.getItem('scanner-beep')
+    const beepOn = savedBeep === null ? true : savedBeep === 'true'
 
     setFontSize(savedFontSize)
     setTheme(savedTheme as 'light' | 'dark')
     setPrimaryColor(savedColor)
+    setScannerBeep(beepOn)
 
     // Aplicar configurações iniciais
     document.documentElement.classList.toggle('dark', savedTheme === 'dark')
@@ -46,6 +50,11 @@ export default function ConfiguracoesAvancadasModal({ isOpen, onClose }: Props) 
     document.documentElement.style.setProperty('--primary-color', color)
   }
 
+  const handleScannerBeepChange = (on: boolean) => {
+    setScannerBeep(on)
+    localStorage.setItem('scanner-beep', String(on))
+  }
+
   if (!isOpen) return null
 
   return (
@@ -66,8 +75,42 @@ export default function ConfiguracoesAvancadasModal({ isOpen, onClose }: Props) 
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[60vh]">
+        <div className="p-6 overflow-y-auto max-h-[70vh]">
           <div className="space-y-8">
+            {/* Som do scanner (bip ao escanear) - no topo para ficar visível */}
+            <section>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center uppercase tracking-wider">
+                Som do scanner
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                Reproduz um bip ao escanear um produto no caixa.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => handleScannerBeepChange(true)}
+                  className={`flex items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                    scannerBeep
+                      ? 'border-primary bg-primary/10'
+                      : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                  }`}
+                >
+                  <Volume2 className={`w-5 h-5 mr-3 ${scannerBeep ? 'text-primary' : 'text-gray-500'}`} />
+                  <span className={`font-medium ${scannerBeep ? 'text-primary' : 'text-gray-600 dark:text-gray-400'}`}>Som</span>
+                </button>
+                <button
+                  onClick={() => handleScannerBeepChange(false)}
+                  className={`flex items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                    !scannerBeep
+                      ? 'border-primary bg-primary/10'
+                      : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                  }`}
+                >
+                  <VolumeX className={`w-5 h-5 mr-3 ${!scannerBeep ? 'text-primary' : 'text-gray-500'}`} />
+                  <span className={`font-medium ${!scannerBeep ? 'text-primary' : 'text-gray-600 dark:text-gray-400'}`}>Silenciar</span>
+                </button>
+              </div>
+            </section>
+
             {/* Modo Light/Dark */}
             <section>
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center uppercase tracking-wider">

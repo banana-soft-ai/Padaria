@@ -1,0 +1,13 @@
+{
+  "name": "impressao-local-rey-dos-paes",
+  "version": "1.0.0",
+  "description": "Serviço local para impressão direta na Elgin i9 (cupom fiscal)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["elgin", "impressora", "cupom", "pdv"],
+  "author": "",
+  "license": "MIT"
+}

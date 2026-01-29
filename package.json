@@ -13,6 +13,7 @@
     "start": "node server.js",
     "lint": "next lint",
     "setup-admin": "node scripts/js/setup-admin.js",
+    "impressao-local": "node servicos/impressao-local/server.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

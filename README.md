@@ -92,6 +92,16 @@ npm run dev
 
 O sistema estará disponível em `http://localhost:3000`
 
+### 6. (Opcional) Impressão direta na Elgin i9
+
+Para imprimir o cupom fiscal direto na impressora Elgin i9 (sem abrir o diálogo do navegador), inicie o serviço local no mesmo PC onde está o PDV e a impressora:
+
+```bash
+npm run impressao-local
+```
+
+Por padrão o serviço escuta em `http://127.0.0.1:3333`. No PDV, ao finalizar a venda e clicar em **Sim** em "Deseja imprimir o cupom fiscal?", o sistema envia o cupom para esse serviço e a impressora imprime direto. Se o serviço não estiver rodando, o sistema abre a impressão no navegador (comportamento anterior). Detalhes em `servicos/impressao-local/README.md`.
+
 > **Nota:** por padrão o comando acima roda sem **Turbopack** (mais estável em Windows). Se quiser testar o Turbopack (experimental), execute:
 >
 > ```bash

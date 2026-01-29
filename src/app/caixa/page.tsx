@@ -416,7 +416,7 @@ export default function PDVPage() {
         }
     }
     // --- Estados de UI e Dados ---
-    const [view, setView] = useState<'abertura' | 'venda' | 'historico' | 'estoque' | 'caixa' | 'saida' | 'caderneta'>('abertura')
+    const [view, setView] = useState<'abertura' | 'venda' | 'historico' | 'estoque' | 'caixa' | 'saida' | 'caderneta' | 'nfce'>('abertura')
     const [caixaAberto, setCaixaAberto] = useState(false)
     const [operador, setOperador] = useState('')
     const [saldoInicial, setSaldoInicial] = useState(0)
@@ -1104,6 +1104,208 @@ export default function PDVPage() {
             return true
         } catch (err) {
             console.error('printReceipt erro:', err)
+            throw err
+        }
+    }
+
+    // Função para imprimir cupom fiscal no formato NFC-e
+    const printCupomFiscalNFCe = async (vendaId: number) => {
+        try {
+            const [{ data: vendaRow }, { data: itens }] = await Promise.all([
+                getSupabase().from('vendas').select('id, created_at, valor_total, forma_pagamento').eq('id', vendaId).single(),
+                getSupabase().from('venda_itens').select('quantidade, preco_unitario, subtotal, varejo (id, nome, codigo_barras)').eq('venda_id', vendaId)
+            ])
+
+            const venda = (vendaRow as any) || {}
+            const itensVenda = (itens as any) || []
+            const dataVenda = venda.created_at ? new Date(venda.created_at) : new Date()
+
+            // Gera chave de acesso simulada (44 dígitos)
+            const chaveAcesso = Array.from({ length: 44 }, () => Math.floor(Math.random() * 10)).join('')
+            const chaveFormatada = chaveAcesso.replace(/(\d{4})/g, '$1 ').trim()
+
+            // Formata forma de pagamento
+            const formaPagamentoMap: Record<string, string> = {
+                'dinheiro': 'Dinheiro',
+                'pix': 'PIX',
+                'cartao_debito': 'Cartão de Débito',
+                'cartao_credito': 'Cartão de Crédito',
+                'caderneta': 'Caderneta'
+            }
+            const formaPagamentoDisplay = formaPagamentoMap[venda.forma_pagamento?.toLowerCase()] || venda.forma_pagamento || 'Não informado'
+
+            // Gera itens do cupom
+            const htmlItems = itensVenda.map((it: any, idx: number) => {
+                const codigo = it.varejo?.codigo_barras || it.varejo?.id || (idx + 1)
+                const nome = it.varejo?.nome || 'Item'
+                const qtd = Number(it.quantidade)
+                const unitario = Number(it.preco_unitario)
+                const subtotal = Number(it.subtotal ?? qtd * unitario)
+                return `
+                    <tr style="border-bottom: 1px dashed #ccc;">
+                        <td style="padding: 2px 0; font-size: 10px;">${String(idx + 1).padStart(3, '0')}</td>
+                        <td style="padding: 2px 4px; font-size: 10px;">${codigo}</td>
+                        <td style="padding: 2px 4px; font-size: 10px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${nome}</td>
+                        <td style="padding: 2px 4px; font-size: 10px; text-align: right;">${qtd.toFixed(3)}</td>
+                        <td style="padding: 2px 4px; font-size: 10px; text-align: right;">${unitario.toFixed(2)}</td>
+                        <td style="padding: 2px 4px; font-size: 10px; text-align: right; font-weight: bold;">${subtotal.toFixed(2)}</td>
+                    </tr>
+                `
+            }).join('')
+
+            const totalItens = itensVenda.reduce((acc: number, it: any) => acc + Number(it.quantidade), 0)
+            const valorTotal = Number(venda.valor_total ?? 0)
+
+            const html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Cupom Fiscal - NFC-e #${vendaId}</title>
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body {
+                            font-family: 'Courier New', monospace;
+                            font-size: 11px;
+                            width: 280px;
+                            padding: 10px;
+                            background: #fff;
+                        }
+                        .center { text-align: center; }
+                        .right { text-align: right; }
+                        .bold { font-weight: bold; }
+                        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+                        .header { margin-bottom: 10px; }
+                        .empresa { font-size: 14px; font-weight: bold; }
+                        .info { font-size: 9px; color: #333; }
+                        table { width: 100%; border-collapse: collapse; }
+                        .total-line { font-size: 14px; font-weight: bold; }
+                        .chave { font-size: 8px; word-break: break-all; }
+                        .qrcode-placeholder {
+                            width: 100px;
+                            height: 100px;
+                            border: 1px solid #000;
+                            margin: 10px auto;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 8px;
+                        }
+                        @media print {
+                            body { width: 80mm; }
+                            @page { margin: 0; size: 80mm auto; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header center">
+                        <div class="empresa">REY DOS PÃES</div>
+                        <div class="info">CNPJ: 00.000.000/0001-00</div>
+                        <div class="info">Endereço da Loja</div>
+                        <div class="info">Cidade - UF</div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="center bold" style="font-size: 12px;">
+                        DANFE NFC-e - Documento Auxiliar
+                    </div>
+                    <div class="center info">da Nota Fiscal de Consumidor Eletrônica</div>
+
+                    <div class="divider"></div>
+
+                    <table>
+                        <thead>
+                            <tr style="border-bottom: 1px solid #000;">
+                                <th style="font-size: 9px; text-align: left;">#</th>
+                                <th style="font-size: 9px; text-align: left;">CÓD</th>
+                                <th style="font-size: 9px; text-align: left;">DESCRIÇÃO</th>
+                                <th style="font-size: 9px; text-align: right;">QTD</th>
+                                <th style="font-size: 9px; text-align: right;">UN</th>
+                                <th style="font-size: 9px; text-align: right;">TOTAL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${htmlItems}
+                        </tbody>
+                    </table>
+
+                    <div class="divider"></div>
+
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span>Qtd. total de itens:</span>
+                        <span class="bold">${totalItens}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;" class="total-line">
+                        <span>VALOR TOTAL R$</span>
+                        <span>${valorTotal.toFixed(2)}</span>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span>FORMA DE PAGAMENTO:</span>
+                        <span class="bold">${formaPagamentoDisplay}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span>Valor Pago R$:</span>
+                        <span>${valorTotal.toFixed(2)}</span>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="center">
+                        <div class="qrcode-placeholder">
+                            [QR Code]<br/>NFC-e
+                        </div>
+                    </div>
+
+                    <div class="center info" style="margin-top: 8px;">
+                        <div class="bold">Consulte pela Chave de Acesso em:</div>
+                        <div>www.nfce.fazenda.gov.br/portal</div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="center chave">
+                        <div class="bold">CHAVE DE ACESSO</div>
+                        <div>${chaveFormatada}</div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="center info">
+                        <div>Nº ${String(vendaId).padStart(9, '0')} | Série 001</div>
+                        <div>Emissão: ${dataVenda.toLocaleDateString('pt-BR')} ${dataVenda.toLocaleTimeString('pt-BR')}</div>
+                        <div style="margin-top: 4px;">Protocolo de Autorização:</div>
+                        <div>${Date.now()}${vendaId}</div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="center info" style="margin-top: 10px;">
+                        <div class="bold">CONSUMIDOR NÃO IDENTIFICADO</div>
+                    </div>
+
+                    <div class="center info" style="margin-top: 10px; font-size: 8px;">
+                        Tributos Totais Incidentes (Lei Federal 12.741/2012): R$ ${(valorTotal * 0.32).toFixed(2)}
+                    </div>
+                </body>
+                </html>
+            `
+
+            const w = window.open('', '_blank', 'width=320,height=600')
+            if (!w) throw new Error('Não foi possível abrir janela de impressão')
+            w.document.open()
+            w.document.write(html)
+            w.document.close()
+            w.focus()
+            await new Promise((res) => setTimeout(res, 300))
+            w.print()
+            return true
+        } catch (err) {
+            console.error('printCupomFiscalNFCe erro:', err)
+            showToast('Erro ao imprimir cupom fiscal', 'error')
             throw err
         }
     }
@@ -2147,6 +2349,10 @@ export default function PDVPage() {
             if (key === 'F4') { e.preventDefault(); if (caixaAberto) setView('caixa'); return }
             // Atalho para Caderneta: usa F11 se disponível (não conflita com outros atalhos atuais)
             if (key === 'F11') { e.preventDefault(); if (caixaAberto) setView('caderneta'); return }
+            // Atalho para Saída: F10
+            if (key === 'F10') { e.preventDefault(); if (caixaAberto) setView('saida'); return }
+            // Atalho para NFC-e: F12
+            if (key === 'F12') { e.preventDefault(); if (caixaAberto) setView('nfce'); return }
 
             // Focar busca (Ctrl+F)
             if ((e.ctrlKey || e.metaKey) && (key.toLowerCase() === 'f')) {
@@ -2482,6 +2688,13 @@ export default function PDVPage() {
                                 >
                                     Saída (F10)
                                 </button>
+                                <button
+                                    onClick={() => setView('nfce')}
+                                    title="Ir para NFC-e (F12)"
+                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition uppercase ${view === 'nfce' ? 'bg-green-600 text-white' : 'hover:bg-green-500'}`}
+                                >
+                                    NFC-e (F12)
+                                </button>
                             </nav>
                         )}
                         {caixaAberto && (
@@ -2608,6 +2821,135 @@ export default function PDVPage() {
                                     )}
                                 </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* VIEW NFC-e - Impressão de Cupom Fiscal */}
+                    {caixaAberto && view === 'nfce' && (
+                        <div className="flex flex-col gap-4 h-full">
+                            {/* Header */}
+                            <div className="bg-white rounded-2xl shadow-sm p-6 border border-green-100">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-black text-gray-800">NFC-e - Nota Fiscal de Consumidor</h2>
+                                        <p className="text-sm text-gray-500">Impressão de cupom fiscal eletrônico</p>
+                                    </div>
+                                </div>
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                    <p className="text-sm text-yellow-800">
+                                        <strong>Atenção:</strong> Este módulo está em desenvolvimento. Por enquanto, apenas a impressão de cupom fiscal está disponível.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Lista de vendas para imprimir cupom */}
+                            <div className="bg-white rounded-2xl shadow-sm p-6 border border-green-100 flex-1 overflow-hidden">
+                                <h3 className="text-lg font-bold text-gray-800 mb-4">Vendas do dia - Selecione para imprimir cupom</h3>
+                                <div className="max-h-96 overflow-y-auto">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-green-50 border-b border-green-100 sticky top-0">
+                                            <tr>
+                                                <th className="p-3 font-black uppercase text-green-800">#</th>
+                                                <th className="p-3 font-black uppercase text-green-800">DATA/HORA</th>
+                                                <th className="p-3 font-black uppercase text-green-800 text-right">VALOR</th>
+                                                <th className="p-3 font-black uppercase text-green-800">PAGAMENTO</th>
+                                                <th className="p-3 font-black uppercase text-green-800 text-center">AÇÕES</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {vendasHoje.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={5} className="p-8 text-center text-gray-500">
+                                                        <div className="flex flex-col items-center gap-2">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                            </svg>
+                                                            <span>Nenhuma venda registrada hoje.</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                vendasHoje.map(v => {
+                                                    const dataVenda = v.created_at ? new Date(v.created_at) : null
+                                                    const formaPagamentoMap: Record<string, string> = {
+                                                        'dinheiro': 'Dinheiro',
+                                                        'pix': 'PIX',
+                                                        'cartao_debito': 'Débito',
+                                                        'cartao_credito': 'Crédito',
+                                                        'caderneta': 'Caderneta'
+                                                    }
+                                                    const formaPagamentoDisplay = formaPagamentoMap[v.forma_pagamento?.toLowerCase()] || v.forma_pagamento || '—'
+                                                    return (
+                                                        <tr key={v.id} className="border-b border-green-50 hover:bg-green-50/50 transition">
+                                                            <td className="p-3 font-mono text-green-700">#{v.id}</td>
+                                                            <td className="p-3">
+                                                                {dataVenda ? (
+                                                                    <div>
+                                                                        <div className="font-semibold">{dataVenda.toLocaleDateString('pt-BR')}</div>
+                                                                        <div className="text-xs text-gray-500">{dataVenda.toLocaleTimeString('pt-BR')}</div>
+                                                                    </div>
+                                                                ) : '—'}
+                                                            </td>
+                                                            <td className="p-3 text-right font-black text-green-600">R$ {Number(v.total).toFixed(2)}</td>
+                                                            <td className="p-3">
+                                                                <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                                                    v.forma_pagamento?.toLowerCase() === 'pix' ? 'bg-purple-100 text-purple-700' :
+                                                                    v.forma_pagamento?.toLowerCase() === 'dinheiro' ? 'bg-green-100 text-green-700' :
+                                                                    v.forma_pagamento?.toLowerCase()?.includes('debito') ? 'bg-blue-100 text-blue-700' :
+                                                                    v.forma_pagamento?.toLowerCase()?.includes('credito') ? 'bg-orange-100 text-orange-700' :
+                                                                    'bg-gray-100 text-gray-700'
+                                                                }`}>
+                                                                    {formaPagamentoDisplay}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-3 text-center">
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        showToast('Gerando cupom fiscal NFC-e...', 'info')
+                                                                        await printCupomFiscalNFCe(v.id)
+                                                                    }}
+                                                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-xs transition flex items-center gap-2 mx-auto"
+                                                                    title="Imprimir Cupom Fiscal NFC-e"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                                                                    </svg>
+                                                                    Imprimir NFC-e
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Resumo e estatísticas */}
+                            <div className="bg-white rounded-2xl shadow-sm p-6 border border-green-100">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-green-50 rounded-xl p-4 text-center">
+                                        <div className="text-2xl font-black text-green-600">{vendasHoje.length}</div>
+                                        <div className="text-sm text-green-800 font-semibold">Vendas Hoje</div>
+                                    </div>
+                                    <div className="bg-green-50 rounded-xl p-4 text-center">
+                                        <div className="text-2xl font-black text-green-600">
+                                            R$ {vendasHoje.reduce((acc, v) => acc + Number(v.total), 0).toFixed(2)}
+                                        </div>
+                                        <div className="text-sm text-green-800 font-semibold">Total em Vendas</div>
+                                    </div>
+                                    <div className="bg-yellow-50 rounded-xl p-4 text-center">
+                                        <div className="text-2xl font-black text-yellow-600">—</div>
+                                        <div className="text-sm text-yellow-800 font-semibold">NFC-e Emitidas (em breve)</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}

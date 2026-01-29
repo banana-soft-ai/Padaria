@@ -9,7 +9,14 @@ Serviço Node.js que recebe o cupom fiscal e envia direto para a impressora (Elg
    cd servicos/impressao-local
    node server.js
    ```
-   Por padrão escuta em `http://127.0.0.1:3333`.
+   Por padrão escuta em `http://127.0.0.1:3333` (ou `https://127.0.0.1:3333` se certificados existirem).
+
+2. **Site no Railway (HTTPS):** Para funcionar com o site hospedado no Railway, o serviço precisa usar HTTPS. Gere os certificados com mkcert:
+   ```bash
+   mkcert -install
+   mkcert localhost 127.0.0.1
+   ```
+   Isso cria `localhost+1.pem` e `localhost+1-key.pem`. O serviço detecta e usa HTTPS automaticamente.
 
 ## Iniciar com o Windows (produção)
 

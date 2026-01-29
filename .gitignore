@@ -5,3 +5,7 @@ node_modules/
 .env.production
 .DS_Store
 tsconfig.tsbuildinfo
+
+# Certificados gerados pelo mkcert (serviço de impressão)
+localhost+1.pem
+localhost+1-key.pem

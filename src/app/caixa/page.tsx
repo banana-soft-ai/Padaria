@@ -4090,7 +4090,7 @@ export default function PDVPage() {
                                             showToast('Venda não encontrada para impressão.', 'error')
                                             return
                                         }
-                                        const urlBase = (typeof window !== 'undefined' ? localStorage.getItem('impressao-local-url') : null) || 'http://127.0.0.1:3333'
+                                        const urlBase = (typeof window !== 'undefined' ? localStorage.getItem('impressao-local-url') : null) || 'https://127.0.0.1:3333'
                                         try {
                                             const linhas = await getCupomFiscalLinhas(lastVendaId)
                                             const res = await fetch(`${urlBase}/imprimir-cupom`, {

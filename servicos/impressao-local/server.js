@@ -3,19 +3,34 @@
  * Recebe POST /imprimir-cupom com { linhas: string[], printerName?: string }
  * e envia o texto para a impressora configurada.
  *
+ * Usa HTTPS quando certificados existem (localhost+1.pem) para funcionar com
+ * site hospedado em Railway/HTTPS (evita bloqueio Mixed Content).
+ *
  * Uso: node server.js
  * Porta padrão: 3333 (variável de ambiente PORT)
  * Impressora: variável de ambiente PRINTER_NAME ou "Elgin i9"
  */
 
-const http = require('http')
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
 const { exec } = require('child_process')
 
+const ROOT_DIR = __dirname
+const CERT_PEM = path.join(ROOT_DIR, 'localhost+1.pem')
+const CERT_KEY = path.join(ROOT_DIR, 'localhost+1-key.pem')
+const useHttps = fs.existsSync(CERT_PEM) && fs.existsSync(CERT_KEY)
+
+const http = require('http')
+const https = require('https')
+
 const PORT = parseInt(process.env.PORT || '3333', 10)
 const PRINTER_NAME = process.env.PRINTER_NAME || 'Elgin i9'
+
+const httpsOptions = useHttps ? {
+  key: fs.readFileSync(CERT_KEY),
+  cert: fs.readFileSync(CERT_PEM),
+} : null
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -79,7 +94,9 @@ function imprimir(linhas, printerName) {
   return imprimirUnix(linhas, printerName)
 }
 
-const server = http.createServer((req, res) => {
+const createServer = useHttps ? (handler) => https.createServer(httpsOptions, handler) : (handler) => http.createServer(handler)
+
+const server = createServer((req, res) => {
   if (req.method === 'OPTIONS') {
     send(res, 204, '')
     return
@@ -131,5 +148,6 @@ const server = http.createServer((req, res) => {
 })
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Impressão local: http://127.0.0.1:${PORT} (impressora: ${PRINTER_NAME})`)
+  const proto = useHttps ? 'https' : 'http'
+  console.log(`Impressão local: ${proto}://127.0.0.1:${PORT} (impressora: ${PRINTER_NAME})`)
 })

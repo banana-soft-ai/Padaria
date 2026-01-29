@@ -1,0 +1,53 @@
+# INSTRUCOES PARA CRIAR O INSTALADOR DO CLIENTE
+
+Esta pasta contem tudo o que voce precisa para entregar o servico de impressao para o seu cliente de forma profissional. O servico usa HTTPS para funcionar com o site hospedado no Railway (evita bloqueio Mixed Content).
+
+## 1. PREPARACAO (O que voce deve fazer antes de enviar ao cliente)
+
+Voce precisa colocar TRES arquivos dentro da pasta "bin":
+
+1. **node.exe**: 
+   - Baixe a versao "Windows Binary (.zip) - x64" no site oficial: https://nodejs.org/en/download/prebuilt-binaries
+   - Extraia o zip e copie APENAS o arquivo `node.exe` para dentro da pasta `bin`.
+
+2. **nssm.exe**:
+   - Baixe em: https://nssm.cc/download
+   - No zip baixado, va na pasta `win64` e copie o `nssm.exe` para dentro da pasta `bin`.
+
+3. **mkcert.exe**:
+   - Baixe em: https://github.com/FiloSottile/mkcert/releases
+   - Baixe o arquivo `mkcert-v1.4.4-windows-amd64.exe` (ou versao mais recente)
+   - Renomeie para `mkcert.exe` e coloque na pasta `bin`.
+
+---
+
+## 2. COMO ENTREGAR PARA O CLIENTE
+
+1. Certifique-se de que a pasta `pacote-servico` tem esta estrutura:
+   - `bin/node.exe`
+   - `bin/nssm.exe`
+   - `bin/mkcert.exe`
+   - `server.js`
+   - `instalar-servico.bat`
+   - `remover-servico.bat`
+
+2. Compacte a pasta `pacote-servico` em um arquivo `.zip`.
+
+3. Envie o `.zip` para o cliente.
+
+---
+
+## 3. O QUE O CLIENTE DEVE FAZER
+
+1. Extrair o arquivo `.zip` no computador dele (ex: em C:\SistemaImpressao).
+2. Clicar com o botao direito em **`instalar-servico.bat`** e escolher **"Executar como Administrador"**.
+3. O instalador vai gerar os certificados HTTPS automaticamente e instalar o servico.
+4. PRONTO. O servico estara rodando "invisivel" e iniciara sozinho com o Windows.
+
+---
+
+## NOTAS TECNICAS:
+- O servico usa HTTPS na porta 3333 (https://127.0.0.1:3333) para funcionar com o site no Railway.
+- Os certificados sao gerados automaticamente pelo mkcert na primeira instalacao.
+- Se a impressora no Windows tiver outro nome alem de "Elgin i9", edite o `server.js` ou configure a impressora padrao no Windows.
+- Logs de erro ficarao na pasta `logs/` criada apos a instalacao.

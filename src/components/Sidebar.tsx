@@ -33,9 +33,6 @@ function Sidebar() {
     if (typeof window === 'undefined') return true
     const saved = localStorage.getItem('sidebar-open')
     const value = saved === null ? true : saved === 'true'
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/f0795a39-7835-4189-9c83-d26f1bd3912d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Sidebar.tsx:35',message:'isOpen initial state',data:{isOpen:value,saved},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     return value
   })
 
@@ -47,9 +44,6 @@ function Sidebar() {
   }, [])
 
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/f0795a39-7835-4189-9c83-d26f1bd3912d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Sidebar.tsx:48',message:'isOpen changed',data:{isOpen},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     localStorage.setItem('sidebar-open', String(isOpen))
   }, [isOpen])
 
@@ -211,14 +205,8 @@ function Sidebar() {
             </div>
           ) : (
             menuBlocks.map((block) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/f0795a39-7835-4189-9c83-d26f1bd3912d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Sidebar.tsx:172',message:'rendering block',data:{blockTitle:block.title,sectionsCount:block.sections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
             // Verificar se o bloco deve ser exibido
             const shouldShow = shouldShowBlock(block, role, isUnlocked)
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/f0795a39-7835-4189-9c83-d26f1bd3912d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Sidebar.tsx:175',message:'shouldShowBlock result',data:{blockTitle:block.title,shouldShow},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
             if (!shouldShow) {
               return null
             }
@@ -250,10 +238,6 @@ function Sidebar() {
                 {block.sections.map((section) => {
                   // Filtrar itens baseado no estado de desbloqueio
                   const visibleItems = filterMenuItems(section.items, isUnlocked)
-                  // #region agent log
-                  fetch('http://127.0.0.1:7243/ingest/f0795a39-7835-4189-9c83-d26f1bd3912d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Sidebar.tsx:204',message:'section items filtered',data:{sectionTitle:section.title,itemsCount:section.items.length,visibleCount:visibleItems.length,isUnlocked},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-                  // #endregion
-
                   if (visibleItems.length === 0) {
                     return null
                   }
@@ -287,9 +271,6 @@ function Sidebar() {
                       <div className="space-y-1">
                         {visibleItems.map((item) => {
                           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-                          // #region agent log
-                          fetch('http://127.0.0.1:7243/ingest/f0795a39-7835-4189-9c83-d26f1bd3912d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Sidebar.tsx:229',message:'rendering menu item',data:{itemName:item.name,href:item.href,isOpen},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-                          // #endregion
                           const isComingSoon = item.comingSoon
                           
                           const content = (

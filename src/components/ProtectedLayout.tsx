@@ -19,9 +19,6 @@ export default function ProtectedLayout({ children }: ProtectedLayoutProps) {
     let isMounted = true
 
     const checkUser = async () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/f0795a39-7835-4189-9c83-d26f1bd3912d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedLayout.tsx:21',message:'ProtectedLayout checkUser',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       try {
         // Se variáveis do Supabase não estão configuradas, liberar acesso em modo offline
         const hasSupabaseEnv = !!clientEnv.NEXT_PUBLIC_SUPABASE_URL && !!clientEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -34,10 +31,6 @@ export default function ProtectedLayout({ children }: ProtectedLayoutProps) {
         }
 
         const { data: { session }, error } = await supabase!.auth.getSession()
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/f0795a39-7835-4189-9c83-d26f1bd3912d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedLayout.tsx:33',message:'ProtectedLayout got session',data:{hasSession:!!session,hasError:!!error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-
         if (!isMounted) return
 
         if (error) {
@@ -71,9 +64,6 @@ export default function ProtectedLayout({ children }: ProtectedLayoutProps) {
 
     const { data: { subscription } } = supabase!.auth.onAuthStateChange(
       async (event, session) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/f0795a39-7835-4189-9c83-d26f1bd3912d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedLayout.tsx:66',message:'ProtectedLayout auth change',data:{event,hasSession:!!session},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         if (!isMounted) return
 
         if (event === 'SIGNED_OUT') {

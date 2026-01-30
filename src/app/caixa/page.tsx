@@ -679,6 +679,7 @@ export default function PDVPage() {
     const [itensVendaSelecionada, setItensVendaSelecionada] = useState<any[]>([])
     const [vendaSelecionadaId, setVendaSelecionadaId] = useState<number | null>(null)
     const [vendaClienteNome, setVendaClienteNome] = useState<string | null>(null)
+    const [descontoVendaSelecionada, setDescontoVendaSelecionada] = useState<number>(0)
     // Controle de emissão fiscal por venda (removido/obsoleto)
     // Exibição da faixa de atalhos
     const [mostrarAtalhos, setMostrarAtalhos] = useState(true)
@@ -2211,11 +2212,12 @@ export default function PDVPage() {
         setVendaSelecionadaId(id)
         setLoading(true)
         try {
-            // Primeiro, traz informações da venda para saber a forma de pagamento
+            // Primeiro, traz informações da venda para saber a forma de pagamento e desconto
             setVendaClienteNome(null)
+            setDescontoVendaSelecionada(0)
             const { data: vendaRow, error: vendaRowErr } = await getSupabase()
                 .from('vendas')
-                .select('forma_pagamento, cliente_caderneta_id')
+                .select('forma_pagamento, cliente_caderneta_id, desconto')
                 .eq('id', id)
                 .single()
 
@@ -2234,6 +2236,9 @@ export default function PDVPage() {
             } else {
                 setVendaClienteNome(null)
             }
+
+            const valorDesconto = Number(vendaRow?.desconto ?? 0)
+            setDescontoVendaSelecionada(valorDesconto)
 
             // Em seguida, carrega os itens da venda
             const { data, error } = await getSupabase()
@@ -4371,6 +4376,22 @@ export default function PDVPage() {
                                 <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Total dos Itens</span>
                                 <span className="font-black text-blue-700">R$ {totalItensSelecionados.toFixed(2)}</span>
                             </div>
+
+                            {/* Desconto (exibe apenas quando houver) */}
+                            {descontoVendaSelecionada > 0 && (
+                                <div className="mt-2 p-3 bg-amber-50 rounded-xl border border-amber-100 flex justify-between items-center">
+                                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Desconto</span>
+                                    <span className="font-black text-amber-700">- R$ {descontoVendaSelecionada.toFixed(2)}</span>
+                                </div>
+                            )}
+
+                            {/* Valor Final (quando há desconto) */}
+                            {descontoVendaSelecionada > 0 && (
+                                <div className="mt-2 p-3 bg-green-50 rounded-xl border border-green-100 flex justify-between items-center">
+                                    <span className="text-[10px] font-black text-green-600 uppercase tracking-widest">Valor Final</span>
+                                    <span className="font-black text-green-700">R$ {(totalItensSelecionados - descontoVendaSelecionada).toFixed(2)}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

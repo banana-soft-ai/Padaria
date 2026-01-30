@@ -707,6 +707,13 @@ export default function PDVPage() {
     const [modalDetalhes, setModalDetalhes] = useState(false)
     const [modalPosVenda, setModalPosVenda] = useState(false)
     const [lastVendaId, setLastVendaId] = useState<number | null>(null)
+    const [lastCadernetaPrintData, setLastCadernetaPrintData] = useState<{
+        vendaId: number
+        clienteNome: string
+        saldoDevedorAnterior: number
+        valorCompra: number
+        saldoDevedorAtualizado: number
+    } | null>(null)
     const [itensVendaSelecionada, setItensVendaSelecionada] = useState<any[]>([])
     const [vendaSelecionadaId, setVendaSelecionadaId] = useState<number | null>(null)
     const [vendaClienteNome, setVendaClienteNome] = useState<string | null>(null)
@@ -1071,10 +1078,13 @@ export default function PDVPage() {
         }
     }, [view])
 
-    const imprimirVendaPorId = async (vendaId: number) => {
+    const imprimirVendaPorId = async (
+        vendaId: number,
+        cadernetaData?: { clienteNome?: string; saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number }
+    ) => {
         const urlBase = (typeof window !== 'undefined' ? localStorage.getItem('impressao-local-url') : null) || 'https://127.0.0.1:3333'
         try {
-            const linhas = await getCupomFiscalLinhas(vendaId)
+            const linhas = await getCupomFiscalLinhas(vendaId, cadernetaData)
             const res = await fetch(`${urlBase}/imprimir-cupom`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1088,7 +1098,7 @@ export default function PDVPage() {
             throw new Error(await res.text())
         } catch (_) {
             try {
-                await printCupomFiscalNFCe(vendaId)
+                await printCupomFiscalNFCe(vendaId, cadernetaData)
                 incrementarCupomImprimido()
                 showToast('Cupom aberto para impressão no navegador.', 'success')
             } catch (e) {
@@ -1582,8 +1592,11 @@ export default function PDVPage() {
         }
     }
 
-    // Função para imprimir cupom fiscal
-    const printCupomFiscalNFCe = async (vendaId: number) => {
+    // Função para imprimir cupom fiscal (com bloco opcional de atualização do cliente para caderneta)
+    const printCupomFiscalNFCe = async (
+        vendaId: number,
+        cadernetaData?: { clienteNome?: string; saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number }
+    ) => {
         try {
             const [{ data: vendaRow }, { data: itens }] = await Promise.all([
                 getSupabase().from('vendas').select('id, created_at, valor_total, forma_pagamento, operador_nome, valor_pago, valor_troco, desconto').eq('id', vendaId).single(),
@@ -1739,6 +1752,24 @@ export default function PDVPage() {
                     <div style="font-size: 9px; color: #333; margin-bottom: 8px;">
                         OPERADOR: ${esc(operadorNome)}
                     </div>
+                    ${cadernetaData ? `
+                    <div class="divider"></div>
+                    <div class="center bold" style="font-size: 10px; margin-bottom: 4px;">ATUALIZAÇÃO DO CLIENTE</div>
+                    <div class="divider"></div>
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span>Saldo devedor anterior</span>
+                        <span>R$ ${cadernetaData.saldoDevedorAnterior.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span>Valor da compra</span>
+                        <span>R$ ${cadernetaData.valorCompra.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span>Saldo devedor atual.</span>
+                        <span>R$ ${cadernetaData.saldoDevedorAtualizado.toFixed(2)}</span>
+                    </div>
+                    <div class="divider"></div>
+                    ` : ''}
                     <div class="center bold" style="font-size: 11px; margin: 8px 0;">
                         OBRIGADO, VOLTE SEMPRE!
                     </div>
@@ -1767,7 +1798,10 @@ export default function PDVPage() {
     }
 
     // Gera linhas de texto do cupom para impressora térmica (serviço local Elgin i9)
-    const getCupomFiscalLinhas = async (vendaId: number): Promise<string[]> => {
+    const getCupomFiscalLinhas = async (
+        vendaId: number,
+        cadernetaData?: { saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number }
+    ): Promise<string[]> => {
         const [{ data: vendaRow }, { data: itens }] = await Promise.all([
             getSupabase().from('vendas').select('id, created_at, valor_total, forma_pagamento, operador_nome, valor_pago, valor_troco, desconto').eq('id', vendaId).single(),
             getSupabase().from('venda_itens').select('quantidade, preco_unitario, subtotal, varejo (id, nome, codigo_barras)').eq('venda_id', vendaId)
@@ -1831,6 +1865,15 @@ export default function PDVPage() {
         linhas.push(`TOTAL R$`.padEnd(L - 12) + valorTotal.toFixed(2))
         linhas.push('--------------------------------')
         linhas.push(`OPERADOR: ${operadorNome}`)
+        if (cadernetaData) {
+            linhas.push('--------------------------------')
+            linhas.push(center('ATUALIZAÇÃO DO CLIENTE'))
+            linhas.push('--------------------------------')
+            linhas.push(`Saldo devedor anterior R$`.padEnd(L - 12) + cadernetaData.saldoDevedorAnterior.toFixed(2))
+            linhas.push(`Valor da compra        R$`.padEnd(L - 12) + cadernetaData.valorCompra.toFixed(2))
+            linhas.push(`Saldo devedor atual.   R$`.padEnd(L - 12) + cadernetaData.saldoDevedorAtualizado.toFixed(2))
+            linhas.push('--------------------------------')
+        }
         linhas.push('')
         linhas.push(center('OBRIGADO, VOLTE SEMPRE!'))
         linhas.push(center(mensagemCupom))
@@ -1968,6 +2011,7 @@ export default function PDVPage() {
                 setModalCredito(false)
                 setModalPix(false)
                 setModalCaderneta(false)
+                setLastCadernetaPrintData(null)
                 abrirModalPosVendaComDelay(300)
                 setLoading(false)
                 return
@@ -2031,6 +2075,8 @@ export default function PDVPage() {
 
             // Flag que indica se houve algum problema no pós-processamento
             let postSaleIssue = false
+            // Dados para impressão da 1ª via caderneta (usado antes do state atualizar)
+            let cadernetaDataParaPrimeiraVia: { vendaId: number; clienteNome: string; saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number } | null = null
 
             // Atualiza `vendasHoje` localmente para refletir a venda em tempo real
             try {
@@ -2074,6 +2120,16 @@ export default function PDVPage() {
                                 alert('Erro ao registrar compra na caderneta: ' + (res.message || 'Verifique o console'))
                             } else {
                                 try { refreshClientes(); refreshMovimentacoes(); } catch (e) { console.error(e) }
+                                const clienteNome = clientes?.find((c: any) => Number(c.id) === clienteIdNum)?.nome ?? 'Cliente'
+                                const dados = {
+                                    vendaId: vendaData.id,
+                                    clienteNome,
+                                    saldoDevedorAnterior: res.saldoAnterior ?? 0,
+                                    valorCompra,
+                                    saldoDevedorAtualizado: res.novoSaldo ?? 0
+                                }
+                                setLastCadernetaPrintData(dados)
+                                cadernetaDataParaPrimeiraVia = dados
                             }
                         }
                     }
@@ -2265,6 +2321,32 @@ export default function PDVPage() {
 
             // Somente se não houver problemas no pós-processamento, abrimos o modal de impressão
             if (!postSaleIssue) {
+                if (formaPagamento === 'caderneta' && cadernetaDataParaPrimeiraVia) {
+                    try {
+                        const urlBase = (typeof window !== 'undefined' ? localStorage.getItem('impressao-local-url') : null) || 'https://127.0.0.1:3333'
+                        const linhas = await getCupomFiscalLinhas(vendaData.id, cadernetaDataParaPrimeiraVia)
+                        const res = await fetch(`${urlBase}/imprimir-cupom`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ linhas }),
+                        })
+                        if (res.ok) {
+                            incrementarCupomImprimido()
+                        } else {
+                            throw new Error(await res.text())
+                        }
+                    } catch (_) {
+                        try {
+                            await printCupomFiscalNFCe(vendaData.id, cadernetaDataParaPrimeiraVia)
+                            incrementarCupomImprimido()
+                        } catch (e) {
+                            console.error('Erro ao imprimir 1ª via caderneta:', e)
+                            showToast('Falha ao imprimir 1ª via.', 'warning')
+                        }
+                    }
+                } else {
+                    setLastCadernetaPrintData(null)
+                }
                 abrirModalPosVendaComDelay(300)
             } else {
                 showToast('Venda registrada, mas ocorreram problemas no pós-processamento. Impressão desabilitada.', 'warning')
@@ -2817,14 +2899,25 @@ export default function PDVPage() {
                         return vOp === opNome && vTime >= (start - 5000) && vTime <= (end + 5000);
                     });
 
+                    const totalVendasTurno = vendasTurno.reduce((acc, v) => acc + v.total, 0);
+                    // Usar totalEntradas (exclui caderneta) - mesma base do fechamento PDV
+                    const totalEntradasTurno = vendasTurno.reduce((acc, v) => {
+                      const forma = String(v.forma_pagamento || '').toLowerCase();
+                      if (forma.includes('caderneta')) return acc;
+                      return acc + (v.total || 0);
+                    }, 0);
+                    const sistemaEsperavaTurno = (saldoInicial || 0) + totalEntradasTurno - (totalSaidasDoDia || 0);
+                    const diferencaTurno = Number((totalCorrigido - sistemaEsperavaTurno).toFixed(2));
+
                     const audit = {
-                        total_vendas: vendasTurno.reduce((acc, v) => acc + v.total, 0),
+                        total_vendas: totalVendasTurno,
                         total_dinheiro: vendasTurno.filter(v => v.forma_pagamento.toLowerCase().includes('dinheiro')).reduce((acc, v) => acc + v.total, 0),
                         total_pix: vendasTurno.filter(v => v.forma_pagamento.toLowerCase().includes('pix')).reduce((acc, v) => acc + v.total, 0),
                         total_debito: vendasTurno.filter(v => v.forma_pagamento.toLowerCase().includes('debito')).reduce((acc, v) => acc + v.total, 0),
                         total_credito: vendasTurno.filter(v => v.forma_pagamento.toLowerCase().includes('credito')).reduce((acc, v) => acc + v.total, 0),
                         total_caderneta: vendasTurno.filter(v => v.forma_pagamento.toLowerCase().includes('caderneta')).reduce((acc, v) => acc + v.total, 0),
-                        valor_fechamento: totalCorrigido
+                        valor_fechamento: totalCorrigido,
+                        diferenca: diferencaTurno
                     };
 
                     await finalizarTurnoOperador(turnoAtual.id, audit);
@@ -2911,6 +3004,7 @@ export default function PDVPage() {
             const targetIsInput = isInputElement(e.target)
             const key = e.key
             const code = (e as any).code as string | undefined
+            if (key == null) return // e.key pode ser undefined em alguns eventos (IME, composition, etc.)
 
             // Navegação entre abas (sempre disponível)
             if (key === 'F1') { e.preventDefault(); if (caixaAberto) setView('venda'); return }
@@ -2981,7 +3075,7 @@ export default function PDVPage() {
             }
 
             // Captura de código de barras (leitor USB) quando foco está fora de input
-            const isPrintableChar = key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey
+            const isPrintableChar = key != null && key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey
             if (!targetIsInput && isPrintableChar && !(modalPagamento || modalDebito || modalCredito || modalPix || modalCaderneta)) {
                 if (barcodeAtalhoTimeoutRef.current) {
                     window.clearTimeout(barcodeAtalhoTimeoutRef.current)
@@ -4839,14 +4933,20 @@ export default function PDVPage() {
                             <div className="flex justify-between items-center mb-4">
                                 <div>
                                     <span className="text-xs font-black text-blue-400 uppercase tracking-widest">Venda</span>
-                                    <h2 className="text-xl font-black text-gray-800 uppercase italic">Venda realizada com sucesso!</h2>
+                                    <h2 className="text-xl font-black text-gray-800 uppercase italic">
+                                        {lastCadernetaPrintData
+                                            ? `Venda lançada para o Cliente ${lastCadernetaPrintData.clienteNome} com sucesso!`
+                                            : 'Venda realizada com sucesso!'}
+                                    </h2>
                                 </div>
-                                <button onClick={() => { setModalPosVenda(false); }} className="text-gray-400 hover:text-red-500">
+                                <button onClick={() => { setModalPosVenda(false); setLastCadernetaPrintData(null); }} className="text-gray-400 hover:text-red-500">
                                     <X className="h-6 w-6" />
                                 </button>
                             </div>
 
-                            <p className="text-gray-600 mb-6">Deseja imprimir o cupom fiscal?</p>
+                            <p className="text-gray-600 mb-6">
+                                {lastCadernetaPrintData ? 'Imprimir segunda via?' : 'Deseja imprimir o cupom fiscal?'}
+                            </p>
 
                             <div className="flex gap-3">
                                 <button
@@ -4855,32 +4955,9 @@ export default function PDVPage() {
                                             showToast('Venda não encontrada para impressão.', 'error')
                                             return
                                         }
-                                        const urlBase = (typeof window !== 'undefined' ? localStorage.getItem('impressao-local-url') : null) || 'https://127.0.0.1:3333'
-                                        try {
-                                            const linhas = await getCupomFiscalLinhas(lastVendaId)
-                                            const res = await fetch(`${urlBase}/imprimir-cupom`, {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ linhas }),
-                                            })
-                                            if (res.ok) {
-                                                incrementarCupomImprimido()
-                                                setModalPosVenda(false)
-                                                showToast('Cupom enviado para impressora.', 'success')
-                                                return
-                                            }
-                                            throw new Error(await res.text())
-                                        } catch (_) {
-                                            try {
-                                                await printCupomFiscalNFCe(lastVendaId)
-                                                incrementarCupomImprimido()
-                                                setModalPosVenda(false)
-                                                showToast('Impressora local indisponível. Abrindo impressão no navegador...', 'success')
-                                            } catch (e) {
-                                                console.error('Erro ao imprimir cupom fiscal:', e)
-                                                showToast('Falha ao imprimir cupom.', 'error')
-                                            }
-                                        }
+                                        await imprimirVendaPorId(lastVendaId, lastCadernetaPrintData ?? undefined)
+                                        setModalPosVenda(false)
+                                        setLastCadernetaPrintData(null)
                                     }}
                                     className="flex-1 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase"
                                 >
@@ -4889,6 +4966,7 @@ export default function PDVPage() {
                                 <button
                                     onClick={() => {
                                         setModalPosVenda(false)
+                                        setLastCadernetaPrintData(null)
                                     }}
                                     className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-2xl font-bold uppercase"
                                 >

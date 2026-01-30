@@ -43,11 +43,13 @@ type TurnoUI = {
   id: number;
   operador: string;
   caixa: string;
+  caixaDiarioId: number | null;
   inicio: string;
   fim: string | null;
   tipoEncerramento: string | null;
   saldoInicial: number;
   vendas: number;
+  totalEntradasSemCaderneta: number;
   sangrias: number;
   saldoEsperado: number;
   saldoContado: number;
@@ -55,6 +57,8 @@ type TurnoUI = {
   pagamentos: { dinheiro: number; pix: number; cartao: number };
   cancelamentos: number;
   itensVendidos: { nome: string; qtd: number; total: number }[];
+  totalTurnosNoCaixa: number;
+  isUltimoTurno: boolean;
 };
 
 
@@ -127,7 +131,7 @@ export default function GestaoOperadores() {
       const validCaixaIdsForCaixas = caixaIds.filter(id => id !== null && id !== undefined);
       const { data: caixas } = await supabase
         .from('caixa_diario')
-        .select('id, status, usuario_abertura, usuario_fechamento, valor_abertura, valor_fechamento, total_vendas, total_pix, total_dinheiro, total_debito, total_credito, total_entradas, total_caderneta')
+        .select('id, status, usuario_abertura, usuario_fechamento, valor_abertura, valor_fechamento, valor_saidas, total_vendas, total_pix, total_dinheiro, total_debito, total_credito, total_entradas, total_caderneta')
         .in('id', validCaixaIdsForCaixas.length ? validCaixaIdsForCaixas : [0]);
       const caixaMap = new Map((caixas || []).map((c: any) => [c.id, c]));
 
@@ -166,6 +170,13 @@ export default function GestaoOperadores() {
       const receitasMap = new Map((receitasResp.data || []).map((r: any) => [r.id, r.nome]));
       const varejoMap = new Map((varejoResp.data || []).map((v: any) => [v.id, v.nome]));
       const sangrias = sangriasResp.data || [];
+
+      // Contar turnos por caixa (para avisos de múltiplos turnos)
+      const turnosPorCaixa = turnosRaw.reduce((acc: Record<number, number>, t: any) => {
+        const cid = t.caixa_diario_id;
+        if (cid != null) acc[cid] = (acc[cid] || 0) + 1;
+        return acc;
+      }, {});
 
       // Montar estrutura final dos turnos
       const turnosUI: TurnoUI[] = turnosRaw.map((t: any) => {
@@ -228,6 +239,14 @@ export default function GestaoOperadores() {
         }
 
         const vendasTotal = t.total_vendas || vendasTurno.reduce((acc: number, v: any) => acc + (v.valor_total || 0), 0);
+
+        // Total de entradas do turno EXCLUINDO caderneta (dinheiro+pix+cartão) - mesma base do PDV fechamento
+        const totalEntradasTurno = vendasTurno.reduce((acc: number, v: any) => {
+          const forma = String(v.forma_pagamento || '').toLowerCase();
+          const valor = Number(v.valor_total || 0);
+          if (forma.includes('caderneta')) return acc;
+          return acc + valor;
+        }, 0);
         
         // Itens vendidos deste operador
         const vendaIdsTurno = vendasTurno.map((v: any) => v.id);
@@ -248,25 +267,34 @@ export default function GestaoOperadores() {
         // Tentar buscar saldo contado se for o fechamento final do caixa
         const isUltimoTurno = t.status === 'finalizado' && caixa?.usuario_fechamento === t.operador_nome;
         const saldoInformado = isUltimoTurno ? (caixa?.valor_fechamento || 0) : (t.valor_fechamento || 0);
-        
-        const sistemaEsperava = Number(vendasTotal) - Number(sangriasTotal) + (t.valor_abertura || (caixa?.valor_abertura || 0));
+
+        // Sistema Esperava: usar caixa_diario quando último turno (mesma fonte do PDV, exclui caderneta)
+        // Caso contrário: totalEntradasTurno exclui caderneta (dinheiro+pix+cartão apenas)
+        const valorAbertura = t.valor_abertura || (caixa?.valor_abertura || 0);
+        const sistemaEsperava = isUltimoTurno && caixa
+          ? (valorAbertura || 0) + Number(caixa.total_entradas || 0) - Number(caixa.valor_saidas || 0)
+          : (valorAbertura || 0) + totalEntradasTurno - Number(sangriasTotal);
         
         return {
           id: t.id,
           operador: t.operador_nome,
           caixa: t.caixa_diario_id ? `Caixa #${t.caixa_diario_id}` : 'Sem Caixa',
+          caixaDiarioId: t.caixa_diario_id ?? null,
           inicio: t.data_inicio,
           fim: t.data_fim,
           tipoEncerramento: t.status === 'finalizado' ? 'fechamento_caixa' : t.status === 'aberto' ? null : t.status,
           saldoInicial: t.valor_abertura || (caixa?.valor_abertura || 0),
           vendas: Number(vendasTotal),
+          totalEntradasSemCaderneta: totalEntradasTurno,
           sangrias: Number(sangriasTotal),
           saldoEsperado: sistemaEsperava,
           saldoContado: Number(saldoInformado),
-          diferenca: t.diferenca !== null && t.diferenca !== undefined ? Number(t.diferenca) : (saldoInformado ? (Number(saldoInformado) - sistemaEsperava) : 0),
+          diferenca: saldoInformado ? (Number(saldoInformado) - sistemaEsperava) : 0,
           pagamentos,
           cancelamentos: 0, 
           itensVendidos,
+          totalTurnosNoCaixa: t.caixa_diario_id != null ? (turnosPorCaixa[t.caixa_diario_id] || 1) : 1,
+          isUltimoTurno,
         };
       });
       setTurnos(turnosUI);
@@ -631,20 +659,51 @@ export default function GestaoOperadores() {
                 <div className="flex-1 overflow-y-auto p-6">
                   {modalTab === 'financeiro' && (
                     <div className="space-y-6">
+                      {/* Aviso quando múltiplos turnos */}
+                      {selectedTurno.totalTurnosNoCaixa > 1 && (
+                        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-bold text-amber-800">Este caixa teve {selectedTurno.totalTurnosNoCaixa} turnos</p>
+                            <p className="text-xs text-amber-700 mt-1">
+                              O valor &quot;Total contado ao fechar&quot; representa o caixa inteiro (inclui recebimentos de todos os operadores). 
+                              A &quot;Composição deste turno&quot; mostra apenas as vendas deste operador.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                       {/* Resultado da Auditoria */}
                       <div className="bg-slate-900 text-white p-6 rounded-2xl">
-                        <div className="grid grid-cols-3 gap-4 mb-6">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                           <div>
                             <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Fundo de Caixa</p>
                             <p className="text-xl font-bold">R$ {selectedTurno.saldoInicial.toFixed(2)}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Valor inicial do caixa</p>
                           </div>
                           <div>
                             <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Sistema Esperava</p>
                             <p className="text-xl font-bold">R$ {selectedTurno.saldoEsperado.toFixed(2)}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Fundo + entradas − sangrias (sem caderneta)</p>
                           </div>
                           <div>
-                            <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Operador Declarou</p>
+                            <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">
+                              {selectedTurno.isUltimoTurno && selectedTurno.totalTurnosNoCaixa > 1
+                                ? 'Total contado ao fechar'
+                                : 'Operador Declarou'}
+                            </p>
                             <p className="text-xl font-bold">R$ {selectedTurno.saldoContado.toFixed(2)}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              {selectedTurno.isUltimoTurno && selectedTurno.totalTurnosNoCaixa > 1
+                                ? 'Valor total do caixa (todos os turnos)'
+                                : 'Valor declarado pelo operador'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Diferença</p>
+                            <p className={`text-xl font-bold ${selectedTurno.diferenca < 0 ? 'text-red-400' : selectedTurno.diferenca > 0 ? 'text-emerald-400' : 'text-slate-300'}`}>
+                              R$ {selectedTurno.diferenca.toFixed(2)}
+                            </p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Declarado − Esperado</p>
                           </div>
                         </div>
                         <div className={`pt-4 border-t border-slate-800 flex justify-between items-center ${selectedTurno.diferenca < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
@@ -654,7 +713,7 @@ export default function GestaoOperadores() {
                       </div>
                       {/* Meios de Pagamento */}
                       <div className="space-y-3">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2"><ReceiptText className="w-4 h-4"/> Composição de Recebimentos</h4>
+                        <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2"><ReceiptText className="w-4 h-4"/> Composição de Recebimentos deste turno</h4>
                         <div className="grid grid-cols-1 gap-2">
                           <div className="flex justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
                             <span className="font-medium flex items-center gap-3"><DollarSign className="w-5 h-5 text-emerald-500"/> Dinheiro</span>
@@ -669,14 +728,31 @@ export default function GestaoOperadores() {
                             <span className="font-bold">R$ {selectedTurno.pagamentos.cartao.toFixed(2)}</span>
                           </div>
                         </div>
+                        <div className="flex justify-between p-4 bg-slate-100 rounded-xl border border-slate-200 font-bold">
+                          <span>Soma da composição (este turno)</span>
+                          <span>R$ {(selectedTurno.pagamentos.dinheiro + selectedTurno.pagamentos.pix + selectedTurno.pagamentos.cartao).toFixed(2)}</span>
+                        </div>
+                        {selectedTurno.isUltimoTurno && selectedTurno.totalTurnosNoCaixa > 1 && (
+                          <p className="text-xs text-slate-500 italic">
+                            A soma acima é só deste turno. O total contado ao fechar ({selectedTurno.saldoContado.toFixed(2)}) inclui recebimentos de todos os {selectedTurno.totalTurnosNoCaixa} turnos.
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}
                   {modalTab === 'itens' && (
                     <div className="space-y-4">
-                      <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
-                        <span className="text-sm font-bold text-blue-800">Volume Total de Vendas</span>
-                        <span className="text-lg font-black text-blue-800">R$ {selectedTurno.vendas.toFixed(2)}</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="flex flex-col p-4 bg-blue-50 rounded-xl border border-blue-100">
+                          <span className="text-xs font-bold text-blue-600 uppercase">Volume total (todas as formas)</span>
+                          <span className="text-xl font-black text-blue-800">R$ {selectedTurno.vendas.toFixed(2)}</span>
+                          <span className="text-[10px] text-blue-600 mt-1">Inclui dinheiro, pix, cartão e caderneta</span>
+                        </div>
+                        <div className="flex flex-col p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+                          <span className="text-xs font-bold text-emerald-600 uppercase">Em dinheiro/pix/cartão</span>
+                          <span className="text-xl font-black text-emerald-800">R$ {selectedTurno.totalEntradasSemCaderneta.toFixed(2)}</span>
+                          <span className="text-[10px] text-emerald-600 mt-1">Exclui caderneta (usado no fechamento)</span>
+                        </div>
                       </div>
                       <div className="border border-slate-100 rounded-xl overflow-hidden">
                         <table className="w-full text-sm">
@@ -696,8 +772,29 @@ export default function GestaoOperadores() {
                               </tr>
                             ))}
                           </tbody>
+                          <tfoot>
+                            <tr className="bg-slate-100 border-t-2 border-slate-200">
+                              <td className="px-4 py-3 font-bold text-slate-700" colSpan={2}>Soma dos subtotais (itens)</td>
+                              <td className="px-4 py-3 text-right font-black">R$ {(selectedTurno.itensVendidos?.reduce((acc, i) => acc + i.total, 0) || 0).toFixed(2)}</td>
+                            </tr>
+                          </tfoot>
                         </table>
                       </div>
+                      {(() => {
+                        const somaItens = selectedTurno.itensVendidos?.reduce((acc, i) => acc + i.total, 0) || 0;
+                        const diff = Math.abs(selectedTurno.vendas - somaItens);
+                        if (diff > 0.02 && selectedTurno.itensVendidos?.length) {
+                          return (
+                            <div className="flex items-start gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                              <AlertTriangle className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                              <p className="text-xs text-slate-600">
+                                A diferença entre &quot;Volume total&quot; e &quot;Soma dos itens&quot; pode ser por descontos aplicados na venda ou vendas em caderneta (que não entram no fechamento do caixa).
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       {selectedTurno.itensVendidos?.length === 0 && (
                         <div className="text-center py-12 text-slate-400 italic">Nenhum registo de venda.</div>
                       )}

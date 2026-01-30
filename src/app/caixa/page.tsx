@@ -31,7 +31,13 @@ import {
     Smartphone,
     Eye,
     X,
-    BookOpen
+    BookOpen,
+    Receipt,
+    Building2,
+    MapPin,
+    Printer,
+    RotateCcw,
+    Save
 } from 'lucide-react'
 
 import Toast from '@/app/gestao/caderneta/Toast'
@@ -565,7 +571,7 @@ export default function PDVPage() {
         }
     }
     // --- Estados de UI e Dados ---
-    const [view, setView] = useState<'abertura' | 'venda' | 'historico' | 'estoque' | 'caixa' | 'saida' | 'caderneta'>('abertura')
+    const [view, setView] = useState<'abertura' | 'venda' | 'historico' | 'estoque' | 'caixa' | 'saida' | 'caderneta' | 'cupom'>('abertura')
     const [caixaAberto, setCaixaAberto] = useState(false)
     const [operador, setOperador] = useState('')
     const [saldoInicial, setSaldoInicial] = useState(0)
@@ -690,6 +696,13 @@ export default function PDVPage() {
     const [valorSaida, setValorSaida] = useState('')
     const [motivoSaida, setMotivoSaida] = useState<'deposito' | 'pagamento' | 'troca'>('deposito')
     const [obsSaida, setObsSaida] = useState('')
+    // Cupom Fiscal (configuração)
+    const [cupomNomeLoja, setCupomNomeLoja] = useState('REY DOS PÃES')
+    const [cupomCnpj, setCupomCnpj] = useState('00.000.000/0001-00')
+    const [cupomEndereco, setCupomEndereco] = useState('Endereço da Loja')
+    const [cupomCidadeUf, setCupomCidadeUf] = useState('Cidade - UF')
+    const [cupomMensagem, setCupomMensagem] = useState('REY DOS PÃES - CAIXA')
+    const [cupomImprimidos, setCupomImprimidos] = useState(0)
     const [valorRecebido, setValorRecebido] = useState('')
     const [modalDetalhes, setModalDetalhes] = useState(false)
     const [modalPosVenda, setModalPosVenda] = useState(false)
@@ -1027,10 +1040,10 @@ export default function PDVPage() {
         }
     }, [searchParams, caixaAberto])
 
-    // Ao trocar a view interna para 'venda' ou 'historico', garante refresh imediato dos dados.
+    // Ao trocar a view interna para 'venda', 'historico' ou 'cupom', garante refresh imediato dos dados.
     useEffect(() => {
-        if (view === 'venda' || view === 'historico') {
-            carregarProdutos()
+        if (view === 'venda' || view === 'historico' || view === 'cupom') {
+            if (view !== 'cupom') carregarProdutos()
             carregarVendasHoje(caixaDiarioId)
         }
     }, [view, caixaDiarioId])
@@ -1044,6 +1057,114 @@ export default function PDVPage() {
             carregarCaixasDoDia(caixaDiaISO || undefined).catch(() => {})
         }
     }, [view, caixaDiarioId, caixaDiaISO])
+
+    // Ao abrir a view 'cupom', carrega configuração do localStorage
+    useEffect(() => {
+        if (view === 'cupom' && typeof window !== 'undefined') {
+            setCupomNomeLoja(localStorage.getItem('cupom-nome-loja') || 'REY DOS PÃES')
+            setCupomCnpj(localStorage.getItem('cupom-cnpj') || '00.000.000/0001-00')
+            setCupomEndereco(localStorage.getItem('cupom-endereco') || 'Endereço da Loja')
+            setCupomCidadeUf(localStorage.getItem('cupom-cidade-uf') || 'Cidade - UF')
+            setCupomMensagem(localStorage.getItem('cupom-mensagem') || 'REY DOS PÃES - CAIXA')
+            const count = parseInt(localStorage.getItem('cupom-imprimidos') || '0', 10)
+            setCupomImprimidos(isNaN(count) ? 0 : count)
+        }
+    }, [view])
+
+    const imprimirVendaPorId = async (vendaId: number) => {
+        const urlBase = (typeof window !== 'undefined' ? localStorage.getItem('impressao-local-url') : null) || 'https://127.0.0.1:3333'
+        try {
+            const linhas = await getCupomFiscalLinhas(vendaId)
+            const res = await fetch(`${urlBase}/imprimir-cupom`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ linhas }),
+            })
+            if (res.ok) {
+                incrementarCupomImprimido()
+                showToast('Cupom enviado para impressora.', 'success')
+                return
+            }
+            throw new Error(await res.text())
+        } catch (_) {
+            try {
+                await printCupomFiscalNFCe(vendaId)
+                incrementarCupomImprimido()
+                showToast('Cupom aberto para impressão no navegador.', 'success')
+            } catch (e) {
+                console.error('Erro ao imprimir cupom:', e)
+                showToast('Falha ao imprimir cupom.', 'error')
+            }
+        }
+    }
+
+    const incrementarCupomImprimido = () => {
+        if (typeof window === 'undefined') return
+        const count = parseInt(localStorage.getItem('cupom-imprimidos') || '0', 10)
+        const novo = (isNaN(count) ? 0 : count) + 1
+        localStorage.setItem('cupom-imprimidos', String(novo))
+        setCupomImprimidos(novo)
+    }
+
+    const salvarConfigCupom = () => {
+        if (typeof window === 'undefined') return
+        localStorage.setItem('cupom-nome-loja', cupomNomeLoja)
+        localStorage.setItem('cupom-cnpj', cupomCnpj)
+        localStorage.setItem('cupom-endereco', cupomEndereco)
+        localStorage.setItem('cupom-cidade-uf', cupomCidadeUf)
+        localStorage.setItem('cupom-mensagem', cupomMensagem)
+        showToast('Configuração do cupom salva com sucesso.', 'success')
+    }
+
+    const restaurarPadraoCupom = () => {
+        setCupomNomeLoja('REY DOS PÃES')
+        setCupomCnpj('00.000.000/0001-00')
+        setCupomEndereco('Endereço da Loja')
+        setCupomCidadeUf('Cidade - UF')
+        setCupomMensagem('REY DOS PÃES - CAIXA')
+        showToast('Valores padrão restaurados. Clique em Salvar para aplicar.', 'info')
+    }
+
+    const imprimirCupomTeste = () => {
+        const esc = (s: string) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+        const now = new Date()
+        const dataFormatada = now.toLocaleDateString('pt-BR')
+        const horaFormatada = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
+        const htmlItems = `
+            <tr><td style="padding: 2px 0; font-size: 10px;">1 12345 PÃO FRANCÊS</td><td style="text-align: right;">2,50</td></tr>
+            <tr><td style="font-size: 9px; color: #555;">1 UN x 2,50</td><td></td></tr>
+            <tr><td style="padding: 2px 0; font-size: 10px;">2 67890 CAFÉ</td><td style="text-align: right;">5,00</td></tr>
+            <tr><td style="font-size: 9px; color: #555;">1 UN x 5,00</td><td></td></tr>
+        `
+        const html = `
+            <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cupom Teste</title>
+            <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:10px;width:280px;padding:8px;background:#fff;line-height:1.2}.center{text-align:center}.divider{border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}</style></head>
+            <body>
+                <div class="center" style="margin-bottom:6px">
+                    <div style="font-size:12px;font-weight:bold">${esc(cupomNomeLoja)}</div>
+                    <div style="font-size:9px;color:#333">${esc(cupomEndereco)} / ${esc(cupomCidadeUf)}</div>
+                    <div style="font-size:9px;color:#333">CNPJ: ${esc(cupomCnpj)} | ${dataFormatada} ${horaFormatada}</div>
+                </div>
+                <div class="divider"></div>
+                <div class="center" style="font-size:11px;font-weight:bold;margin-bottom:2px">CUPOM FISCAL</div>
+                <div class="center" style="font-size:9px;color:#333">Comprovante de Venda (TESTE)</div>
+                <div class="divider"></div>
+                <table><tbody>${htmlItems}</tbody></table>
+                <div class="divider"></div>
+                <div style="display:flex;justify-content:space-between;font-size:10px"><span>SUBTOTAL R$</span><span>7,50</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:10px"><span>TOTAL R$</span><span>7,50</span></div>
+                <div class="divider"></div>
+                <div class="center" style="font-size:9px;margin:8px 0">${esc(cupomMensagem)}</div>
+            </body></html>
+        `
+        const w = window.open('', '_blank', 'width=320,height=500')
+        if (!w) { showToast('Permita pop-ups para imprimir o cupom de teste.', 'warning'); return }
+        w.document.write(html)
+        w.document.close()
+        w.focus()
+        setTimeout(() => w.print(), 300)
+        showToast('Cupom de teste aberto para impressão.', 'success')
+    }
 
     // --- Integração com Supabase (Dados Reais) ---
 
@@ -2800,6 +2921,8 @@ export default function PDVPage() {
             if (key === 'F11') { e.preventDefault(); if (caixaAberto) setView('caderneta'); return }
             // Atalho para Saída: F10
             if (key === 'F10') { e.preventDefault(); if (caixaAberto) setView('saida'); return }
+            // Atalho para Cupom Fiscal: F12
+            if (key === 'F12') { e.preventDefault(); if (caixaAberto) setView('cupom'); return }
 
             // Focar busca (Ctrl+F)
             if ((e.ctrlKey || e.metaKey) && (key.toLowerCase() === 'f')) {
@@ -3164,6 +3287,14 @@ export default function PDVPage() {
                                 >
                                     Saída (F10)
                                 </button>
+                                <button
+                                    onClick={() => setView('cupom')}
+                                    title="Ir para Cupom Fiscal (F12)"
+                                    className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
+                                    style={{ backgroundColor: view === 'cupom' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
+                                >
+                                    Cupom (F12)
+                                </button>
                             </nav>
                         )}
                         {caixaAberto && (
@@ -3203,7 +3334,9 @@ export default function PDVPage() {
                         <div className="mb-2 p-2 bg-blue-50 border border-blue-100 rounded-xl text-[10px] text-gray-700 font-bold flex flex-wrap gap-x-4 gap-y-1">
                             <span className="uppercase text-blue-700">Atalhos:</span>
                             <span>F1–F4: Vendas/Relatórios/Estoque/Caixa</span>
+                            <span>F10: Saída</span>
                             <span>F11: Caderneta</span>
+                            <span>F12: Cupom Fiscal</span>
                             <span>Ctrl+F: Buscar</span>
                             <span>F5–F8 ou 1–4: Dinheiro/Débito/Crédito/Pix</span>
                             <span>Enter: Confirma no modal</span>
@@ -3290,6 +3423,195 @@ export default function PDVPage() {
                                     )}
                                 </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* View Cupom Fiscal (Configuração) */}
+                    {view === 'cupom' && (
+                        <div className="flex flex-col lg:flex-row gap-6 p-4 max-w-6xl mx-auto">
+                            {/* Coluna esquerda: Formulário */}
+                            <div className="flex-1 space-y-6">
+                                {/* Header */}
+                                <div className="bg-gradient-to-r from-amber-500 to-amber-600 rounded-2xl p-6 text-white shadow-lg">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-white/20 rounded-xl">
+                                            <Receipt className="h-8 w-8" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-black uppercase tracking-tight">Cupom Fiscal</h2>
+                                            <p className="text-amber-100 text-sm font-medium">Configure os dados exibidos no cupom impresso após cada venda</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Card: Dados da Loja */}
+                                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                                    <div className="px-5 py-4 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                                        <Building2 className="h-5 w-5 text-amber-600" />
+                                        <h3 className="font-bold text-gray-800 uppercase text-sm tracking-wide">Dados da Loja</h3>
+                                    </div>
+                                    <div className="p-5 space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nome da Loja</label>
+                                            <input
+                                                type="text"
+                                                value={cupomNomeLoja}
+                                                onChange={(e) => setCupomNomeLoja(e.target.value)}
+                                                placeholder="REY DOS PÃES"
+                                                className="block w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-sm font-medium transition-all"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">CNPJ</label>
+                                                <input
+                                                    type="text"
+                                                    value={cupomCnpj}
+                                                    onChange={(e) => setCupomCnpj(e.target.value)}
+                                                    placeholder="00.000.000/0001-00"
+                                                    className="block w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-sm font-mono transition-all"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Cidade / UF</label>
+                                                <input
+                                                    type="text"
+                                                    value={cupomCidadeUf}
+                                                    onChange={(e) => setCupomCidadeUf(e.target.value)}
+                                                    placeholder="Belo Horizonte - MG"
+                                                    className="block w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-sm transition-all"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                                <MapPin className="h-3.5 w-3.5" /> Endereço
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={cupomEndereco}
+                                                onChange={(e) => setCupomEndereco(e.target.value)}
+                                                placeholder="Rua Exemplo, 123 - Bairro"
+                                                className="block w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-sm transition-all"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mensagem de rodapé</label>
+                                            <input
+                                                type="text"
+                                                value={cupomMensagem}
+                                                onChange={(e) => setCupomMensagem(e.target.value)}
+                                                placeholder="REY DOS PÃES - OBRIGADO PELA PREFERÊNCIA"
+                                                className="block w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-sm transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Ações */}
+                                <div className="flex flex-wrap gap-3">
+                                    <button
+                                        onClick={() => setView('caixa')}
+                                        className="px-5 py-3 border-2 border-gray-200 rounded-xl hover:bg-gray-50 font-bold text-sm transition-colors flex items-center gap-2"
+                                    >
+                                        <X className="h-4 w-4" /> Voltar
+                                    </button>
+                                    <button
+                                        onClick={restaurarPadraoCupom}
+                                        className="px-5 py-3 border-2 border-amber-200 rounded-xl hover:bg-amber-50 text-amber-700 font-bold text-sm transition-colors flex items-center gap-2"
+                                    >
+                                        <RotateCcw className="h-4 w-4" /> Restaurar padrão
+                                    </button>
+                                    <button
+                                        onClick={imprimirCupomTeste}
+                                        className="px-5 py-3 border-2 border-blue-200 rounded-xl hover:bg-blue-50 text-blue-700 font-bold text-sm transition-colors flex items-center gap-2"
+                                    >
+                                        <Printer className="h-4 w-4" /> Imprimir teste
+                                    </button>
+                                    <button
+                                        onClick={salvarConfigCupom}
+                                        className="px-5 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-amber-500/30 transition-all flex items-center gap-2"
+                                    >
+                                        <Save className="h-4 w-4" /> Salvar configuração
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Coluna direita: Preview */}
+                            <div className="lg:w-80 shrink-0">
+                                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden sticky top-4">
+                                    <div className="px-4 py-3 bg-gray-100 border-b border-gray-200">
+                                        <h3 className="font-bold text-gray-700 text-sm flex items-center gap-2">
+                                            <Receipt className="h-4 w-4" /> Preview do cupom
+                                        </h3>
+                                    </div>
+                                    <div className="p-4 bg-gray-50">
+                                        <div className="bg-white rounded-lg shadow-inner border border-gray-200 p-4 font-mono text-[10px] leading-tight" style={{ maxWidth: '200px', margin: '0 auto' }}>
+                                            <div className="text-center font-bold text-xs mb-2 border-b border-dashed border-gray-300 pb-2">
+                                                {cupomNomeLoja || 'Nome da Loja'}
+                                            </div>
+                                            <div className="text-center text-[9px] text-gray-600 mb-1">
+                                                {cupomEndereco || 'Endereço'} / {cupomCidadeUf || 'Cidade - UF'}
+                                            </div>
+                                            <div className="text-center text-[9px] text-gray-500 mb-2">
+                                                CNPJ: {cupomCnpj || '00.000.000/0001-00'}
+                                            </div>
+                                            <div className="border-t border-dashed border-gray-300 pt-2 mt-2 text-center font-bold text-[10px]">
+                                                CUPOM FISCAL
+                                            </div>
+                                            <div className="text-center text-[9px] text-gray-500 mb-2">
+                                                Comprovante de Venda
+                                            </div>
+                                            <div className="border-t border-dashed border-gray-300 pt-2 mt-2 text-[9px]">
+                                                1 PÃO FRANCÊS ......... R$ 2,50<br />
+                                                1 CAFÉ ................ R$ 5,00
+                                            </div>
+                                            <div className="border-t border-dashed border-gray-300 pt-2 mt-2 text-[9px]">
+                                                TOTAL ................. R$ 7,50
+                                            </div>
+                                            <div className="border-t border-dashed border-gray-300 pt-2 mt-2 text-center text-[9px]">
+                                                {cupomMensagem || 'Mensagem de rodapé'}
+                                            </div>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 text-center mt-3">Atualiza em tempo real conforme você edita.</p>
+                                        <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-xl text-center">
+                                            <div className="text-2xl font-black text-amber-600">{cupomImprimidos}</div>
+                                            <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wide">Cupons impressos</div>
+                                        </div>
+                                        {/* Últimas 3 vendas */}
+                                        <div className="mt-4">
+                                            <h4 className="text-[10px] font-bold text-gray-600 uppercase tracking-wide mb-2">Últimas 3 vendas</h4>
+                                            <div className="space-y-2">
+                                                {[...vendasHoje]
+                                                    .sort((a, b) => {
+                                                        const ta = a.created_at ? new Date(a.created_at).getTime() : 0
+                                                        const tb = b.created_at ? new Date(b.created_at).getTime() : 0
+                                                        return tb - ta
+                                                    })
+                                                    .slice(0, 3)
+                                                    .map((v) => (
+                                                        <div key={v.id} className="flex items-center justify-between gap-2 p-2 bg-white border border-gray-200 rounded-lg text-[11px]">
+                                                            <div className="min-w-0 flex-1">
+                                                                <span className="font-bold text-gray-800">#{v.id}</span>
+                                                                <span className="text-gray-600 ml-1">• {v.data}</span>
+                                                                <span className="font-bold text-amber-600 ml-1">R$ {Number(v.total).toFixed(2)}</span>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => imprimirVendaPorId(v.id)}
+                                                                className="shrink-0 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold uppercase flex items-center gap-1"
+                                                            >
+                                                                <Printer className="h-3 w-3" /> Imprimir
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                {vendasHoje.length === 0 && (
+                                                    <p className="text-[10px] text-gray-500 text-center py-2">Nenhuma venda hoje.</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -4542,6 +4864,7 @@ export default function PDVPage() {
                                                 body: JSON.stringify({ linhas }),
                                             })
                                             if (res.ok) {
+                                                incrementarCupomImprimido()
                                                 setModalPosVenda(false)
                                                 showToast('Cupom enviado para impressora.', 'success')
                                                 return
@@ -4549,9 +4872,10 @@ export default function PDVPage() {
                                             throw new Error(await res.text())
                                         } catch (_) {
                                             try {
+                                                await printCupomFiscalNFCe(lastVendaId)
+                                                incrementarCupomImprimido()
                                                 setModalPosVenda(false)
                                                 showToast('Impressora local indisponível. Abrindo impressão no navegador...', 'success')
-                                                await printCupomFiscalNFCe(lastVendaId)
                                             } catch (e) {
                                                 console.error('Erro ao imprimir cupom fiscal:', e)
                                                 showToast('Falha ao imprimir cupom.', 'error')

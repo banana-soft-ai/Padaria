@@ -600,6 +600,9 @@ export default function PDVPage() {
     const caixaDiaISORef = useRef<string | null>(null)
     // Timeout ref usado para debouncing de recarga de vendas ao receber eventos realtime
     const refreshVendasTimeoutRef = useRef<number | null>(null)
+    // Buffer para código de barras (leitor USB) quando foco está fora do input
+    const barcodeBufferRef = useRef<{ chars: string; lastKeyTime: number }>({ chars: '', lastKeyTime: 0 })
+    const barcodeAtalhoTimeoutRef = useRef<number | null>(null)
 
     useEffect(() => {
         carregarVendasHojeRef.current = carregarVendasHoje
@@ -2455,12 +2458,33 @@ export default function PDVPage() {
             if (key === 'F7') { e.preventDefault(); if (temCarrinho) setModalCredito(true); return }
             if (key === 'F8') { e.preventDefault(); if (temCarrinho) setModalPix(true); return }
 
-            // Atalhos numéricos 1..4 (não dentro de input)
-            if (!targetIsInput) {
-                if (key === '1') { if (temCarrinho) setModalPagamento(true); return }
-                if (key === '2') { if (temCarrinho) setModalDebito(true); return }
-                if (key === '3') { if (temCarrinho) setModalCredito(true); return }
-                if (key === '4') { if (temCarrinho) setModalPix(true); return }
+            // Captura de código de barras (leitor USB) quando foco está fora de input
+            const isPrintableChar = key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey
+            if (!targetIsInput && isPrintableChar && !(modalPagamento || modalDebito || modalCredito || modalPix || modalCaderneta)) {
+                if (barcodeAtalhoTimeoutRef.current) {
+                    window.clearTimeout(barcodeAtalhoTimeoutRef.current)
+                    barcodeAtalhoTimeoutRef.current = null
+                }
+                const now = Date.now()
+                const buf = barcodeBufferRef.current
+                if (now - buf.lastKeyTime > 150) buf.chars = ''
+                buf.chars += key
+                buf.lastKeyTime = now
+                e.preventDefault()
+                if (key === '1' || key === '2' || key === '3' || key === '4') {
+                    barcodeAtalhoTimeoutRef.current = window.setTimeout(() => {
+                        barcodeAtalhoTimeoutRef.current = null
+                        const b = barcodeBufferRef.current
+                        if (b.chars.length === 1 && temCarrinho) {
+                            if (b.chars === '1') setModalPagamento(true)
+                            else if (b.chars === '2') setModalDebito(true)
+                            else if (b.chars === '3') setModalCredito(true)
+                            else if (b.chars === '4') setModalPix(true)
+                        }
+                        b.chars = ''
+                    }, 250)
+                }
+                return
             }
 
             // Confirmar pagamento quando um modal está aberto (Enter)
@@ -2468,6 +2492,21 @@ export default function PDVPage() {
                 e.preventDefault()
                 confirmarPagamentoAtivo()
                 return
+            }
+
+            // Enter com buffer de código de barras (leitor USB com foco fora do input)
+            if (key === 'Enter' && !targetIsInput && !(modalPagamento || modalDebito || modalCredito || modalPix || modalCaderneta)) {
+                const codigo = barcodeBufferRef.current.chars.trim()
+                if (codigo) {
+                    barcodeBufferRef.current = { chars: '', lastKeyTime: 0 }
+                    if (barcodeAtalhoTimeoutRef.current) {
+                        window.clearTimeout(barcodeAtalhoTimeoutRef.current)
+                        barcodeAtalhoTimeoutRef.current = null
+                    }
+                    e.preventDefault()
+                    adicionarPorCodigo(codigo)
+                    return
+                }
             }
 
             // Enter fora de modais: adiciona 1º item sugerido ou abre dinheiro
@@ -2495,7 +2534,13 @@ export default function PDVPage() {
         }
 
         window.addEventListener('keydown', handler)
-        return () => window.removeEventListener('keydown', handler)
+        return () => {
+            window.removeEventListener('keydown', handler)
+            if (barcodeAtalhoTimeoutRef.current) {
+                window.clearTimeout(barcodeAtalhoTimeoutRef.current)
+                barcodeAtalhoTimeoutRef.current = null
+            }
+        }
         // Dependências que afetam o comportamento dos atalhos
     }, [caixaAberto, view, carrinho, searchTerm, produtosFiltrados, modalPagamento, modalDebito, modalCredito, modalPix, modalCaderneta])
 

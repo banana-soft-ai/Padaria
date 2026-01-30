@@ -1390,7 +1390,7 @@ export default function PDVPage() {
             const cnpjCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-cnpj') || '00.000.000/0001-00') : '00.000.000/0001-00'
             const enderecoCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-endereco') || 'Endereço da Loja') : 'Endereço da Loja'
             const cidadeUfCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-cidade-uf') || 'Cidade - UF') : 'Cidade - UF'
-            const mensagemCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-mensagem') || 'REY DOS PÃES - PDV') : 'REY DOS PÃES - PDV'
+            const mensagemCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-mensagem') || 'REY DOS PÃES - CAIXA') : 'REY DOS PÃES - CAIXA'
 
             const dataFormatada = dataVenda.toLocaleDateString('pt-BR')
             const horaFormatada = `${String(dataVenda.getHours()).padStart(2, '0')}:${String(dataVenda.getMinutes()).padStart(2, '0')}:${String(dataVenda.getSeconds()).padStart(2, '0')}`
@@ -1454,8 +1454,8 @@ export default function PDVPage() {
                         .col-valor { width: 30%; }
                         .total-line { font-size: 12px; font-weight: bold; }
                         @media print {
-                            body { width: 80mm; padding: 4px; font-size: 9px; }
-                            @page { margin: 0; size: 80mm auto; }
+                            body { width: 80mm; padding: 4px; padding-bottom: 20mm; font-size: 9px; }
+                            @page { margin: 0; margin-bottom: 15mm; size: 80mm auto; }
                         }
                     </style>
                 </head>
@@ -1525,6 +1525,7 @@ export default function PDVPage() {
                     <div class="center" style="font-size: 9px; color: #333;">
                         ${esc(mensagemCupom)}
                     </div>
+                    <div style="height: 40px; min-height: 40px;"></div>
                 </body>
                 </html>
             `
@@ -1562,7 +1563,7 @@ export default function PDVPage() {
         const cnpjCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-cnpj') || '00.000.000/0001-00') : '00.000.000/0001-00'
         const enderecoCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-endereco') || 'Endereco da Loja') : 'Endereco da Loja'
         const cidadeUfCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-cidade-uf') || 'Cidade - UF') : 'Cidade - UF'
-        const mensagemCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-mensagem') || 'REY DOS PAES - PDV') : 'REY DOS PAES - PDV'
+        const mensagemCupom = typeof window !== 'undefined' ? (localStorage.getItem('cupom-mensagem') || 'REY DOS PÃES - CAIXA') : 'REY DOS PÃES - CAIXA'
         const dataFormatada = dataVenda.toLocaleDateString('pt-BR')
         const horaFormatada = `${String(dataVenda.getHours()).padStart(2, '0')}:${String(dataVenda.getMinutes()).padStart(2, '0')}:${String(dataVenda.getSeconds()).padStart(2, '0')}`
         const valorTotal = Number(venda.valor_total ?? 0)
@@ -1613,6 +1614,9 @@ export default function PDVPage() {
         linhas.push('')
         linhas.push(center('OBRIGADO, VOLTE SEMPRE!'))
         linhas.push(center(mensagemCupom))
+        linhas.push('')
+        linhas.push('')
+        linhas.push('')
         linhas.push('')
         linhas.push('')
         return linhas

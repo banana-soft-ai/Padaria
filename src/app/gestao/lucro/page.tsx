@@ -453,7 +453,7 @@ export default function LucratividadePage() {
               <h2 className="text-lg font-semibold">Custos Fixos</h2>
               <button onClick={() => setShowCustoModal(true)} className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm">Adicionar</button>
             </div>
-            <div className="p-6 space-y-3">
+            <div className="p-6 space-y-3 max-h-[220px] overflow-y-auto">
               {custosFixos.map(custo => (
                 <div key={custo.id} className="flex justify-between p-3 bg-gray-50 rounded-lg">
                   <div>

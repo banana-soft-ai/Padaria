@@ -1735,6 +1735,7 @@ export default function PDVPage() {
                     forma_pagamento: formaPagamentoDB.replace('_', ' ')
                 }, ...prev])
                 setCarrinho([])
+                setLastAddedItem(null)
                 setDescontoPercent('')
                 setDescontoValor('')
                 setClienteCadernetaSelecionado('')
@@ -2021,6 +2022,7 @@ export default function PDVPage() {
 
             // Limpeza de UI/estado
             setCarrinho([])
+            setLastAddedItem(null)
             setModalPagamento(false)
             setModalDebito(false)
             setModalCredito(false)
@@ -2533,6 +2535,7 @@ export default function PDVPage() {
             setView('abertura')
             setOperador('')
             setCarrinho([])
+            setLastAddedItem(null)
             setVendasHoje([])
             setCaixaDiarioId(null)
             setDataHoje('')
@@ -2816,7 +2819,7 @@ export default function PDVPage() {
             // Delete e Ctrl+L: só quando foco fora de input (evitar acidentes)
             if (!targetIsInput && !(modalPagamento || modalDebito || modalCredito || modalPix)) {
                 if (key === 'Delete') { e.preventDefault(); removerUltimoItem(); return }
-                if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'l') { e.preventDefault(); setCarrinho([]); return }
+                if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'l') { e.preventDefault(); setCarrinho([]); setLastAddedItem(null); return }
             }
         }
 
@@ -3408,7 +3411,7 @@ export default function PDVPage() {
 
                                     <div className="mt-auto pt-8 space-y-3 md:static fixed bottom-0 left-0 right-0 md:right-auto md:left-auto bg-white/90 md:bg-transparent p-4 md:p-0 z-40 md:backdrop-blur-sm">
                                         <button
-                                            onClick={() => setCarrinho([])}
+                                            onClick={() => { setCarrinho([]); setLastAddedItem(null); }}
                                             title="Limpar carrinho — Ctrl+L"
                                             className="w-full py-2 bg-black text-white font-bold text-[10px] uppercase hover:bg-gray-800 transition rounded-lg"
                                         >

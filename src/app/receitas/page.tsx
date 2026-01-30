@@ -892,25 +892,6 @@ export default function ReceitasPage() {
                   {editingReceita ? 'Editar Receita' : 'Nova Receita'}
                 </h2>
 
-                {/* Barra fixa (sticky) com preço total e unitário atualizados em tempo real */}
-                {(() => {
-                  const previewLocal = calcularPrecoPreview()
-                  return (
-                    <div className="sticky top-0 z-30 bg-white/90 backdrop-blur-sm py-3 mb-3 border-b border-gray-700/20 rounded-md">
-                      <div className="max-w-full mx-0 px-1 flex items-center justify-between gap-4">
-                        <div className="text-sm text-gray-600">Preço total da receita</div>
-                        <div className="text-sm font-semibold text-gray-900">{formatCurrency(previewLocal.total)}</div>
-                        <div className="text-sm text-gray-600">Preço unitário</div>
-                        <div className="text-sm font-semibold text-green-600">{
-                          isFiniteNumber(previewLocal.unitario) && previewLocal.unitario > 0
-                            ? formatUnitPriceWithUnit(previewLocal.unitario, formData.unidade_rendimento)
-                            : '-'
-                        }</div>
-                      </div>
-                    </div>
-                  )
-                })()}
-
                 <form id="receita-form" onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -1173,6 +1154,25 @@ export default function ReceitasPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Preço total e unitário na parte inferior */}
+                  {(() => {
+                    const previewLocal = calcularPrecoPreview()
+                    return (
+                      <div className="py-3 px-4 bg-gray-50 border border-gray-200 rounded-md">
+                        <div className="max-w-full mx-0 flex items-center justify-between gap-4">
+                          <div className="text-sm text-gray-600">Preço total da receita</div>
+                          <div className="text-sm font-semibold text-gray-900">{formatCurrency(previewLocal.total)}</div>
+                          <div className="text-sm text-gray-600">Preço unitário</div>
+                          <div className="text-sm font-semibold text-green-600">{
+                            isFiniteNumber(previewLocal.unitario) && previewLocal.unitario > 0
+                              ? formatUnitPriceWithUnit(previewLocal.unitario, formData.unidade_rendimento)
+                              : '-'
+                          }</div>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                 </form>
               </div>

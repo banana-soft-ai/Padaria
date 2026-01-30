@@ -9,5 +9,5 @@ CREATE TABLE IF NOT EXISTS composicao_receitas (
     categoria TEXT NOT NULL DEFAULT 'massa' CHECK (categoria IN ('massa', 'cobertura', 'embalagem')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(receita_id, insumo_id)
+    UNIQUE(receita_id, insumo_id, categoria)
 );

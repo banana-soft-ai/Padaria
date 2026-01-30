@@ -3600,12 +3600,15 @@ export default function PDVPage() {
 
                     {/* TELA DE ESTOQUE (F3) */}
                     {caixaAberto && view === 'estoque' && (
-                        <div className="h-full bg-white rounded-2xl shadow-sm border border-blue-100 p-6 overflow-y-auto">
-                            <h2 className="text-2xl font-black mb-6 uppercase text-gray-800 italic border-l-8 border-blue-500 pl-4">
-                                Estoque Atual
-                            </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {produtos.map(p => (
+                        <div className="h-full min-h-0 flex flex-col bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
+                            <div className="p-6 shrink-0">
+                                <h2 className="text-2xl font-black uppercase text-gray-800 italic border-l-8 border-blue-500 pl-4">
+                                    Estoque Atual
+                                </h2>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {produtos.map(p => (
                                     <div key={p.id} className="p-4 border border-blue-100 rounded-xl hover:shadow-md transition bg-white">
                                         <div className="flex justify-between items-start mb-2">
                                             <span className="text-xs font-bold text-blue-300">#{p.id}</span>
@@ -3616,7 +3619,8 @@ export default function PDVPage() {
                                         <h3 className="font-black text-gray-800 mb-1">{p.nome}</h3>
                                         <p className="text-blue-600 font-bold">R$ {p.preco.toFixed(2)}</p>
                                     </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     )}

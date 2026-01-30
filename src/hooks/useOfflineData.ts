@@ -114,6 +114,7 @@ export function useOfflineData<T extends { id: number }>({
           // banco atribua o ID real (evita erro quando usamos IDs temporários grandes)
           const payload: any = { ...newItem }
           delete payload.id
+          delete payload.updated_at
 
           const { data: insertedData, error: supabaseError } = await supabase
             .from(table)
@@ -122,8 +123,9 @@ export function useOfflineData<T extends { id: number }>({
             .single()
 
           if (supabaseError) {
-            console.error('[useOfflineData] Supabase retornou erro ao inserir:', supabaseError)
-            throw supabaseError
+            const errInfo = { code: (supabaseError as any).code, message: (supabaseError as any).message, details: (supabaseError as any).details, hint: (supabaseError as any).hint }
+            console.error('[useOfflineData] Supabase retornou erro ao inserir:', errInfo)
+            throw errInfo
           }
 
           // Atualizar com ID real do servidor
@@ -137,14 +139,11 @@ export function useOfflineData<T extends { id: number }>({
 
           return insertedData as T
         } catch (supErr) {
-          // Logar objeto de erro completo para diagnóstico
-          try {
-            console.error('[useOfflineData] Erro completo ao inserir no Supabase:', JSON.parse(JSON.stringify(supErr)))
-          } catch (e) {
-            console.error('[useOfflineData] Erro ao serializar supErr:', supErr)
-          }
+          const err = supErr as { code?: string; message?: string; details?: string; hint?: string }
+          const errInfo = err ? { code: err?.code, message: err?.message, details: err?.details, hint: err?.hint } : supErr
+          console.error('[useOfflineData] Erro ao inserir no Supabase:', errInfo)
           setData(prev => prev.filter(it => it.id !== newItem.id))
-          throw supErr
+          throw errInfo
         }
       } else {
         // Offline: adicionar à fila de sincronização
@@ -191,6 +190,7 @@ export function useOfflineData<T extends { id: number }>({
         for (let i = 0; i < newItems.length; i++) {
           const payload: any = { ...newItems[i] }
           delete payload.id
+          delete payload.updated_at
           const { data: insertedData, error: supabaseError } = await supabase
             .from(table)
             .insert(payload)

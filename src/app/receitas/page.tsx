@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Receita, Insumo } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import Toast from '@/app/gestao/caderneta/Toast' // Componente de notificação
 import { Plus, ChefHat, Search, Edit, Trash2, Eye, Package, X, RefreshCw } from 'lucide-react'
@@ -383,7 +384,7 @@ export default function ReceitasPage() {
     try {
       const dadosReceitaBase: any = {
         nome: formData.nome,
-        rendimento: parseFloat(formData.rendimento) || 0,
+        rendimento: Math.round(parseFloat(formData.rendimento)) || 1,
         unidade_rendimento: formData.unidade_rendimento,
         instrucoes: formData.instrucoes || null,
         categoria: formData.categoria,
@@ -398,14 +399,20 @@ export default function ReceitasPage() {
       if (editingReceita) {
         let updateResult: any
         try {
-          updateResult = await updateReceita(editingReceita.id, dadosReceitaComCustos)
+          updateResult = await updateReceita(editingReceita.id, dadosReceitaBase)
         } catch (err) {
           updateResult = { error: err }
         }
 
         if (updateResult && updateResult.error) {
           const errStr = JSON.stringify(updateResult.error)
-          if (errStr && errStr.includes('PGRST204') || errStr.includes("Could not find the 'custosInvisiveis'")) {
+          const code = (updateResult.error && (updateResult.error as any).code) || ''
+          const msg = (updateResult.error && (updateResult.error as any).message) || ''
+          if (code === '23505' || msg.includes('receitas_nome_unique') || errStr.includes('receitas_nome_unique')) {
+            showToast('Já existe uma receita com esse nome. Escolha outro nome.', 'error')
+            return
+          }
+          if (errStr && (errStr.includes('PGRST204') || errStr.includes("Could not find the 'custosInvisiveis'"))) {
             const retry = await updateReceita(editingReceita.id, dadosReceitaBase)
             if (retry.error) throw retry.error
             updateResult = retry
@@ -418,7 +425,7 @@ export default function ReceitasPage() {
       } else {
         let insertResult: any
         try {
-          insertResult = await createReceita(dadosReceitaComCustos)
+          insertResult = await createReceita(dadosReceitaBase)
         } catch (err) {
           insertResult = { error: err }
         }
@@ -449,12 +456,18 @@ export default function ReceitasPage() {
         const { error: deleteError } = await deleteByReceitaId(receitaId)
         if (deleteError) throw deleteError
 
+        const { error: directDeleteErr } = await supabase
+          .from('composicao_receitas')
+          .delete()
+          .eq('receita_id', receitaId)
+        if (directDeleteErr) throw directDeleteErr
+
         const composicoesParaSalvar = ingredientes
-          .filter(ing => ing.insumo_id > 0 && Number(ing.quantidade) > 0)
+          .filter(ing => ing.insumo_id > 0 && (ing.categoria === 'embalagem' || Number(ing.quantidade) > 0))
           .map(ing => ({
             receita_id: receitaId,
             insumo_id: ing.insumo_id,
-            quantidade: ing.quantidade,
+            quantidade: ing.categoria === 'embalagem' ? 1 : ing.quantidade,
             categoria: ing.categoria
           }))
 
@@ -509,6 +522,13 @@ export default function ReceitasPage() {
       showToast(editingReceita ? 'Receita atualizada com sucesso!' : 'Receita cadastrada com sucesso!', 'success')
     } catch (error) {
       console.error('Erro ao salvar receita:', error)
+      const errStr = error && typeof error === 'object' ? JSON.stringify(error) : String(error)
+      const code = (error && typeof error === 'object' && (error as any).code) || ''
+      const msg = (error && typeof error === 'object' && (error as any).message) || ''
+      if (code === '23505' || msg.includes('receitas_nome_unique') || errStr.includes('receitas_nome_unique')) {
+        showToast('Já existe uma receita com esse nome. Escolha outro nome.', 'error')
+        return
+      }
       let errorMessage = 'Erro desconhecido'
       if (error && typeof error === 'object') {
         const err = error as any
@@ -535,7 +555,7 @@ export default function ReceitasPage() {
       .filter(c => c.receita_id === receita.id)
       .map(c => ({
         insumo_id: c.insumo_id,
-        quantidade: c.quantidade,
+        quantidade: c.categoria === 'embalagem' ? 1 : c.quantidade,
         categoria: c.categoria,
         insumo: c.insumo
       }))
@@ -652,7 +672,15 @@ export default function ReceitasPage() {
   }
 
   const selecionarInsumo = (index: number, insumo: Insumo) => {
-    atualizarIngrediente(index, 'insumo_id', insumo.id)
+    const isEmbalagem = (insumo as any)?.categoria === 'embalagem'
+    const novosIngredientes = [...ingredientes]
+    novosIngredientes[index] = {
+      ...novosIngredientes[index],
+      insumo_id: insumo.id,
+      categoria: isEmbalagem ? 'embalagem' : novosIngredientes[index].categoria,
+      quantidade: isEmbalagem ? 1 : novosIngredientes[index].quantidade
+    }
+    setIngredientes(novosIngredientes)
     setPesquisasIngredientes({ ...pesquisasIngredientes, [index]: insumo.nome })
     setActiveDropdown(null)
   }
@@ -1114,7 +1142,14 @@ export default function ReceitasPage() {
                                 value={ingrediente.categoria === 'embalagem' ? 1 : ingrediente.quantidade}
                                 onChange={(e) => atualizarIngrediente(index, 'quantidade', parseFloat(e.target.value) || 0)}
                                 readOnly={ingrediente.categoria === 'embalagem'}
-                                className="w-full border border-gray-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900 placeholder-gray-400 text-sm text-center"
+                                disabled={ingrediente.categoria === 'embalagem'}
+                                tabIndex={ingrediente.categoria === 'embalagem' ? -1 : 0}
+                                title={ingrediente.categoria === 'embalagem' ? 'Embalagem sempre é 1 unidade' : undefined}
+                                className={`w-full border rounded-md px-2 py-1.5 text-sm text-center ${
+                                  ingrediente.categoria === 'embalagem'
+                                    ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
+                                    : 'border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900 placeholder-gray-400'
+                                }`}
                               />
                             </div>
 

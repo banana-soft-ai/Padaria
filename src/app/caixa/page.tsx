@@ -10,8 +10,7 @@ declare global {
 }
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { supabase } from '@/lib/supabase/client'
 import type { Database } from '@/lib/supabase/types'
@@ -34,6 +33,7 @@ import {
 } from 'lucide-react'
 
 import Toast from '@/app/gestao/caderneta/Toast'
+import { CadernetaContent } from '@/components/caderneta/CadernetaContent'
 import { clientConfig } from '@/lib/config'
 import AbrirCaixaModal from '@/components/AbrirCaixaModal'
 import TurnoOperadorModal from '@/components/TurnoOperadorModal'
@@ -110,6 +110,7 @@ export default function PDVPage() {
     }
     // Removido: declaração duplicada de toast/setToast
     const router = useRouter()
+    const searchParams = useSearchParams()
     const getSupabase = () => {
         if (!supabase) throw new Error('Supabase não inicializado')
         return supabase
@@ -417,7 +418,7 @@ export default function PDVPage() {
         }
     }
     // --- Estados de UI e Dados ---
-    const [view, setView] = useState<'abertura' | 'venda' | 'historico' | 'estoque' | 'caixa' | 'saida'>('abertura')
+    const [view, setView] = useState<'abertura' | 'venda' | 'historico' | 'estoque' | 'caixa' | 'saida' | 'caderneta'>('abertura')
     const [caixaAberto, setCaixaAberto] = useState(false)
     const [operador, setOperador] = useState('')
     const [saldoInicial, setSaldoInicial] = useState(0)
@@ -798,6 +799,12 @@ export default function PDVPage() {
         }
     }, [caixaDiaISO])
 
+    // Suporte a query param view=caderneta (ex.: redirect de /caixa/caderneta)
+    useEffect(() => {
+        if (searchParams.get('view') === 'caderneta' && caixaAberto) {
+            setView('caderneta')
+        }
+    }, [searchParams, caixaAberto])
 
     // Ao trocar a view interna para 'venda' ou 'historico', garante refresh imediato dos dados.
     useEffect(() => {
@@ -2389,7 +2396,7 @@ export default function PDVPage() {
             if (key === 'F3') { e.preventDefault(); if (caixaAberto) setView('estoque'); return }
             if (key === 'F4') { e.preventDefault(); if (caixaAberto) setView('caixa'); return }
             // Atalho para Caderneta: usa F11 se disponível (não conflita com outros atalhos atuais)
-            if (key === 'F11') { e.preventDefault(); if (caixaAberto) router.push('/caixa/caderneta'); return }
+            if (key === 'F11') { e.preventDefault(); if (caixaAberto) setView('caderneta'); return }
             // Atalho para Saída: F10
             if (key === 'F10') { e.preventDefault(); if (caixaAberto) setView('saida'); return }
 
@@ -2726,13 +2733,14 @@ export default function PDVPage() {
                                 >
                                     Caixa (F4)
                                 </button>
-                                <Link
-                                    href="/caixa/caderneta"
+                                <button
+                                    onClick={() => setView('caderneta')}
                                     title="Ir para Caderneta (F11)"
                                     className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
+                                    style={{ backgroundColor: view === 'caderneta' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
                                 >
                                     Caderneta (F11)
-                                </Link>
+                                </button>
                                 <button
                                     onClick={() => setView('saida')}
                                     title="Ir para Saída (F10)"
@@ -2780,7 +2788,7 @@ export default function PDVPage() {
                         <div className="mb-2 p-2 bg-blue-50 border border-blue-100 rounded-xl text-[10px] text-gray-700 font-bold flex flex-wrap gap-x-4 gap-y-1">
                             <span className="uppercase text-blue-700">Atalhos:</span>
                             <span>F1–F4: Vendas/Relatórios/Estoque/Caixa</span>
-                            {/* Caderneta removida dos atalhos */}
+                            <span>F11: Caderneta</span>
                             <span>Ctrl+F: Buscar</span>
                             <span>F5–F8 ou 1–4: Dinheiro/Débito/Crédito/Pix</span>
                             <span>Enter: Confirma no modal</span>
@@ -3308,6 +3316,13 @@ export default function PDVPage() {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* TELA DE CADERNETA (F11) */}
+                    {caixaAberto && view === 'caderneta' && (
+                        <div className="h-full bg-white rounded-2xl shadow-sm border border-blue-100 p-6 overflow-y-auto">
+                            <CadernetaContent />
                         </div>
                     )}
 

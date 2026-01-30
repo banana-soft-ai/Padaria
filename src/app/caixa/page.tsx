@@ -11,6 +11,7 @@ declare global {
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { supabase } from '@/lib/supabase/client'
 import type { Database } from '@/lib/supabase/types'
@@ -201,7 +202,7 @@ export default function PDVPage() {
 
             if (!openCaixas || openCaixas.length === 0) {
                 setCaixaAberto(false)
-                if (changeView && view !== 'caderneta') setView('abertura')
+                if (changeView) setView('abertura')
                 return null
             }
 
@@ -255,11 +256,11 @@ export default function PDVPage() {
                 setDataHoje(new Date().toLocaleDateString('pt-BR'))
                 setHoraAbertura(new Date().toLocaleTimeString('pt-BR'))
             }
-            if (changeView && view !== 'caderneta') setView('venda')
+            if (changeView) setView('venda')
             return activeCaixa
         } catch (err) {
             setCaixaAberto(false)
-            if (changeView && view !== 'caderneta') setView('abertura')
+            if (changeView) setView('abertura')
             console.error('Falha ao restaurar caixa aberto:', err)
             return null
         }
@@ -416,7 +417,7 @@ export default function PDVPage() {
         }
     }
     // --- Estados de UI e Dados ---
-    const [view, setView] = useState<'abertura' | 'venda' | 'historico' | 'estoque' | 'caixa' | 'saida' | 'caderneta'>('abertura')
+    const [view, setView] = useState<'abertura' | 'venda' | 'historico' | 'estoque' | 'caixa' | 'saida'>('abertura')
     const [caixaAberto, setCaixaAberto] = useState(false)
     const [operador, setOperador] = useState('')
     const [saldoInicial, setSaldoInicial] = useState(0)
@@ -767,9 +768,7 @@ export default function PDVPage() {
     }, [])
 
     // Quando a aba do navegador volta a ficar visível ou a janela ganha foco,
-    // recarrega produtos, vendas e restaura estado do caixa. Agora garante
-    // que, ao retornar, a interface tente abrir diretamente a view de `venda`
-    // (restaurarCaixaAberto respeita a view 'caderneta' para não sobrescrever).
+    // recarrega produtos, vendas e restaura estado do caixa.
     useEffect(() => {
         const onVisible = () => {
             carregarProdutos()
@@ -799,16 +798,6 @@ export default function PDVPage() {
         }
     }, [caixaDiaISO])
 
-    // Listener para postMessage da Caderneta (iframe): atualiza dados do caixa após pagamento registrado
-    useEffect(() => {
-        const handler = (e: MessageEvent) => {
-            if (e.data?.type === 'caderneta-pagamento-registrado') {
-                refreshAll({ changeView: false }).catch(() => {})
-            }
-        }
-        window.addEventListener('message', handler)
-        return () => window.removeEventListener('message', handler)
-    }, [])
 
     // Ao trocar a view interna para 'venda' ou 'historico', garante refresh imediato dos dados.
     useEffect(() => {
@@ -2400,7 +2389,7 @@ export default function PDVPage() {
             if (key === 'F3') { e.preventDefault(); if (caixaAberto) setView('estoque'); return }
             if (key === 'F4') { e.preventDefault(); if (caixaAberto) setView('caixa'); return }
             // Atalho para Caderneta: usa F11 se disponível (não conflita com outros atalhos atuais)
-            if (key === 'F11') { e.preventDefault(); if (caixaAberto) setView('caderneta'); return }
+            if (key === 'F11') { e.preventDefault(); if (caixaAberto) router.push('/caixa/caderneta'); return }
             // Atalho para Saída: F10
             if (key === 'F10') { e.preventDefault(); if (caixaAberto) setView('saida'); return }
 
@@ -2668,22 +2657,6 @@ export default function PDVPage() {
         setModalScanner(false)
     }
 
-    const abrirCaderneta = async () => {
-        try {
-            if (typeof refreshClientes === 'function') await refreshClientes()
-            if (typeof refreshMovimentacoes === 'function') await refreshMovimentacoes()
-            if (clientes && clientes.length > 0) {
-                setClienteCadernetaSelecionado(String(clientes[0].id))
-            } else {
-                setClienteCadernetaSelecionado('')
-            }
-            // Abre a view de caderneta no layout do PDV (espelho da página de gestão)
-            setView('caderneta')
-        } catch (e) {
-            console.warn('Falha ao abrir caderneta:', e)
-            setView('caderneta')
-        }
-    }
 
     // Fecha scanner ao desmontar (garantia extra)
     useEffect(() => {
@@ -2753,14 +2726,13 @@ export default function PDVPage() {
                                 >
                                     Caixa (F4)
                                 </button>
-                                <button
-                                    onClick={() => setView('caderneta')}
+                                <Link
+                                    href="/caixa/caderneta"
                                     title="Ir para Caderneta (F11)"
                                     className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
-                                    style={{ backgroundColor: view === 'caderneta' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
                                 >
                                     Caderneta (F11)
-                                </button>
+                                </Link>
                                 <button
                                     onClick={() => setView('saida')}
                                     title="Ir para Saída (F10)"
@@ -3211,18 +3183,6 @@ export default function PDVPage() {
                                     </div>
                                 ))}
                             </div>
-                        </div>
-                    )}
-
-                    {/* TELA DE CADERNETA (aba incorporada) */}
-                    {caixaAberto && view === 'caderneta' && (
-                        <div className="h-full bg-white rounded-2xl shadow-sm border border-blue-100 p-2 overflow-hidden">
-                            <iframe
-                                src="/gestao/caderneta?embedded=1"
-                                title="Caderneta - Gestão (Espelho)"
-                                className="w-full h-full border-0"
-                                style={{ minHeight: '600px' }}
-                            />
                         </div>
                     )}
 

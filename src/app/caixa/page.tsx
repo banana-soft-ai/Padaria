@@ -516,6 +516,7 @@ export default function PDVPage() {
     const [modalCredito, setModalCredito] = useState(false)
     const [modalPix, setModalPix] = useState(false)
     const [modalCaderneta, setModalCaderneta] = useState(false)
+    const [cadernetaErroLimite, setCadernetaErroLimite] = useState<string | null>(null)
     const [modalFechamento, setModalFechamento] = useState(false)
     const [modalNoConferencia, setModalNoConferencia] = useState(false)
     // Fechamento: conferências e confirmação (valores editáveis antes de gravar)
@@ -533,15 +534,6 @@ export default function PDVPage() {
     const [valorRecebido, setValorRecebido] = useState('')
     const [modalDetalhes, setModalDetalhes] = useState(false)
     const [modalPosVenda, setModalPosVenda] = useState(false)
-    // Confirmação quando venda em caderneta deixará cliente com saldo negativo
-    const [modalConfirmCaderneta, setModalConfirmCaderneta] = useState(false)
-    const [confirmCadernetaInfo, setConfirmCadernetaInfo] = useState<{
-        clienteNome?: string | null
-        limiteDisponivel?: number
-        valorCompra?: number
-        saldoApos?: number
-    } | null>(null)
-    const [pendingFormaPagamento, setPendingFormaPagamento] = useState<string | null>(null)
     const [lastVendaId, setLastVendaId] = useState<number | null>(null)
     const [itensVendaSelecionada, setItensVendaSelecionada] = useState<any[]>([])
     const [vendaSelecionadaId, setVendaSelecionadaId] = useState<number | null>(null)
@@ -1377,7 +1369,7 @@ export default function PDVPage() {
         return linhas
     }
 
-    const finalizarVenda = async (formaPagamento: string, opts?: { skipCadernetaConfirm?: boolean }) => {
+    const finalizarVenda = async (formaPagamento: string) => {
         if (carrinho.length === 0) return
         setLoading(true)
 
@@ -1404,7 +1396,7 @@ export default function PDVPage() {
         }
 
         // Se pagamento por caderneta e houver cliente selecionado, verificar saldo/limite
-        if (formaPagamento === 'caderneta' && clienteCadernetaSelecionado && !opts?.skipCadernetaConfirm) {
+        if (formaPagamento === 'caderneta' && clienteCadernetaSelecionado) {
             try {
                 const clienteIdNum = Number(clienteCadernetaSelecionado)
                 // Tenta usar cache local antes de consultar o DB
@@ -1424,14 +1416,7 @@ export default function PDVPage() {
                 const saldoApos = Number((limiteDisponivel - valorTotal).toFixed(2))
 
                 if (saldoApos < 0) {
-                    setConfirmCadernetaInfo({
-                        clienteNome: clienteInfo?.nome || null,
-                        limiteDisponivel: limiteDisponivel,
-                        valorCompra: valorTotal,
-                        saldoApos: saldoApos
-                    })
-                    setPendingFormaPagamento(formaPagamento)
-                    setModalConfirmCaderneta(true)
+                    setCadernetaErroLimite(`Venda bloqueada: valor (R$ ${valorTotal.toFixed(2)}) excede o limite disponível (R$ ${limiteDisponivel.toFixed(2)}) do cliente.`)
                     setLoading(false)
                     return
                 }
@@ -1542,8 +1527,7 @@ export default function PDVPage() {
                                 tipo: 'compra',
                                 valor: valorCompra,
                                 venda_id: vendaData.id,
-                                observacoes: `Venda a prazo registrada no PDV (venda #${vendaData.id})`,
-                                allowExceedLimit: !!opts?.skipCadernetaConfirm
+                                observacoes: `Venda a prazo registrada no PDV (venda #${vendaData.id})`
                             })
 
                             if (!res.success) {
@@ -1984,7 +1968,7 @@ export default function PDVPage() {
         if (modalDebito) return setModalDebito(false)
         if (modalCredito) return setModalCredito(false)
         if (modalPix) return setModalPix(false)
-        if (modalCaderneta) return setModalCaderneta(false)
+        if (modalCaderneta) { setCadernetaErroLimite(null); return setModalCaderneta(false) }
         if (modalDetalhes) return setModalDetalhes(false)
         if (modalFechamento) return setModalFechamento(false)
         if (modalScanner) { fecharScanner(); return }
@@ -1996,27 +1980,6 @@ export default function PDVPage() {
         if (modalCredito) return finalizarVenda('credito')
         if (modalPix) return finalizarVenda('pix')
         if (modalCaderneta) return finalizarVenda('caderneta')
-    }
-
-    // Handlers para modal de confirmação de venda em caderneta que excede limite
-    const handleConfirmarCadernetaSim = async () => {
-        try {
-            setModalConfirmCaderneta(false)
-            const forma = pendingFormaPagamento || 'caderneta'
-            setPendingFormaPagamento(null)
-            // Reexecuta finalizarVenda permitindo exceder limite (skip confirm)
-            await finalizarVenda(forma, { skipCadernetaConfirm: true })
-        } catch (e) {
-            console.error('Erro ao confirmar venda fiada:', e)
-            showToast('Erro ao processar venda fiada', 'error')
-        }
-    }
-
-    const handleConfirmarCadernetaNao = () => {
-        setModalConfirmCaderneta(false)
-        setConfirmCadernetaInfo(null)
-        setPendingFormaPagamento(null)
-        showToast('Venda cancelada', 'info')
     }
 
     const removeAcentos = (s: string) => {
@@ -2715,23 +2678,6 @@ export default function PDVPage() {
                     onClose={() => setToast(null)}
                     duration={4000}
                 />
-            )}
-            {modalConfirmCaderneta && confirmCadernetaInfo && (
-                <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 9999 }}>
-                    <div className="absolute inset-0 bg-black opacity-50" onClick={handleConfirmarCadernetaNao} style={{ zIndex: 9998 }} />
-                    <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg" style={{ zIndex: 9999 }}>
-                        <h3 className="text-lg font-bold mb-2">Confirmar venda fiada</h3>
-                        <p className="mb-2">Cliente: <strong>{confirmCadernetaInfo.clienteNome ?? '—'}</strong></p>
-                        <p className="mb-2">Limite disponível: <strong>R$ {Number(confirmCadernetaInfo.limiteDisponivel ?? 0).toFixed(2)}</strong></p>
-                        <p className="mb-2">Valor da compra: <strong>R$ {Number(confirmCadernetaInfo.valorCompra ?? 0).toFixed(2)}</strong></p>
-                        <p className="mb-4">Saldo após a venda: <strong>{(confirmCadernetaInfo.saldoApos ?? 0) < 0 ? `-R$ ${Math.abs(confirmCadernetaInfo.saldoApos ?? 0).toFixed(2)}` : `R$ ${Number(confirmCadernetaInfo.saldoApos ?? 0).toFixed(2)}`}</strong></p>
-                        <p className="mb-4">Este cliente ficará com saldo devedor negativo. Deseja confirmar a venda?</p>
-                        <div className="flex justify-end gap-2">
-                            <button onClick={handleConfirmarCadernetaNao} className="px-3 py-2 bg-gray-200 rounded">Não</button>
-                            <button onClick={handleConfirmarCadernetaSim} className="px-3 py-2 bg-blue-600 text-white rounded">Sim</button>
-                        </div>
-                    </div>
-                </div>
             )}
             <div className="min-h-screen w-full flex flex-col bg-slate-50 font-sans text-gray-800 overflow-auto">
 
@@ -4020,7 +3966,7 @@ export default function PDVPage() {
                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-2">Selecione o Cliente</label>
                                     <select
                                         value={clienteCadernetaSelecionado}
-                                        onChange={(e) => setClienteCadernetaSelecionado(e.target.value)}
+                                        onChange={(e) => { setClienteCadernetaSelecionado(e.target.value); setCadernetaErroLimite(null) }}
                                         className="w-full p-3 border-2 border-blue-50 rounded-xl text-sm font-bold text-blue-600 outline-none focus:border-blue-300 bg-blue-50/20"
                                     >
                                         <option value="">Selecionar cliente</option>
@@ -4035,12 +3981,19 @@ export default function PDVPage() {
                                         <input
                                             type="number"
                                             value={valorAbaterCaderneta}
-                                            onChange={(e) => setValorAbaterCaderneta(e.target.value)}
+                                            onChange={(e) => { setValorAbaterCaderneta(e.target.value); setCadernetaErroLimite(null) }}
                                             placeholder={totalComDesconto.toFixed(2)}
                                             className="w-full p-3 border-2 border-blue-50 rounded-xl text-sm font-bold text-blue-600 outline-none focus:border-blue-300 bg-blue-50/20"
                                         />
                                     </div>
                                 </div>
+
+                                {cadernetaErroLimite && (
+                                    <div className="bg-amber-100 border-2 border-amber-400 rounded-2xl p-4 flex items-start gap-3">
+                                        <span className="text-amber-600 text-xl shrink-0">⚠</span>
+                                        <p className="text-amber-800 font-bold text-sm leading-snug">{cadernetaErroLimite}</p>
+                                    </div>
+                                )}
 
                                 <div className="flex flex-col gap-2">
                                     <button
@@ -4050,7 +4003,7 @@ export default function PDVPage() {
                                     >
                                         {loading ? 'Processando...' : 'Confirmar'}
                                     </button>
-                                    <button onClick={() => setModalCaderneta(false)} className="w-full text-blue-400 font-bold text-xs uppercase py-2">Voltar</button>
+                                    <button onClick={() => { setCadernetaErroLimite(null); setModalCaderneta(false) }} className="w-full text-blue-400 font-bold text-xs uppercase py-2">Voltar</button>
                                 </div>
                             </div>
                         </div>

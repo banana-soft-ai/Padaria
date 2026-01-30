@@ -443,6 +443,7 @@ export default function PDVPage() {
     const [pagamentosCadernetaHoje, setPagamentosCadernetaHoje] = useState<number[]>([])
 
     // --- Métricas do Caixa ---
+    // Prioridade: usar caixa_diario da sessão atual (fonte da verdade, inclui pagamentos de caderneta com forma correta)
     const metricasCaixa = useMemo(() => {
         const totais = {
             dinheiro: 0,
@@ -452,36 +453,45 @@ export default function PDVPage() {
             caderneta: 0
         }
 
+        const caixaSessao = caixaDiarioId ? caixasDoDia.find((c: any) => Number(c.id) === Number(caixaDiarioId)) : null
 
-        vendasHoje.forEach(v => {
-            const formaRaw = String(v.forma_pagamento || '').toLowerCase();
-            const forma = formaRaw.replace(/[_\s]/g, '');
-            if (forma.includes('dinheiro')) totais.dinheiro += v.total;
-            else if (forma.includes('pix')) totais.pix += v.total;
-            else if (forma.includes('debito') || (forma.includes('cartao') && forma.includes('debito'))) totais.debito += v.total;
-            else if (forma.includes('credito') || (forma.includes('cartao') && forma.includes('credito'))) totais.credito += v.total;
-            else if (forma.includes('caderneta')) totais.caderneta += v.total;
-            else { if (forma.includes('cartao')) totais.debito += v.total; }
-        });
-
-        // Pagamentos recebidos de caderneta devem entrar em entradas, não em caderneta
-        // Aqui assumimos que todos pagamentos são em dinheiro (ajuste se houver registro da forma)
-        try {
-            const somaPagamentos = (pagamentosCadernetaHoje || []).reduce((acc, val) => acc + Number(val || 0), 0);
-            if (somaPagamentos > 0) totais.dinheiro += somaPagamentos;
-        } catch (e) { }
+        if (caixaSessao) {
+            // Usar caixa_diario como fonte (inclui vendas + pagamentos de caderneta com forma correta)
+            totais.dinheiro = Number(caixaSessao.total_dinheiro || 0)
+            totais.pix = Number(caixaSessao.total_pix || 0)
+            totais.debito = Number(caixaSessao.total_debito || 0)
+            totais.credito = Number(caixaSessao.total_credito || 0)
+            totais.caderneta = Number(caixaSessao.total_caderneta || 0)
+        } else {
+            // Fallback: recalcular de vendasHoje + pagamentosCadernetaHoje
+            vendasHoje.forEach(v => {
+                const formaRaw = String(v.forma_pagamento || '').toLowerCase();
+                const forma = formaRaw.replace(/[_\s]/g, '');
+                if (forma.includes('dinheiro')) totais.dinheiro += v.total;
+                else if (forma.includes('pix')) totais.pix += v.total;
+                else if (forma.includes('debito') || (forma.includes('cartao') && forma.includes('debito'))) totais.debito += v.total;
+                else if (forma.includes('credito') || (forma.includes('cartao') && forma.includes('credito'))) totais.credito += v.total;
+                else if (forma.includes('caderneta')) totais.caderneta += v.total;
+                else { if (forma.includes('cartao')) totais.debito += v.total; }
+            });
+            try {
+                const somaPagamentos = (pagamentosCadernetaHoje || []).reduce((acc, val) => acc + Number(val || 0), 0);
+                if (somaPagamentos > 0) totais.dinheiro += somaPagamentos;
+            } catch (e) { }
+        }
 
         const totalEntradas = totais.dinheiro + totais.pix + totais.debito + totais.credito
         const totalGeral = totalEntradas + totais.caderneta
 
-        // Soma das saídas registradas no estado local (historico de sangrias)
-        const totalSaidas = (saidasDoDia || []).reduce((acc: number, s: any) => acc + (Number(s.valor) || 0), 0)
+        const totalSaidas = caixaSessao
+            ? Number(caixaSessao.valor_saidas || 0)
+            : (saidasDoDia || []).reduce((acc: number, s: any) => acc + (Number(s.valor) || 0), 0)
 
-        // Valor esperado em dinheiro = fundo inicial + entradas em dinheiro - saídas (sangrias)
-        const valorEsperadoDinheiro = Number((saldoInicial || 0)) + totais.dinheiro - totalSaidas
+        const valorAbertura = caixaSessao ? Number(caixaSessao.valor_abertura || 0) : (saldoInicial || 0)
+        const valorEsperadoDinheiro = valorAbertura + totais.dinheiro - totalSaidas
 
         return { ...totais, totalEntradas, totalGeral, valorEsperadoDinheiro, totalSaidas }
-    }, [vendasHoje, saldoInicial, saidasDoDia, pagamentosCadernetaHoje])
+    }, [caixaDiarioId, caixasDoDia, vendasHoje, saldoInicial, saidasDoDia, pagamentosCadernetaHoje])
 
     // Métricas agregadas do dia (somatório de todas as sessões de caixa registradas)
     const metricasDia = useMemo(() => {
@@ -750,6 +760,7 @@ export default function PDVPage() {
             carregarProdutos().catch(() => {})
             carregarVendasHoje(idToUse).catch(() => {})
             carregarSaidasDoDia(idToUse).catch(() => {})
+            carregarCaixasDoDia(caixa?.data || getLocalDateString()).catch(() => {})
         })()
 
         return () => clearInterval(timer)
@@ -788,6 +799,17 @@ export default function PDVPage() {
         }
     }, [caixaDiaISO])
 
+    // Listener para postMessage da Caderneta (iframe): atualiza dados do caixa após pagamento registrado
+    useEffect(() => {
+        const handler = (e: MessageEvent) => {
+            if (e.data?.type === 'caderneta-pagamento-registrado') {
+                refreshAll({ changeView: false }).catch(() => {})
+            }
+        }
+        window.addEventListener('message', handler)
+        return () => window.removeEventListener('message', handler)
+    }, [])
+
     // Ao trocar a view interna para 'venda' ou 'historico', garante refresh imediato dos dados.
     useEffect(() => {
         if (view === 'venda' || view === 'historico') {
@@ -797,13 +819,14 @@ export default function PDVPage() {
     }, [view, caixaDiarioId])
 
     // Ao abrir a view 'saida' ou 'caixa' (aba principal do caixa),
-    // recarrega as saídas do dia para garantir que o total exibido
-    // esteja sempre atualizado mesmo se o usuário não acessar a aba 'Saída'.
+    // recarrega saídas e caixas do dia para garantir que o total exibido
+    // esteja sempre atualizado (inclui pagamentos de caderneta).
     useEffect(() => {
         if (view === 'saida' || view === 'caixa') {
             carregarSaidasDoDia(caixaDiarioId)
+            carregarCaixasDoDia(caixaDiaISO || undefined).catch(() => {})
         }
-    }, [view, caixaDiarioId])
+    }, [view, caixaDiarioId, caixaDiaISO])
 
     // --- Integração com Supabase (Dados Reais) ---
 

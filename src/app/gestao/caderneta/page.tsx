@@ -343,6 +343,12 @@ function CadernetaContent() {
       resetPagamentoForm()
       // A mensagem de sucesso agora vem do hook, informando se foi salvo offline ou sincronizado.
       showToast(result.message || 'Pagamento registrado com sucesso!', 'success');
+      // Notificar PDV (quando embarcado em iframe) para atualizar dados do caixa
+      try {
+        if (typeof window !== 'undefined' && window.self !== window.top) {
+          window.parent.postMessage({ type: 'caderneta-pagamento-registrado' }, '*')
+        }
+      } catch (_e) { /* ignorar se postMessage falhar */ }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
       console.log('Erro ao registrar pagamento:', errorMessage)

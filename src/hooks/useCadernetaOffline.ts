@@ -304,6 +304,7 @@ export function useCadernetaOffline() {
             categoria: 'caderneta',
             descricao: `Pagamento caderneta (cliente ${clienteId})`,
             valor: valor,
+            caixa_diario_id: caixaRow.id,
             observacoes: observacoes || null,
             created_at: new Date().toISOString()
           });
@@ -340,6 +341,7 @@ export function useCadernetaOffline() {
             categoria: 'caderneta',
             descricao: `Pagamento caderneta (cliente ${clienteId})`,
             valor: valor,
+            caixa_diario_id: caixaAberto.id,
             observacoes: observacoes || null,
             created_at: new Date().toISOString()
           });

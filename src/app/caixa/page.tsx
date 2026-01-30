@@ -1195,6 +1195,7 @@ export default function PDVPage() {
             return [...prev, { ...produto, qtdCarrinho: 1 }]
         })
         setSearchTerm('') // Limpa busca após adicionar
+        searchInputRef.current?.blur()
     }
 
     const removerDoCarrinho = (id: number) => {
@@ -2739,6 +2740,22 @@ export default function PDVPage() {
             if (key === 'F7') { e.preventDefault(); if (temCarrinho) setModalCredito(true); return }
             if (key === 'F8') { e.preventDefault(); if (temCarrinho) setModalPix(true); return }
 
+            // + e -: sempre ativos na tela de venda (antes do barcode para não serem capturados)
+            if (!(modalPagamento || modalDebito || modalCredito || modalPix || modalCaderneta) && carrinho.length > 0) {
+                if (key === '+' || code === 'NumpadAdd') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    ajustarUltimoItem(1)
+                    return
+                }
+                if (key === '-' || code === 'NumpadSubtract' || code === 'Minus') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    ajustarUltimoItem(-1)
+                    return
+                }
+            }
+
             // Captura de código de barras (leitor USB) quando foco está fora de input
             const isPrintableChar = key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey
             if (!targetIsInput && isPrintableChar && !(modalPagamento || modalDebito || modalCredito || modalPix || modalCaderneta)) {
@@ -2805,18 +2822,16 @@ export default function PDVPage() {
                 }
             }
 
-            // Ajustes rápidos do carrinho quando não digitando em input
+            // Delete e Ctrl+L: só quando foco fora de input (evitar acidentes)
             if (!targetIsInput && !(modalPagamento || modalDebito || modalCredito || modalPix)) {
-                if (key === '+' || code === 'NumpadAdd') { e.preventDefault(); ajustarUltimoItem(1); return }
-                if (key === '-' || code === 'NumpadSubtract') { e.preventDefault(); ajustarUltimoItem(-1); return }
                 if (key === 'Delete') { e.preventDefault(); removerUltimoItem(); return }
                 if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'l') { e.preventDefault(); setCarrinho([]); return }
             }
         }
 
-        window.addEventListener('keydown', handler)
+        window.addEventListener('keydown', handler, true)
         return () => {
-            window.removeEventListener('keydown', handler)
+            window.removeEventListener('keydown', handler, true)
             if (barcodeAtalhoTimeoutRef.current) {
                 window.clearTimeout(barcodeAtalhoTimeoutRef.current)
                 barcodeAtalhoTimeoutRef.current = null

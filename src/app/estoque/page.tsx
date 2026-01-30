@@ -196,15 +196,22 @@ export default function EstoqueDashboardPage() {
       return
     }
 
-    let texto = `*RELATÓRIO DE ESTOQUE - REY DOS PÃES*\\n`
-    texto += `Data: ${new Date().toLocaleDateString()}\\n`
-    texto += `--------------------------------\\n`
+    const linhas: string[] = [
+      '📦 *RELATÓRIO DE ESTOQUE - REY DOS PÃES*',
+      `📅 Data: ${new Date().toLocaleDateString('pt-BR')}`,
+      '',
+      '━━━━━━━━━━━━━━━━━━━━'
+    ]
 
     itensFiltrados.forEach(item => {
       const { status } = obterStatusEstoque(item)
-      texto += `*${item.nome}*\\n`
-      texto += `Estoque: ${item.estoque_atual} ${item.unidade} (${status})\\n\\n`
+      const emoji = status === 'Sem estoque' ? '🔴' : status === 'Estoque baixo' ? '🟡' : '🟢'
+      linhas.push('')
+      linhas.push(`${emoji} *${item.nome.trim()}*`)
+      linhas.push(`   Estoque: ${item.estoque_atual} ${item.unidade || 'un'} (${status})`)
     })
+
+    const texto = linhas.join('\n')
 
     navigator.clipboard.writeText(texto)
       .then(() => showToast('Relatório copiado! Cole no WhatsApp.', 'success'))

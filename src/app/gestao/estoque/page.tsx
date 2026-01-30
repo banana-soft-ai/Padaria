@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import { Plus, Search, Edit, Trash2 } from 'lucide-react'
@@ -97,7 +97,10 @@ export default function EstoquePage() {
   // to the window so the wheel event can be prevented instead of
   // letting the browser change the input value.
   const preventWheel = (e: WheelEvent) => {
-    e.preventDefault()
+    const target = e.target as HTMLElement
+    if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'number') {
+      e.preventDefault()
+    }
   }
   const handleNumberFocus = () => {
     window.addEventListener('wheel', preventWheel, { passive: false })
@@ -117,7 +120,7 @@ export default function EstoquePage() {
     return out
   }
 
-  const precoUnitarioCalculado = (() => {
+  const precoUnitarioCalculado = useMemo(() => {
     const preco = formData.preco_pacote ? parseFloat(formData.preco_pacote) : null
     const quantidadeRaw = formData.quantidade_pacote ? parseFloat(formData.quantidade_pacote) : (formData.peso_pacote ? parseFloat(formData.peso_pacote) : null)
     const unidadeRaw = formData.unidade_medida_base || formData.unidade || 'un'
@@ -125,7 +128,7 @@ export default function EstoquePage() {
     const { baseUnit, quantityInBase } = convertToBaseQuantity(unidadeRaw, quantidadeRaw)
     if (!quantityInBase) return null
     return calculatePrecoUnitario(preco, baseUnit, quantityInBase)
-  })()
+  }, [formData.preco_pacote, formData.quantidade_pacote, formData.peso_pacote, formData.unidade_medida_base, formData.unidade])
 
 
   useEffect(() => {

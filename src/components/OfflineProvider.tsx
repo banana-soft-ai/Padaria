@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { clientEnv } from '@/env/client-env'
 import OfflineStatus from './OfflineStatus'
 import ConflictResolver from './ConflictResolver'
@@ -8,6 +9,9 @@ import { offlineStorage } from '@/lib/offlineStorage'
 import { syncService } from '@/lib/syncService'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { supabase } from '@/lib/supabase/client'
+
+/** Rotas críticas que devem funcionar offline (PDV, Receitas, Configurações, Estoque) */
+const OFFLINE_CRITICAL_ROUTES = ['/receitas', '/configuracoes', '/estoque', '/caixa']
 
 interface Conflict {
   id: number
@@ -21,6 +25,8 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
   const [showConflicts, setShowConflicts] = useState(false)
   const [serviceWorkerRegistered, setServiceWorkerRegistered] = useState(false)
   const { isOnline } = useOnlineStatus()
+  const pathname = usePathname()
+  const router = useRouter()
 
   // Registrar Service Worker para suporte offline (sempre que suportado; PWA pode ser desabilitado via env)
   useEffect(() => {
@@ -40,6 +46,34 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
         })
     }
   }, [])
+
+  // Prefetch de rotas críticas para funcionar offline (Receitas, Configurações, Estoque, PDV)
+  // Garante que os chunks JS e documentos dessas páginas sejam cacheados quando online
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (clientEnv.NEXT_PUBLIC_ENABLE_PWA === 'false') return
+    if (!isOnline || !serviceWorkerRegistered) return
+
+    // Só prefetch quando usuário está autenticado (fora de login/logout)
+    const isAuthPage = pathname === '/login' || pathname === '/logout'
+    if (isAuthPage) return
+
+    const prefetchRoutes = () => {
+      OFFLINE_CRITICAL_ROUTES.forEach((route) => {
+        try {
+          router.prefetch(route)
+          // Fetch explícito para garantir que o SW cache o documento da página
+          fetch(route, { credentials: 'include' }).catch(() => {})
+        } catch {
+          // Ignorar erros de prefetch
+        }
+      })
+    }
+
+    // Prefetch após carregar (dar tempo para sessão estar pronta)
+    const timer = setTimeout(prefetchRoutes, 2000)
+    return () => clearTimeout(timer)
+  }, [isOnline, serviceWorkerRegistered, pathname, router])
 
   // Verificar conflitos quando voltar online
   useEffect(() => {

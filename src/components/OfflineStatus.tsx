@@ -183,8 +183,10 @@ export function OfflineStatus() {
                   {syncResult.synced} sucessos, {syncResult.failed} falhas
                 </div>
                 {syncResult.errors.length > 0 && (
-                  <div className="mt-1 text-xs opacity-75">
-                    {syncResult.errors[0]}
+                  <div className="mt-1 text-xs opacity-75 space-y-0.5">
+                    {syncResult.errors.map((err, i) => (
+                      <div key={i}>{err}</div>
+                    ))}
                   </div>
                 )}
               </div>

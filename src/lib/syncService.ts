@@ -14,6 +14,18 @@ export interface SyncResult {
   errors: string[]
 }
 
+/** Extrai mensagem legível de erros (Supabase, Error, etc.) */
+function formatError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: string }).message || 'Erro desconhecido')
+  }
+  if (error && typeof error === 'object' && 'details' in error) {
+    return String((error as { details?: string }).details || (error as { message?: string }).message || 'Erro desconhecido')
+  }
+  return String(error ?? 'Erro desconhecido')
+}
+
 class SyncService {
   private isSyncing = false
   private syncQueue: (() => Promise<void>)[] = []
@@ -96,7 +108,7 @@ class SyncService {
 
     } catch (error) {
       result.success = false
-      result.errors.push(`Erro na sincronização: ${error}`)
+      result.errors.push(`Erro na sincronização: ${formatError(error)}`)
       console.error('Erro na sincronização:', error)
     } finally {
       this.isSyncing = false
@@ -119,7 +131,7 @@ class SyncService {
         result.synced++
       } catch (error) {
         result.failed++
-        result.errors.push(`Erro na operação ${operation.id}: ${error}`)
+        result.errors.push(`Erro na operação ${operation.id}: ${formatError(error)}`)
         console.error(`Erro ao sincronizar operação ${operation.id}:`, error)
       }
     }

@@ -144,6 +144,9 @@ export function CadernetaContent() {
     observacoes: ''
   })
 
+  // Permite pagamento acima do devido (saldo credor/haver) quando marcado
+  const [permitirSaldoCredor, setPermitirSaldoCredor] = useState(false)
+
   // Estados para formulário de edição de saldo
   const [formSaldo, setFormSaldo] = useState({
     cliente_id: '',
@@ -272,9 +275,9 @@ export function CadernetaContent() {
     e.preventDefault()
 
     try {
-      const valorPagamento = parseFloat(formPagamento.valor)
-      if (valorPagamento <= 0) {
-        showToast('O valor do pagamento deve ser maior que zero.', 'warning');
+      const valorDigitado = parseFloat(formPagamento.valor.replace(',', '.')) || 0
+      if (valorDigitado <= 0) {
+        showToast('O valor deve ser maior que zero.', 'warning');
         return
       }
 
@@ -284,9 +287,30 @@ export function CadernetaContent() {
         return
       }
 
-      if (valorPagamento > cliente.saldo_devedor) {
-        showToast('O valor do pagamento não pode ser maior que o saldo devedor.', 'warning')
-        return
+      const isDinheiro = formPagamento.forma_pagamento === 'dinheiro'
+
+      // Calcular valor efetivo a ser aplicado ao pagamento
+      let valorEfetivo: number
+      if (isDinheiro && !permitirSaldoCredor) {
+        // Dinheiro sem checkbox: dar troco, aplicar apenas saldo_devedor
+        if (valorDigitado < cliente.saldo_devedor) {
+          showToast('Valor insuficiente. Informe o valor recebido (mínimo R$ ' + cliente.saldo_devedor.toFixed(2) + ').', 'warning')
+          return
+        }
+        valorEfetivo = cliente.saldo_devedor
+      } else if (isDinheiro && permitirSaldoCredor) {
+        // Dinheiro com checkbox: aplicar valor completo (pode gerar crédito)
+        valorEfetivo = valorDigitado
+      } else if (!isDinheiro && !permitirSaldoCredor) {
+        // PIX/Cartão sem checkbox: manter validação atual
+        if (valorDigitado > cliente.saldo_devedor) {
+          showToast('O valor do pagamento não pode ser maior que o saldo devedor.', 'warning')
+          return
+        }
+        valorEfetivo = valorDigitado
+      } else {
+        // PIX/Cartão com checkbox: permitir valor > saldo (crédito)
+        valorEfetivo = valorDigitado
       }
 
       // VALIDAÇÃO ANTES: Verificar se o caixa está aberto para a data
@@ -330,7 +354,7 @@ export function CadernetaContent() {
       // Isso atualiza o saldo do cliente e cria a movimentação de forma atômica e offline-first.
       const result = await registrarPagamento(
         cliente.id,
-        valorPagamento,
+        valorEfetivo,
         formPagamento.observacoes || 'Pagamento registrado',
         { data_pagamento: formPagamento.data_pagamento, forma_pagamento: formPagamento.forma_pagamento }
       )
@@ -434,6 +458,7 @@ export function CadernetaContent() {
         forma_pagamento: 'dinheiro',
         observacoes: ''
       })
+      setPermitirSaldoCredor(false)
       setShowModalPagamento(true)
     })()
   }
@@ -534,6 +559,7 @@ export function CadernetaContent() {
       forma_pagamento: 'dinheiro',
       observacoes: ''
     })
+    setPermitirSaldoCredor(false)
     setClienteSelecionado(null)
   }
 
@@ -1156,13 +1182,26 @@ export function CadernetaContent() {
                     {/* Preview dinâmico conforme valor digitado */}
                     {(() => {
                       const valorDigitado = parseFloat(formPagamento.valor.replace(',', '.')) || 0
-                      const saldoApos = Math.max(0, clienteSelecionado.saldo_devedor - valorDigitado)
+                      const isDinheiro = formPagamento.forma_pagamento === 'dinheiro'
+                      const saldoApos = clienteSelecionado.saldo_devedor - valorDigitado
                       const limiteDispApos = Math.max(0, clienteSelecionado.limite_credito - saldoApos)
+                      const troco = isDinheiro && !permitirSaldoCredor && valorDigitado > clienteSelecionado.saldo_devedor
+                        ? valorDigitado - clienteSelecionado.saldo_devedor
+                        : 0
                       if (valorDigitado > 0) {
                         return (
                           <div className="mt-2 text-xs text-blue-800">
-                            <div>Saldo após pagamento: R$ {saldoApos.toFixed(2)}</div>
-                            <div>Limite disponível após pagamento: R$ {limiteDispApos.toFixed(2)}</div>
+                            {saldoApos >= 0 ? (
+                              <>
+                                <div>Saldo após pagamento: R$ {saldoApos.toFixed(2)}</div>
+                                <div>Limite disponível após pagamento: R$ {limiteDispApos.toFixed(2)}</div>
+                              </>
+                            ) : (
+                              <div className="font-medium text-green-700">Saldo credor (haver): R$ {Math.abs(saldoApos).toFixed(2)}</div>
+                            )}
+                            {troco > 0 && (
+                              <div className="mt-1 font-medium text-gray-900">Troco: R$ {troco.toFixed(2)}</div>
+                            )}
                           </div>
                         )
                       }
@@ -1182,18 +1221,30 @@ export function CadernetaContent() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-900">Valor do Pagamento (R$) *</label>
+                    <label className="block text-sm font-medium text-gray-900">
+                      {formPagamento.forma_pagamento === 'dinheiro' ? 'Valor Recebido (R$)' : 'Valor do Pagamento (R$)'} *
+                    </label>
                     <input
                       type="number"
                       step="0.00001"
                       min="0.00001"
-                      max={clienteSelecionado?.saldo_devedor || 0}
+                      {...(formPagamento.forma_pagamento !== 'dinheiro' && !permitirSaldoCredor
+                        ? { max: clienteSelecionado?.saldo_devedor || 0 }
+                        : {})}
                       required
                       value={formPagamento.valor}
                       onChange={(e) => setFormPagamento({ ...formPagamento, valor: e.target.value })}
                       className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                     />
                   </div>
+                  {formPagamento.forma_pagamento === 'dinheiro' && !permitirSaldoCredor && (parseFloat(formPagamento.valor.replace(',', '.')) || 0) > (clienteSelecionado?.saldo_devedor || 0) && (
+                    <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center">
+                      <span className="text-xs font-medium text-gray-600 uppercase block mb-1">Troco</span>
+                      <span className="text-xl font-bold text-gray-900">
+                        R$ {((parseFloat(formPagamento.valor.replace(',', '.')) || 0) - (clienteSelecionado?.saldo_devedor || 0)).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-900">Forma de Pagamento *</label>
                     <select
@@ -1207,6 +1258,18 @@ export function CadernetaContent() {
                       <option value="debito">Cartão Débito</option>
                       <option value="credito">Cartão Crédito</option>
                     </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="permitir-saldo-credor"
+                      checked={permitirSaldoCredor}
+                      onChange={(e) => setPermitirSaldoCredor(e.target.checked)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="permitir-saldo-credor" className="text-sm font-medium text-gray-900">
+                      Permitir saldo credor (haver)
+                    </label>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-900">Observações</label>

@@ -45,6 +45,7 @@ export interface Receita {
   preco_venda?: number
   custosInvisiveis?: number | string
   instrucoes?: string
+  ativo?: boolean
   created_at: string
   updated_at: string
 }

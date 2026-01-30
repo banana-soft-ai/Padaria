@@ -3,6 +3,7 @@
  * Funciona online e offline, sincronizando automaticamente
  */
 
+import { useMemo } from 'react'
 import { useOfflineData } from './useOfflineData'
 import { supabase } from '@/lib/supabase/client'
 import { Receita, ComposicaoReceita, Insumo } from '@/lib/supabase'
@@ -14,6 +15,8 @@ interface ReceitaFormData {
   unidade_rendimento: string
   categoria?: Receita['categoria']
   instrucoes?: string
+  custosInvisiveis?: number
+  ativo?: boolean
 }
 
 interface ComposicaoFormData {
@@ -35,9 +38,9 @@ export function useReceitasOffline() {
     data: rawReceitas,
     loading: receitasLoading,
     error: receitasError,
-    addItem: addReceita,
-    updateItem: updateReceita,
-    deleteItem: deleteReceita,
+    addItem: addReceitaItem,
+    updateItem: updateReceitaItem,
+    deleteItem: deleteReceitaItem,
     refresh: refreshReceitas,
     sync: syncReceitas,
     isOffline,
@@ -52,9 +55,10 @@ export function useReceitasOffline() {
     data: rawComposicoes,
     loading: composicoesLoading,
     error: composicoesError,
-    addItem: addComposicao,
-    updateItem: updateComposicao,
-    deleteItem: deleteComposicao,
+    addItem: addComposicaoItem,
+    addMany: addComposicaoMany,
+    updateItem: updateComposicaoItem,
+    deleteItem: deleteComposicaoItem,
     refresh: refreshComposicoes,
     sync: syncComposicoes
   } = useOfflineData<ComposicaoReceita>({
@@ -65,16 +69,36 @@ export function useReceitasOffline() {
   // Hook offline para insumos (para calcular custos)
   const {
     data: rawInsumos,
-    loading: insumosLoading
+    loading: insumosLoading,
+    refresh: refreshInsumos
   } = useOfflineData<Insumo>({
     table: 'insumos',
     autoSync: true
   })
 
   // Normalizar dados vindos do storage (garante tipos e defaults)
-  const receitas = (rawReceitas || []).map(toReceita)
-  const composicoes = (rawComposicoes || []).map(toComposicaoReceita)
-  const insumos = (rawInsumos || []).map(toInsumo)
+  // useMemo evita referências novas a cada render (previne loop em useEffect que depende de receitas)
+  const receitas = useMemo(
+    () => (rawReceitas || []).map(toReceita).filter(r => (r as any).ativo !== false),
+    [rawReceitas]
+  )
+  const composicoes = useMemo(
+    () => (rawComposicoes || []).map(toComposicaoReceita),
+    [rawComposicoes]
+  )
+  const insumos = useMemo(
+    () => (rawInsumos || []).map(toInsumo),
+    [rawInsumos]
+  )
+
+  // Composições com insumo enriquecido (para compatibilidade com useComposicoesFull)
+  const composicoesComInsumo = useMemo(
+    () => composicoes.map(c => ({
+      ...c,
+      insumo: insumos.find(i => i.id === c.insumo_id) || {} as Insumo
+    })),
+    [composicoes, insumos]
+  )
 
   // Adicionar nova receita
   const adicionarReceita = async (formData: ReceitaFormData) => {
@@ -89,7 +113,7 @@ export function useReceitasOffline() {
         updated_at: new Date().toISOString()
       }
 
-      await addReceita(novaReceita)
+      await addReceitaItem(novaReceita)
 
       return {
         success: true,
@@ -107,7 +131,7 @@ export function useReceitasOffline() {
   // Atualizar receita
   const atualizarReceita = async (id: number, updates: Partial<ReceitaFormData>) => {
     try {
-      await updateReceita(id, {
+      await updateReceitaItem(id, {
         ...updates,
         updated_at: new Date().toISOString()
       })
@@ -125,55 +149,98 @@ export function useReceitasOffline() {
     }
   }
 
-  // Remover receita
+  // Remover receita (hard delete)
   const removerReceita = async (id: number) => {
     try {
-      console.log(`🗑️ Hook: Iniciando exclusão da receita ${id}...`)
-
       // Remover composições relacionadas primeiro
       const composicoesReceita = composicoes.filter(c => c.receita_id === id)
-      console.log(`🔄 Hook: Removendo ${composicoesReceita.length} composições...`)
-
       for (const composicao of composicoesReceita) {
-        console.log(`🗑️ Hook: Removendo composição ${composicao.id}...`)
-        await deleteComposicao(composicao.id)
+        await deleteComposicaoItem(composicao.id)
       }
-      console.log('✅ Hook: Composições removidas')
 
-      // Remover produtos que referenciam esta receita
-      console.log('🔄 Hook: Removendo produtos relacionados...')
-      try {
-        const { error: produtosError } = await supabase
-          .from('produtos')
-          .delete()
-          .eq('receita_id', id)
-
-        if (produtosError) {
-          console.error('❌ Hook: Erro ao remover produtos:', produtosError)
-        } else {
-          console.log('✅ Hook: Produtos relacionados removidos')
+      // Remover produtos que referenciam esta receita (apenas online)
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          await supabase.from('produtos').delete().eq('receita_id', id)
+        } catch (produtosError) {
+          console.error('Erro ao remover produtos:', produtosError)
         }
-      } catch (produtosError) {
-        console.error('❌ Hook: Erro ao remover produtos:', produtosError)
       }
 
-      // Remover receita
-      console.log('🔄 Hook: Removendo receita...')
-      await deleteReceita(id)
-      console.log('✅ Hook: Receita removida com sucesso')
+      await deleteReceitaItem(id)
 
       return {
         success: true,
         message: isOffline ? 'Receita removida offline' : 'Receita removida com sucesso'
       }
     } catch (error) {
-      console.error('💥 Hook: Erro ao remover receita:', error)
+      console.error('Erro ao remover receita:', error)
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Erro ao remover receita'
       }
     }
   }
+
+  // API compatível com useReceitas/useComposicoes para migração da página
+  const createReceita = async (dados: any) => {
+    try {
+      const { id: _omit, ...rest } = dados
+      const created = await addReceitaItem(rest)
+      return { data: created, error: null }
+    } catch (e) {
+      return { data: null, error: e }
+    }
+  }
+
+  const updateReceita = async (id: number, dados: any) => {
+    try {
+      await updateReceitaItem(id, { ...dados, updated_at: new Date().toISOString() })
+      return { error: null }
+    } catch (e) {
+      return { error: e }
+    }
+  }
+
+  const softDeleteReceita = async (id: number) => {
+    try {
+      await updateReceitaItem(id, { ativo: false, updated_at: new Date().toISOString() })
+      return { error: null }
+    } catch (e) {
+      return { error: e }
+    }
+  }
+
+  const deleteByReceitaId = async (receitaId: number) => {
+    try {
+      const composicoesReceita = composicoes.filter(c => c.receita_id === receitaId)
+      for (const comp of composicoesReceita) {
+        await deleteComposicaoItem(comp.id)
+      }
+      return { error: null }
+    } catch (e) {
+      return { error: e }
+    }
+  }
+
+  const insertMany = async (composicoesParaInserir: Array<{ receita_id: number; insumo_id: number; quantidade: number; categoria: string }>) => {
+    try {
+      const items = composicoesParaInserir.map(c => ({
+        receita_id: c.receita_id,
+        insumo_id: c.insumo_id,
+        quantidade: c.quantidade,
+        categoria: c.categoria as 'massa' | 'cobertura' | 'embalagem',
+        created_at: new Date().toISOString()
+      }))
+      await addComposicaoMany(items)
+      return { data: null, error: null }
+    } catch (e) {
+      return { data: null, error: e }
+    }
+  }
+
+  const fetchReceitas = refreshReceitas
+  const fetchInsumos = refreshInsumos
 
   // Adicionar insumo à receita
   const adicionarInsumoReceita = async (formData: ComposicaoFormData) => {
@@ -186,7 +253,7 @@ export function useReceitasOffline() {
         created_at: new Date().toISOString()
       }
 
-      await addComposicao(novaComposicao)
+      await addComposicaoItem(novaComposicao)
 
       return {
         success: true,
@@ -204,7 +271,7 @@ export function useReceitasOffline() {
   // Remover insumo da receita
   const removerInsumoReceita = async (id: number) => {
     try {
-      await deleteComposicao(id)
+      await deleteComposicaoItem(id)
       return {
         success: true,
         message: isOffline ? 'Ingrediente removido offline' : 'Ingrediente removido com sucesso'
@@ -313,6 +380,7 @@ export function useReceitasOffline() {
     receitas,
     receitasComComposicao: getReceitasComComposicao(),
     composicoes,
+    composicoesComInsumo,
     insumos,
 
     // Estados
@@ -321,7 +389,16 @@ export function useReceitasOffline() {
     isOffline,
     pendingSync,
 
-    // Ações
+    // Ações (API compatível com useReceitas/useComposicoes)
+    createReceita,
+    updateReceita,
+    softDeleteReceita,
+    deleteByReceitaId,
+    insertMany,
+    fetchReceitas,
+    fetchInsumos,
+
+    // Ações (API original do hook)
     adicionarReceita,
     atualizarReceita,
     removerReceita,
@@ -335,6 +412,7 @@ export function useReceitasOffline() {
     getReceitasPorCategoria,
     getEstatisticas,
     refreshReceitas,
-    refreshComposicoes
+    refreshComposicoes,
+    refreshInsumos
   }
 }

@@ -6,11 +6,32 @@ import { Insumo } from '@/lib/supabase'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import { Package, AlertTriangle, X, Eye, Search, FileSpreadsheet, Printer, MessageCircle } from 'lucide-react'
 import Toast from '@/app/gestao/caderneta/Toast'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
+import { offlineStorage } from '@/lib/offlineStorage'
 
 // Desabilitar static generation - página dinâmica que precisa de auth
 export const dynamic = 'force-dynamic'
 
+function normalizarInsumos(data: any[]): Insumo[] {
+  return (data || []).map((i: any) => ({
+    ...i,
+    tipo_estoque: 'insumo'
+  })) as Insumo[]
+}
+
+function normalizarVarejo(data: any[]): Insumo[] {
+  return (data || []).map((v: any) => ({
+    ...v,
+    tipo_estoque: 'varejo',
+    estoque_atual: Number(v?.estoque_atual) || 0,
+    estoque_minimo: Number(v?.estoque_minimo) || 0,
+    unidade: v?.unidade || 'un',
+    fornecedor: null
+  })) as Insumo[]
+}
+
 export default function EstoqueDashboardPage() {
+  const { isOnline } = useOnlineStatus()
   const [itens, setItens] = useState<Insumo[]>([])
   const [loading, setLoading] = useState(true)
   const [itemSelecionado, setItemSelecionado] = useState<Insumo | null>(null)
@@ -25,35 +46,62 @@ export default function EstoqueDashboardPage() {
 
   useEffect(() => {
     carregarItens()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Recarregar quando voltar online
+  useEffect(() => {
+    if (isOnline) {
+      carregarItens()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline])
 
   const carregarItens = async () => {
     try {
-      const [insumosRes, varejoRes] = await Promise.all([
-        supabase!.from('insumos').select('*').order('nome'),
-        supabase!.from('varejo').select('*').order('nome')
-      ])
+      if (isOnline) {
+        const [insumosRes, varejoRes] = await Promise.all([
+          supabase!.from('insumos').select('*').order('nome'),
+          supabase!.from('varejo').select('*').order('nome')
+        ])
 
-      if (insumosRes.error) throw insumosRes.error
-      if (varejoRes.error) throw varejoRes.error
+        if (insumosRes.error) throw insumosRes.error
+        if (varejoRes.error) throw varejoRes.error
 
-      const insumos = (insumosRes.data || []).map((i: any) => ({
-        ...i,
-        tipo_estoque: 'insumo'
-      })) as Insumo[]
+        const insumos = normalizarInsumos(insumosRes.data || [])
+        const varejo = normalizarVarejo(varejoRes.data || [])
 
-      const varejo = (varejoRes.data || []).map((v: any) => ({
-        ...v,
-        tipo_estoque: 'varejo',
-        estoque_atual: Number(v?.estoque_atual) || 0,
-        estoque_minimo: Number(v?.estoque_minimo) || 0,
-        unidade: v?.unidade || 'un',
-        fornecedor: null
-      })) as Insumo[]
+        setItens([...insumos, ...varejo])
 
-      setItens([...(insumos || []), ...(varejo || [])])
+        // Salvar no cache para uso offline
+        if (insumosRes.data?.length) await offlineStorage.saveOfflineData('insumos', insumosRes.data)
+        if (varejoRes.data?.length) await offlineStorage.saveOfflineData('varejo', varejoRes.data)
+      } else {
+        // Offline: buscar do cache
+        const [insumosCache, varejoCache] = await Promise.all([
+          offlineStorage.getOfflineData('insumos'),
+          offlineStorage.getOfflineData('varejo')
+        ])
+
+        const insumos = normalizarInsumos(insumosCache)
+        const varejo = normalizarVarejo(varejoCache)
+
+        setItens([...insumos, ...varejo])
+      }
     } catch (error) {
       console.error('Erro ao carregar estoque:', error)
+      // Fallback: tentar cache mesmo em caso de erro (ex: timeout)
+      try {
+        const [insumosCache, varejoCache] = await Promise.all([
+          offlineStorage.getOfflineData('insumos'),
+          offlineStorage.getOfflineData('varejo')
+        ])
+        const insumos = normalizarInsumos(insumosCache)
+        const varejo = normalizarVarejo(varejoCache)
+        setItens([...insumos, ...varejo])
+      } catch (fallbackErr) {
+        console.error('Fallback cache falhou:', fallbackErr)
+      }
     } finally {
       setLoading(false)
     }

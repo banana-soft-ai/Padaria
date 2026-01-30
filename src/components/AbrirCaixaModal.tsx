@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { ShoppingCart } from 'lucide-react'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
+import { offlineStorage } from '@/lib/offlineStorage'
 
 type Props = {
   onCaixaAberto?: () => Promise<void> | void
@@ -15,20 +17,31 @@ const getLocalDateString = (d = new Date()) => {
 
 
 export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
+  const { isOnline } = useOnlineStatus()
   const [operador, setOperador] = useState('')
   const [funcionarios, setFuncionarios] = useState<{ id: number; nome: string }[]>([])
-    // Carrega funcionários do banco ao abrir o modal
-    useEffect(() => {
-      const fetchFuncionarios = async () => {
-        const { data, error } = await supabase
-          .from('funcionario')
-          .select('id, nome')
-          .order('nome', { ascending: true })
-        if (!error && data) setFuncionarios(data)
-        else setFuncionarios([])
+
+  useEffect(() => {
+    const fetchFuncionarios = async () => {
+      try {
+        if (isOnline) {
+          const { data, error } = await supabase
+            .from('funcionario')
+            .select('id, nome')
+            .order('nome', { ascending: true })
+          if (!error && data) setFuncionarios(data)
+          else setFuncionarios([])
+        } else {
+          const cached = await offlineStorage.getOfflineData('funcionario')
+          const list = (cached || []).map((f: any) => ({ id: f.id, nome: f.nome }))
+          setFuncionarios(list)
+        }
+      } catch {
+        setFuncionarios([])
       }
-      fetchFuncionarios()
-    }, [])
+    }
+    fetchFuncionarios()
+  }, [isOnline])
   const [saldoInicial, setSaldoInicial] = useState('')
   const [observacoes, setObservacoes] = useState('')
   const [loading, setLoading] = useState(false)
@@ -40,60 +53,83 @@ export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
   const handleAbrirCaixa = async (e: React.FormEvent) => {
     e.preventDefault()
     setErro(null)
-    if (!operador) {
+    if (!operador?.trim()) {
       setErro('Informe o operador')
       return
     }
     setLoading(true)
     try {
       const dataISO = getLocalDateString()
-      // Validação: impedir abertura se JÁ houver um caixa aberto (independente da data)
-      const { data: existing, error: checkErr } = await supabase
-        .from('caixa_diario')
-        .select('id, status')
-        .eq('status', 'aberto')
-        .limit(1)
-        .maybeSingle()
-
-      if (checkErr) throw checkErr
-      if (existing && existing.status === 'aberto') {
-        setErro('Já existe um caixa aberto no sistema.')
-        return
-      }
-
+      const valorAberturaNum = Number(String(saldoInicial || '0').replace(',', '.')) || 0
       const payload = {
         data: dataISO,
         status: 'aberto',
-        valor_abertura: Number(String(saldoInicial || '0').replace(',', '.')) || 0,
-        usuario_abertura: operador || null,
+        valor_abertura: valorAberturaNum,
+        usuario_abertura: operador.trim() || null,
         observacoes_abertura: observacoes || null
       }
-      const { data: inserted, error } = await supabase
-        .from('caixa_diario')
-        .insert(payload)
-        .select()
-        .single()
 
-      if (error || !inserted) throw error || new Error('Não foi possível abrir o caixa.')
+      if (isOnline) {
+        const { data: existing, error: checkErr } = await supabase
+          .from('caixa_diario')
+          .select('id, status')
+          .eq('status', 'aberto')
+          .limit(1)
+          .maybeSingle()
 
-      // Criar o primeiro turno do operador para rastreabilidade
-      const funcionario = funcionarios.find(f => f.nome === operador)
-      const valorAberturaNum = Number(String(saldoInicial || '0').replace(',', '.')) || 0
-      const { error: turnoError } = await supabase
-        .from('turno_operador')
-        .insert({
-          caixa_diario_id: inserted.id,
-          operador_id: funcionario?.id || null,
-          operador_nome: operador,
-          status: 'aberto',
-          data_inicio: new Date().toISOString(),
-          valor_abertura: valorAberturaNum,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+        if (checkErr) throw checkErr
+        if (existing && existing.status === 'aberto') {
+          setErro('Já existe um caixa aberto no sistema.')
+          return
+        }
+
+        const { data: inserted, error } = await supabase
+          .from('caixa_diario')
+          .insert(payload)
+          .select()
+          .single()
+
+        if (error || !inserted) throw error || new Error('Não foi possível abrir o caixa.')
+
+        const funcionario = funcionarios.find(f => f.nome === operador)
+        const { error: turnoError } = await supabase
+          .from('turno_operador')
+          .insert({
+            caixa_diario_id: inserted.id,
+            operador_id: funcionario?.id || null,
+            operador_nome: operador,
+            status: 'aberto',
+            data_inicio: new Date().toISOString(),
+            valor_abertura: valorAberturaNum,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+
+        if (turnoError) {
+          console.warn('Erro ao criar turno inicial do operador:', turnoError)
+        }
+      } else {
+        await offlineStorage.init()
+        const caixaHoje = await offlineStorage.getOfflineData('caixa_hoje')
+        const caixaAberto = Array.isArray(caixaHoje) ? caixaHoje[0] : caixaHoje
+        if (caixaAberto && (caixaAberto as any).status === 'aberto') {
+          setErro('Já existe um caixa aberto no sistema.')
+          return
+        }
+
+        await offlineStorage.addPendingOperation({
+          type: 'INSERT',
+          table: 'caixa_diario',
+          data: payload
         })
 
-      if (turnoError) {
-        console.warn('Erro ao criar turno inicial do operador:', turnoError)
+        const tempId = -Date.now()
+        const caixaLocal = {
+          id: tempId,
+          ...payload,
+          created_at: new Date().toISOString()
+        }
+        await offlineStorage.saveOfflineData('caixa_hoje', [caixaLocal])
       }
 
       if (onCaixaAberto) await onCaixaAberto()
@@ -119,18 +155,30 @@ export default function AbrirCaixaModal({ onCaixaAberto, onClose }: Props) {
           {/* Removido: seleção de tipo de abertura */}
           <div>
             <label className="block text-[10px] font-black text-blue-600 uppercase mb-1">Funcionário</label>
-            <select
-              value={operador}
-              onChange={e => setOperador(e.target.value)}
-              className="block w-full border-2 border-blue-100 rounded-xl p-2 focus:border-blue-400 outline-none font-bold text-gray-700 bg-blue-50/30 text-sm"
-              required
-              autoFocus
-            >
-              <option value="">Quem está no caixa?</option>
-              {funcionarios.map(f => (
-                <option key={f.id} value={f.nome}>{f.nome}</option>
-              ))}
-            </select>
+            {funcionarios.length > 0 ? (
+              <select
+                value={operador}
+                onChange={e => setOperador(e.target.value)}
+                className="block w-full border-2 border-blue-100 rounded-xl p-2 focus:border-blue-400 outline-none font-bold text-gray-700 bg-blue-50/30 text-sm"
+                required
+                autoFocus
+              >
+                <option value="">Quem está no caixa?</option>
+                {funcionarios.map(f => (
+                  <option key={f.id} value={f.nome}>{f.nome}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={operador}
+                onChange={e => setOperador(e.target.value)}
+                placeholder="Nome do operador"
+                className="block w-full border-2 border-blue-100 rounded-xl p-2 focus:border-blue-400 outline-none font-bold text-gray-700 bg-blue-50/30 text-sm"
+                required
+                autoFocus
+              />
+            )}
           </div>
           <div>
             <label className="block text-[10px] font-black text-blue-600 uppercase mb-1">Fundo de Caixa (R$)</label>

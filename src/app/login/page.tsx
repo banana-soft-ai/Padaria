@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase/client'
 import { useLogger } from '@/lib/logger'
 import { clientEnv } from '@/env/client-env'
 import { Eye, EyeOff } from 'lucide-react'
+import { saveAuthCache, getAuthCache, verifyPasswordOffline } from '@/lib/authCache'
+import type { UserData } from '@/hooks/useUser'
 
 export default function LoginPage() {
     const [email, setEmail] = useState('')
@@ -37,7 +39,6 @@ export default function LoginPage() {
         setToast(null)
 
         try {
-            // Guard: validar variáveis de ambiente do Supabase antes de tentar login
             const hasSupabaseEnv = !!clientEnv.NEXT_PUBLIC_SUPABASE_URL && !!clientEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY
             if (!hasSupabaseEnv) {
                 const message = 'Configuração do Supabase ausente. Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no .env.local.'
@@ -47,6 +48,36 @@ export default function LoginPage() {
                 return
             }
 
+            // Modo offline: validar contra cache
+            if (!navigator.onLine) {
+                const cached = await getAuthCache()
+                if (!cached) {
+                    setError('Conecte-se à internet para fazer login pela primeira vez.')
+                    setToast({ message: 'Conecte-se à internet para fazer login.', type: 'error' })
+                    return
+                }
+                if (cached.userData.email.toLowerCase() !== email.toLowerCase()) {
+                    setError('Usuário ou senha incorretos')
+                    setToast({ message: 'Usuário ou senha incorretos', type: 'error' })
+                    return
+                }
+                const valid = await verifyPasswordOffline(password, email, cached.passwordHash)
+                if (!valid) {
+                    setError('Usuário ou senha incorretos')
+                    setToast({ message: 'Usuário ou senha incorretos', type: 'error' })
+                    return
+                }
+                // Restaurar sessão no Supabase (localStorage)
+                await supabase!.auth.setSession({
+                    access_token: cached.session.access_token,
+                    refresh_token: cached.session.refresh_token
+                })
+                setToast({ message: 'Modo offline: sessão restaurada. Reconecte para sincronizar.', type: 'success' })
+                setTimeout(() => router.replace('/'), 1000)
+                return
+            }
+
+            // Modo online: login normal
             const { data, error } = await supabase!.auth.signInWithPassword({
                 email,
                 password,
@@ -68,21 +99,57 @@ export default function LoginPage() {
                 return
             }
 
-            if (data.user) {
+            if (data.user && data.session) {
                 logger.info('Login bem-sucedido', { userId: data.user.id, email: data.user.email })
 
-                // Toast de sucesso
-                setToast({ message: 'Login feito com sucesso!', type: 'success' })
+                // Buscar userData da tabela usuarios
+                let userData: UserData = {
+                    id: data.user.id,
+                    email: data.user.email || '',
+                    nome: data.user.user_metadata?.nome || data.user.email?.split('@')[0] || 'Usuário',
+                    role: 'funcionario',
+                    ativo: true
+                }
+                try {
+                    const { data: dbUser } = await supabase!
+                        .from('usuarios')
+                        .select('*')
+                        .eq('email', data.user.email)
+                        .eq('ativo', true)
+                        .single()
+                    if (dbUser) {
+                        userData = {
+                            id: dbUser.id,
+                            email: dbUser.email,
+                            nome: dbUser.nome,
+                            role: dbUser.role as 'admin' | 'gerente' | 'funcionario' | 'caixa',
+                            ativo: dbUser.ativo
+                        }
+                    }
+                } catch {
+                    // usar userData padrão
+                }
 
-                // Redireciona após 1,5s para que o usuário veja a mensagem
-                setTimeout(() => {
-                    router.replace('/')
-                }, 1500)
+                // Salvar cache para uso offline (session, userData, passwordHash)
+                const { derivePasswordHash } = await import('@/lib/authCache')
+                const passwordHash = await derivePasswordHash(password, email)
+                await saveAuthCache({
+                    session: {
+                        user: data.user,
+                        access_token: data.session.access_token,
+                        refresh_token: data.session.refresh_token,
+                        expires_at: data.session.expires_at
+                    },
+                    userData,
+                    passwordHash
+                })
+
+                setToast({ message: 'Login feito com sucesso!', type: 'success' })
+                setTimeout(() => router.replace('/'), 1500)
             }
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
             logger.error('Erro inesperado durante o login', { error: msg })
-            // Tratamento específico para falha de rede/fetch
             const isNetworkFail = /Failed to fetch|NetworkError|TypeError/i.test(msg)
             const message = isNetworkFail
                 ? 'Não foi possível conectar ao Supabase. Verifique sua internet, bloqueadores (VPN/Adblock) e as variáveis do .env. Tente novamente.'

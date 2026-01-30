@@ -22,11 +22,12 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
   const [serviceWorkerRegistered, setServiceWorkerRegistered] = useState(false)
   const { isOnline } = useOnlineStatus()
 
-  // Registrar Service Worker somente quando a feature estiver habilitada
+  // Registrar Service Worker para suporte offline (sempre que suportado; PWA pode ser desabilitado via env)
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    if (clientEnv.NEXT_PUBLIC_ENABLE_PWA !== 'true') return
+    const pwaDisabled = clientEnv.NEXT_PUBLIC_ENABLE_PWA === 'false'
+    if (pwaDisabled) return
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js')
@@ -54,10 +55,10 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isOnline, serviceWorkerRegistered])
 
-  // Listener para mensagens do Service Worker (apenas se PWA ativado)
+  // Listener para mensagens do Service Worker
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (clientEnv.NEXT_PUBLIC_ENABLE_PWA !== 'true') return
+    if (clientEnv.NEXT_PUBLIC_ENABLE_PWA === 'false') return
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {

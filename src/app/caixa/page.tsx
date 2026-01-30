@@ -15,6 +15,8 @@ import { BrowserMultiFormatReader } from '@zxing/browser'
 import { supabase } from '@/lib/supabase/client'
 import type { Database } from '@/lib/supabase/types'
 import { useCadernetaOffline } from '@/hooks/useCadernetaOffline'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
+import { offlineStorage } from '@/lib/offlineStorage'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import {
     Search,
@@ -70,6 +72,7 @@ interface VendaRegistrada {
 }
 
 export default function PDVPage() {
+    const { isOnline } = useOnlineStatus()
     // --- Troca de Operador ---
     const [showTurnoModal, setShowTurnoModal] = useState(false)
     const [operadores, setOperadores] = useState<{ id: number; nome: string }[]>([])
@@ -192,7 +195,40 @@ export default function PDVPage() {
     async function restaurarCaixaAberto(opts?: { changeView?: boolean }) {
         const changeView = opts?.changeView ?? true
         try {
-            // Busca TODOS os caixas abertos para detectar inconsistências
+            if (!isOnline) {
+                await offlineStorage.init()
+                const caixaHoje = await offlineStorage.getOfflineData('caixa_hoje')
+                const activeCaixa = Array.isArray(caixaHoje) ? caixaHoje[0] : caixaHoje
+                if (!activeCaixa || (activeCaixa as any).status !== 'aberto') {
+                    setCaixaAberto(false)
+                    if (changeView) setView('abertura')
+                    return null
+                }
+                setCaixaAberto(true)
+                setSaldoInicial(Number((activeCaixa as any).valor_abertura) || 0)
+                setCaixaDiaISO((activeCaixa as any).data || getLocalDateString())
+                setCaixaDiarioId((activeCaixa as any).id || null)
+                setOperador((activeCaixa as any).usuario_abertura || '')
+                try {
+                    if ((activeCaixa as any).data) {
+                        const d = new Date((activeCaixa as any).data + 'T00:00:00')
+                        setDataHoje(d.toLocaleDateString('pt-BR'))
+                    } else {
+                        setDataHoje(new Date().toLocaleDateString('pt-BR'))
+                    }
+                    if ((activeCaixa as any).created_at) {
+                        setHoraAbertura(new Date((activeCaixa as any).created_at).toLocaleTimeString('pt-BR'))
+                    } else {
+                        setHoraAbertura(new Date().toLocaleTimeString('pt-BR'))
+                    }
+                } catch (e) {
+                    setDataHoje(new Date().toLocaleDateString('pt-BR'))
+                    setHoraAbertura(new Date().toLocaleTimeString('pt-BR'))
+                }
+                if (changeView) setView('venda')
+                return activeCaixa
+            }
+
             const { data: openCaixas, error } = await getSupabase()
                 .from('caixa_diario')
                 .select('*')
@@ -207,8 +243,6 @@ export default function PDVPage() {
                 return null
             }
 
-            // Se houver mais de um caixa aberto, mantemos apenas o mais recente
-            // e encerramos os outros automaticamente para limpar o banco.
             let activeCaixa = openCaixas[0]
             if (openCaixas.length > 1) {
                 console.warn(`Detectados ${openCaixas.length} caixas abertos. Corrigindo inconsistência...`)
@@ -227,7 +261,6 @@ export default function PDVPage() {
             setCaixaDiaISO(activeCaixa.data || getLocalDateString())
             setCaixaDiarioId(activeCaixa.id || null)
 
-            // Busca o operador do turno atual (status 'aberto')
             let operadorNome = activeCaixa.usuario_abertura || '';
             if (activeCaixa.id) {
                 try {
@@ -260,6 +293,25 @@ export default function PDVPage() {
             if (changeView) setView('venda')
             return activeCaixa
         } catch (err) {
+            if (!isOnline) {
+                try {
+                    const caixaHoje = await offlineStorage.getOfflineData('caixa_hoje')
+                    const activeCaixa = Array.isArray(caixaHoje) ? caixaHoje[0] : caixaHoje
+                    if (activeCaixa && (activeCaixa as any).status === 'aberto') {
+                        setCaixaAberto(true)
+                        setSaldoInicial(Number((activeCaixa as any).valor_abertura) || 0)
+                        setCaixaDiaISO((activeCaixa as any).data || getLocalDateString())
+                        setCaixaDiarioId((activeCaixa as any).id || null)
+                        setOperador((activeCaixa as any).usuario_abertura || '')
+                        setDataHoje(new Date().toLocaleDateString('pt-BR'))
+                        setHoraAbertura(new Date().toLocaleTimeString('pt-BR'))
+                        if (changeView) setView('venda')
+                        return activeCaixa
+                    }
+                } catch {
+                    // ignorar
+                }
+            }
             setCaixaAberto(false)
             if (changeView) setView('abertura')
             console.error('Falha ao restaurar caixa aberto:', err)
@@ -272,6 +324,20 @@ export default function PDVPage() {
     async function carregarCaixasDoDia(baseDateISO?: string) {
         try {
             const date = baseDateISO || getLocalDateString()
+            if (!isOnline) {
+                const caixaHoje = await offlineStorage.getOfflineData('caixa_hoje')
+                const caixaDiario = await offlineStorage.getOfflineData('caixa_diario')
+                const caixas = (caixaDiario || []).filter((c: any) => c.data === date)
+                if (caixas.length === 0 && caixaHoje?.length) {
+                    const c = Array.isArray(caixaHoje) ? caixaHoje[0] : caixaHoje
+                    if ((c as any).data === date) {
+                        setCaixasDoDia([c as any])
+                        return
+                    }
+                }
+                setCaixasDoDia(caixas)
+                return
+            }
             const { data, error } = await getSupabase()
                 .from('caixa_diario')
                 .select('*')
@@ -281,8 +347,26 @@ export default function PDVPage() {
             if (error) throw error
             setCaixasDoDia(data || [])
         } catch (e) {
-            console.error('Erro ao carregar caixas do dia:', e)
-            setCaixasDoDia([])
+            if (!isOnline) {
+                try {
+                    const date = baseDateISO || getLocalDateString()
+                    const caixaDiario = await offlineStorage.getOfflineData('caixa_diario')
+                    const caixaHoje = await offlineStorage.getOfflineData('caixa_hoje')
+                    const caixas = (caixaDiario || []).filter((c: any) => c.data === date)
+                    if (caixas.length === 0 && caixaHoje?.length) {
+                        const c = Array.isArray(caixaHoje) ? caixaHoje[0] : caixaHoje
+                        if ((c as any).data === date) setCaixasDoDia([c as any])
+                        else setCaixasDoDia([])
+                    } else {
+                        setCaixasDoDia(caixas)
+                    }
+                } catch {
+                    setCaixasDoDia([])
+                }
+            } else {
+                console.error('Erro ao carregar caixas do dia:', e)
+                setCaixasDoDia([])
+            }
         }
     }
 
@@ -319,7 +403,6 @@ export default function PDVPage() {
                 return
             }
 
-            // Calcula disponível em dinheiro
             const disponivel = metricasCaixa?.valorEsperadoDinheiro ?? 0
             if (valor > disponivel) {
                 showToast(`Saldo insuficiente em dinheiro. Disponível: R$ ${disponivel.toFixed(2)}`, 'error')
@@ -331,7 +414,57 @@ export default function PDVPage() {
                 return
             }
 
-            // Atualiza valor_saidas no caixa_diario
+            if (!isOnline) {
+                const caixaHoje = await offlineStorage.getOfflineData('caixa_hoje')
+                const caixa = Array.isArray(caixaHoje) ? caixaHoje[0] : caixaHoje
+                const valorSaidasAtual = (caixa && typeof (caixa as any).valor_saidas === 'number') ? (caixa as any).valor_saidas : 0
+                const novoValorSaidas = Number((valorSaidasAtual + valor).toFixed(2))
+                await offlineStorage.addPendingOperation({
+                    type: 'UPDATE',
+                    table: 'caixa_diario',
+                    data: { id: caixaDiarioId, valor_saidas: novoValorSaidas }
+                })
+                const dataCaixa = caixaDiaISO || getLocalDateString()
+                await offlineStorage.addPendingOperation({
+                    type: 'INSERT',
+                    table: 'fluxo_caixa',
+                    data: {
+                        data: dataCaixa,
+                        tipo: 'saida',
+                        categoria: 'caixa',
+                        descricao: motivoSaida || 'Saída PDV',
+                        valor,
+                        observacoes: obsSaida || null,
+                        usuario: operador || null,
+                        created_at: new Date().toISOString(),
+                        caixa_diario_id: caixaDiarioId
+                    }
+                })
+                const fluxoCached = await offlineStorage.getOfflineData('fluxo_caixa')
+                const novaSaida = {
+                    id: -Date.now(),
+                    data: dataCaixa,
+                    tipo: 'saida',
+                    categoria: 'caixa',
+                    descricao: motivoSaida || 'Saída PDV',
+                    valor,
+                    observacoes: obsSaida || null,
+                    usuario: operador || null,
+                    created_at: new Date().toISOString(),
+                    caixa_diario_id: caixaDiarioId,
+                    displayData: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                }
+                await offlineStorage.saveOfflineData('fluxo_caixa', [novaSaida, ...(fluxoCached || [])])
+                const caixaAtualizado = { ...(caixa as any), valor_saidas: novoValorSaidas }
+                await offlineStorage.saveOfflineData('caixa_hoje', [caixaAtualizado])
+                setSaidasDoDia(prev => [novaSaida, ...prev])
+                setCaixasDoDia(prev => prev.map((c: any) => c.id === caixaDiarioId ? { ...c, valor_saidas: novoValorSaidas } : c))
+                setValorSaida('')
+                setObsSaida('')
+                showToast('Saída registrada offline. Será sincronizada quando online.', 'success')
+                return
+            }
+
             const { data: caixaRow, error: caixaErr } = await getSupabase()
                 .from('caixa_diario')
                 .select('id, valor_saidas')
@@ -350,9 +483,8 @@ export default function PDVPage() {
 
             if (updErr) throw updErr
 
-            // Tenta inserir registro detalhado em 'caixa_movimentacoes' (se existir)
             try {
-                const { data: movData, error: movErr } = await getSupabase()
+                const { error: movErr } = await getSupabase()
                     .from('caixa_movimentacoes')
                     .insert<Database['public']['Tables']['caixa_movimentacoes']['Insert']>({
                         caixa_diario_id: caixaDiarioId,
@@ -364,16 +496,13 @@ export default function PDVPage() {
                     })
 
                 if (movErr) {
-                    // Se a tabela não existir ou falhar, log e seguir
                     console.warn('Não foi possível gravar detalhe da saída (caixa_movimentacoes):', movErr)
                 }
             } catch (movErr) {
                 console.warn('Erro inesperado ao gravar caixa_movimentacoes:', movErr)
             }
 
-            // Também registrar a saída na tabela 'fluxo_caixa' para aparecer em Gestão -> Saídas
             try {
-                // Usar a data de abertura do caixa (caixaDiaISO) para registrar a saída
                 const dataCaixa = caixaDiaISO || getLocalDateString()
                 const dadosFluxo = {
                     data: dataCaixa,
@@ -629,6 +758,21 @@ export default function PDVPage() {
                 return
             }
 
+            if (!isOnline) {
+                const cached = await offlineStorage.getOfflineData('vendas')
+                const vendasCaixa = (cached || []).filter((v: any) => v.caixa_diario_id === idToUse)
+                setVendasHoje(vendasCaixa.map((v: any) => ({
+                    id: v.id,
+                    data: v.created_at ? new Date(v.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '---',
+                    total: v.valor_total || 0,
+                    forma_pagamento: (v.forma_pagamento || '').replace('_', ' '),
+                    operador_nome: v.operador_nome || v.usuario,
+                    created_at: v.created_at
+                })))
+                setPagamentosCadernetaHoje([])
+                return
+            }
+
             console.debug('carregarVendasHoje: buscando vendas para o caixa_diario_id', idToUse)
             const { data, error } = await getSupabase()
                 .from('vendas')
@@ -647,7 +791,6 @@ export default function PDVPage() {
                     operador_nome: v.operador_nome || v.usuario,
                     created_at: v.created_at
                 })))
-                // Buscar pagamentos registrados no fluxo_caixa como 'caderneta' para essa sessão de caixa
                 try {
                     const { data: pagamentosFluxo, error: errPag } = await getSupabase()
                         .from('fluxo_caixa')
@@ -668,8 +811,26 @@ export default function PDVPage() {
                 setVendasHoje([])
             }
         } catch (err: any) {
-            console.error('Erro ao carregar vendas do caixa:', err)
-            setVendasHoje([])
+            if (!isOnline) {
+                try {
+                    const cached = await offlineStorage.getOfflineData('vendas')
+                    const idToUse = caixaId || caixaDiarioId
+                    const vendasCaixa = (cached || []).filter((v: any) => v.caixa_diario_id === idToUse)
+                    setVendasHoje(vendasCaixa.map((v: any) => ({
+                        id: v.id,
+                        data: v.created_at ? new Date(v.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '---',
+                        total: v.valor_total || 0,
+                        forma_pagamento: (v.forma_pagamento || '').replace('_', ' '),
+                        operador_nome: v.operador_nome || v.usuario,
+                        created_at: v.created_at
+                    })))
+                } catch {
+                    setVendasHoje([])
+                }
+            } else {
+                console.error('Erro ao carregar vendas do caixa:', err)
+                setVendasHoje([])
+            }
         }
     }
 
@@ -678,6 +839,24 @@ export default function PDVPage() {
             const idToUse = caixaId || caixaDiarioId
             if (!idToUse) {
                 setSaidasDoDia([])
+                return
+            }
+            if (!isOnline) {
+                const cached = await offlineStorage.getOfflineData('fluxo_caixa')
+                const saidas = (cached || []).filter((d: any) => d.caixa_diario_id === idToUse && d.tipo === 'saida')
+                const mapped = saidas.map((d: any) => {
+                    let displayData = '—'
+                    try {
+                        if (d.created_at) {
+                            displayData = new Date(d.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        } else if (d.data) {
+                            const dt = parseBaseDateToLocal(d.data)
+                            displayData = dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        }
+                    } catch (e) { displayData = String(d.data || '—') }
+                    return { ...d, displayData }
+                })
+                setSaidasDoDia(mapped)
                 return
             }
             const { data, error } = await getSupabase()
@@ -704,8 +883,31 @@ export default function PDVPage() {
 
             setSaidasDoDia(mapped)
         } catch (e) {
-            console.error('Erro ao carregar saídas do dia:', e)
-            setSaidasDoDia([])
+            if (!isOnline) {
+                try {
+                    const cached = await offlineStorage.getOfflineData('fluxo_caixa')
+                    const idToUse = caixaId || caixaDiarioId
+                    const saidas = (cached || []).filter((d: any) => d.caixa_diario_id === idToUse && d.tipo === 'saida')
+                    const mapped = saidas.map((d: any) => {
+                        let displayData = '—'
+                        try {
+                            if (d.created_at) {
+                                displayData = new Date(d.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            } else if (d.data) {
+                                const dt = parseBaseDateToLocal(d.data)
+                                displayData = dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            }
+                        } catch (e2) { displayData = String(d.data || '—') }
+                        return { ...d, displayData }
+                    })
+                    setSaidasDoDia(mapped)
+                } catch {
+                    setSaidasDoDia([])
+                }
+            } else {
+                console.error('Erro ao carregar saídas do dia:', e)
+                setSaidasDoDia([])
+            }
         }
     }
 
@@ -829,6 +1031,21 @@ export default function PDVPage() {
     // Carrega produtos do estoque de varejo (mesma lógica da pág. código de barras)
     async function carregarProdutos() {
         try {
+            if (!isOnline) {
+                const cached = await offlineStorage.getOfflineData('varejo')
+                const data = (cached || []).filter((item: any) => item.ativo !== false)
+                const produtosFormatados: Produto[] = data.map((item: any) => ({
+                    id: item.id,
+                    codigoBarras: item.codigo_barras || '',
+                    nome: item.nome,
+                    preco: item.preco_venda || 0,
+                    estoque: item.estoque_atual || 0,
+                    unidade: item.unidade || 'un'
+                }))
+                setProdutos(produtosFormatados)
+                return
+            }
+
             const { data, error } = await getSupabase()
                 .from('varejo')
                 .select('*')
@@ -836,7 +1053,7 @@ export default function PDVPage() {
 
             if (error) throw error
 
-            const produtosFormatados: Produto[] = data.map((item: any) => ({
+            const produtosFormatados: Produto[] = (data || []).map((item: any) => ({
                 id: item.id,
                 codigoBarras: item.codigo_barras || '',
                 nome: item.nome,
@@ -846,8 +1063,29 @@ export default function PDVPage() {
             }))
 
             setProdutos(produtosFormatados)
+            if (data?.length) {
+                await offlineStorage.saveOfflineData('varejo', data)
+            }
         } catch (error) {
-            console.error('Erro ao carregar produtos:', error)
+            if (!isOnline) {
+                try {
+                    const cached = await offlineStorage.getOfflineData('varejo')
+                    const data = (cached || []).filter((item: any) => item.ativo !== false)
+                    const produtosFormatados: Produto[] = data.map((item: any) => ({
+                        id: item.id,
+                        codigoBarras: item.codigo_barras || '',
+                        nome: item.nome,
+                        preco: item.preco_venda || 0,
+                        estoque: item.estoque_atual || 0,
+                        unidade: item.unidade || 'un'
+                    }))
+                    setProdutos(produtosFormatados)
+                } catch {
+                    // ignorar
+                }
+            } else {
+                console.error('Erro ao carregar produtos:', error)
+            }
         }
     }
 
@@ -1446,20 +1684,84 @@ export default function PDVPage() {
         }
 
         try {
+            const dataISO = (() => {
+                const _d = new Date()
+                const y = _d.getFullYear()
+                const m = String(_d.getMonth() + 1).padStart(2, '0')
+                const day = String(_d.getDate()).padStart(2, '0')
+                return `${y}-${m}-${day}`
+            })()
+
+            if (!isOnline) {
+                const tempVendaId = -Date.now()
+                const vendaPayload = {
+                    _tempVendaId: tempVendaId,
+                    numero_venda: Date.now(),
+                    data: dataISO,
+                    valor_total: valorTotal,
+                    valor_pago: valorPago,
+                    valor_debito: valorDebito,
+                    valor_troco: valorTroco,
+                    desconto: descontoAplicado,
+                    forma_pagamento: formaPagamentoDB,
+                    usuario: operador || null,
+                    operador_nome: operador || null,
+                    caixa_diario_id: caixaDiarioId,
+                    status: 'finalizada',
+                    cliente_caderneta_id: clienteCadernetaSelecionado ? Number(clienteCadernetaSelecionado) : null
+                }
+                await offlineStorage.addPendingOperation({ type: 'INSERT', table: 'vendas', data: vendaPayload })
+                for (const item of carrinho) {
+                    await offlineStorage.addPendingOperation({
+                        type: 'INSERT',
+                        table: 'venda_itens',
+                        data: {
+                            venda_id: tempVendaId,
+                            varejo_id: item.id,
+                            quantidade: item.qtdCarrinho,
+                            preco_unitario: item.preco,
+                            subtotal: item.qtdCarrinho * item.preco
+                        }
+                    })
+                }
+                const vendasCached = await offlineStorage.getOfflineData('vendas')
+                const novaVendaLocal = {
+                    id: tempVendaId,
+                    data: dataISO,
+                    valor_total: valorTotal,
+                    forma_pagamento: formaPagamentoDB,
+                    caixa_diario_id: caixaDiarioId,
+                    created_at: new Date().toISOString()
+                }
+                await offlineStorage.saveOfflineData('vendas', [novaVendaLocal, ...(vendasCached || [])])
+                showToast('Venda salva offline. Será sincronizada quando online.', 'success')
+                setLastVendaId(tempVendaId)
+                setVendasHoje(prev => [{
+                    id: tempVendaId,
+                    data: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                    total: valorTotal,
+                    forma_pagamento: formaPagamentoDB.replace('_', ' ')
+                }, ...prev])
+                setCarrinho([])
+                setDescontoPercent('')
+                setDescontoValor('')
+                setClienteCadernetaSelecionado('')
+                setModalPagamento(false)
+                setModalDebito(false)
+                setModalCredito(false)
+                setModalPix(false)
+                setModalCaderneta(false)
+                abrirModalPosVendaComDelay(300)
+                setLoading(false)
+                return
+            }
+
             // 1. Registrar Venda na tabela 'vendas'
             const { data: vendaData, error: vendaError } = await getSupabase()
                 .from('vendas')
                 .insert<any>({
-                    numero_venda: Date.now(), // Gera um número único (ms). Requer coluna BIGINT no banco.
-                    // Grava a data local no formato YYYY-MM-DD para compatibilidade
-                    // com consultas que filtram por `data` (coluna DATE) usando hora local.
-                    data: (() => {
-                        const _d = new Date()
-                        const y = _d.getFullYear()
-                        const m = String(_d.getMonth() + 1).padStart(2, '0')
-                        const day = String(_d.getDate()).padStart(2, '0')
-                        return `${y}-${m}-${day}`
-                    })(),
+                    numero_venda: Date.now(),
+                    data: dataISO,
                     valor_total: valorTotal,
                     valor_pago: valorPago,
                     valor_debito: valorDebito,
@@ -2198,25 +2500,19 @@ export default function PDVPage() {
     }
 
     const handleConfirmFechamento = async () => {
-                // Monta o payload para update do caixa_diario
                 const ajusteDinheiroCents = parseCurrencyBRToCents(confDinheiro) || 0
                 const ajustePixCents = parseCurrencyBRToCents(confPix) || 0
                 const ajusteDebitoCents = parseCurrencyBRToCents(confDebito) || 0
                 const ajusteCreditoCents = parseCurrencyBRToCents(confCredito) || 0
-                const totalDinheiroCorrigidoCents = ajusteDinheiroCents
-                const totalPixCorrigidoCents = ajustePixCents
-                const totalDebitoCorrigidoCents = ajusteDebitoCents
-                const totalCreditoCorrigidoCents = ajusteCreditoCents
-                const totalCorrigidoCents = totalDinheiroCorrigidoCents + totalPixCorrigidoCents + totalDebitoCorrigidoCents + totalCreditoCorrigidoCents
+                const totalCorrigidoCents = ajusteDinheiroCents + ajustePixCents + ajusteDebitoCents + ajusteCreditoCents
                 const metricasTotalEntradasCents = Math.round((metricasCaixa.totalEntradas || 0) * 100)
                 const diferencaCents = totalCorrigidoCents - metricasTotalEntradasCents
+                const totalCorrigido = totalCorrigidoCents / 100
                 const payload = {
                     data: getLocalDateString(),
                     status: 'fechado',
                     valor_abertura: Number((saldoInicial || 0)),
                     valor_fechamento: Number((totalCorrigidoCents / 100).toFixed(2)),
-                    
-                    // Totais esperados pelo sistema (baseados nas vendas registradas)
                     total_entradas: Number((metricasTotalEntradasCents / 100).toFixed(2)),
                     total_vendas: Number((metricasCaixa.totalGeral || 0).toFixed(2)),
                     total_caderneta: Number((metricasCaixa.caderneta || 0).toFixed(2)),
@@ -2224,29 +2520,21 @@ export default function PDVPage() {
                     total_pix: Number((metricasCaixa.pix || 0).toFixed(2)),
                     total_debito: Number((metricasCaixa.debito || 0).toFixed(2)),
                     total_credito: Number((metricasCaixa.credito || 0).toFixed(2)),
-                    
-                    // Valores informados pelo funcionário na conferência
-                    valor_dinheiro_informado: Number((totalDinheiroCorrigidoCents / 100).toFixed(2)),
-                    valor_pix_informado: Number((totalPixCorrigidoCents / 100).toFixed(2)),
-                    valor_debito_informado: Number((totalDebitoCorrigidoCents / 100).toFixed(2)),
-                    valor_credito_informado: Number((totalCreditoCorrigidoCents / 100).toFixed(2)),
-                    
-                    // Diferenças calculadas
+                    valor_dinheiro_informado: Number((ajusteDinheiroCents / 100).toFixed(2)),
+                    valor_pix_informado: Number((ajustePixCents / 100).toFixed(2)),
+                    valor_debito_informado: Number((ajusteDebitoCents / 100).toFixed(2)),
+                    valor_credito_informado: Number((ajusteCreditoCents / 100).toFixed(2)),
                     diferenca: Number((diferencaCents / 100).toFixed(2)),
                     diferenca_dinheiro: Number(((ajusteDinheiroCents - Math.round((metricasCaixa.dinheiro || 0) * 100)) / 100).toFixed(2)),
                     diferenca_pix: Number(((ajustePixCents - Math.round((metricasCaixa.pix || 0) * 100)) / 100).toFixed(2)),
                     diferenca_debito: Number(((ajusteDebitoCents - Math.round((metricasCaixa.debito || 0) * 100)) / 100).toFixed(2)),
                     diferenca_credito: Number(((ajusteCreditoCents - Math.round((metricasCaixa.credito || 0) * 100)) / 100).toFixed(2)),
-                    
-                    // Saídas e Usuário
                     valor_saidas: Number(totalSaidasDoDia || 0),
                     total_saidas: Number(totalSaidasDoDia || 0),
                     usuario_fechamento: operador || null,
                     data_fechamento: new Date().toISOString()
                 }
         try {
-            const dataISO = getLocalDateString()
-            // Fecha a interface do PDV imediatamente (optimistic UI)
             setModalFechamentoConfirm(false)
             setModalFechamento(false)
             setCaixaAberto(false)
@@ -2257,14 +2545,25 @@ export default function PDVPage() {
             setCaixaDiarioId(null)
             setDataHoje('')
             setHoraAbertura('')
-            showToast('Processando fechamento do caixa...', 'info')
 
             if (!caixaDiarioId) {
                 showToast('Erro: ID do caixa não encontrado.', 'error')
                 return
             }
 
-            // 1. Fecha o caixa atual no banco
+            if (!isOnline) {
+                await offlineStorage.addPendingOperation({
+                    type: 'UPDATE',
+                    table: 'caixa_diario',
+                    data: { id: caixaDiarioId, ...payload }
+                })
+                await offlineStorage.saveOfflineData('caixa_hoje', [])
+                showToast('Caixa fechado offline. Será sincronizado quando online.', 'success')
+                return
+            }
+
+            showToast('Processando fechamento do caixa...', 'info')
+
             const { error: upErr } = await getSupabase()
                 .from('caixa_diario')
                 .update<Database['public']['Tables']['caixa_diario']['Update']>({

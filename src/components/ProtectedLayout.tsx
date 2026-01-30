@@ -3,11 +3,20 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { clientEnv } from '@/env/client-env'
+import { offlineStorage } from '@/lib/offlineStorage'
 import Sidebar from './Sidebar'
 // import { GlobalOfflineStatus } from './GlobalOfflineStatus'
 
 interface ProtectedLayoutProps {
   children: React.ReactNode
+}
+
+const AUTH_CACHE_KEY = 'authCache'
+
+function isSessionExpired(expiresAt?: number): boolean {
+  if (!expiresAt) return false
+  // Considerar expirado 60s antes para margem de segurança
+  return Date.now() / 1000 >= expiresAt - 60
 }
 
 export default function ProtectedLayout({ children }: ProtectedLayoutProps) {
@@ -30,24 +39,54 @@ export default function ProtectedLayout({ children }: ProtectedLayoutProps) {
           return
         }
 
-        const { data: { session }, error } = await supabase!.auth.getSession()
+        let session = null
+        let error = null
+
+        try {
+          const result = await supabase!.auth.getSession()
+          session = result.data?.session ?? null
+          error = result.error ?? null
+        } catch (e) {
+          error = e
+        }
+
         if (!isMounted) return
+
+        if (session?.user && !isSessionExpired(session.expires_at)) {
+          setUser(session.user)
+          setLoading(false)
+          return
+        }
+
+        // Fallback offline: tentar cache quando getSession falhou ou sessão ausente
+        if (error || !session) {
+          const cached = await offlineStorage.getOfflineConfig(AUTH_CACHE_KEY)
+          if (cached?.session?.user && !isSessionExpired(cached.session.expires_at)) {
+            if (isMounted) {
+              setUser(cached.session.user)
+              setLoading(false)
+            }
+            return
+          }
+        }
 
         if (error) {
           console.error('Erro ao verificar sessão:', error)
-          router.push('/login')
-          return
         }
-
-        if (!session) {
-          router.push('/login')
-          return
-        }
-
-        setUser(session.user)
-        setLoading(false)
+        router.push('/login')
       } catch (error) {
         if (isMounted) {
+          // Última tentativa: cache offline
+          try {
+            const cached = await offlineStorage.getOfflineConfig(AUTH_CACHE_KEY)
+            if (cached?.session?.user && !isSessionExpired(cached.session.expires_at)) {
+              setUser(cached.session.user)
+              setLoading(false)
+              return
+            }
+          } catch {
+            // ignorar
+          }
           console.error('Erro ao verificar sessão:', error)
           router.push('/login')
         }

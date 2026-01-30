@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
-import { Settings, User, Shield, Database, Info } from 'lucide-react'
+import { Settings, User, Shield, Info } from 'lucide-react'
 import ConfiguracoesAvancadasModal from '@/components/ConfiguracoesAvancadasModal'
 import SobreSistemaModal from '@/components/SobreSistemaModal'
+import { getAuthCache, clearAuthCache, clearAdminUnlockCache } from '@/lib/authCache'
 
 export default function ConfiguracoesPage() {
   const [loading, setLoading] = useState(true)
@@ -19,14 +20,52 @@ export default function ConfiguracoesPage() {
 
   useEffect(() => {
     carregarUsuario()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const carregarUsuario = async () => {
     try {
-      const { data: { user } } = await supabase!.auth.getUser()
-      setUser(user)
+      const { data: { user: authUser } } = await supabase!.auth.getUser()
+      if (authUser) {
+        setUser(authUser)
+        return
+      }
+      // Fallback: buscar do cache (offline ou getUser falhou)
+      const cache = await getAuthCache()
+      if (cache?.session?.user) {
+        setUser({
+          id: cache.session.user.id,
+          email: cache.session.user.email,
+          last_sign_in_at: cache.session.user.last_sign_in_at
+        })
+      } else if (cache?.userData) {
+        setUser({
+          id: cache.userData.id,
+          email: cache.userData.email,
+          last_sign_in_at: undefined
+        })
+      }
     } catch (error) {
       console.error('Erro ao carregar usuário:', error)
+      // Fallback para cache quando offline
+      try {
+        const cache = await getAuthCache()
+        if (cache?.session?.user) {
+          setUser({
+            id: cache.session.user.id,
+            email: cache.session.user.email,
+            last_sign_in_at: cache.session.user.last_sign_in_at
+          })
+        } else if (cache?.userData) {
+          setUser({
+            id: cache.userData.id,
+            email: cache.userData.email,
+            last_sign_in_at: undefined
+          })
+        }
+      } catch (fallbackErr) {
+        console.error('Fallback cache falhou:', fallbackErr)
+      }
     } finally {
       setLoading(false)
     }
@@ -34,10 +73,15 @@ export default function ConfiguracoesPage() {
 
   const handleLogout = async () => {
     try {
-      await supabase!.auth.signOut()
-      window.location.href = '/login'
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        await supabase!.auth.signOut()
+      }
     } catch (error) {
       console.error('Erro ao fazer logout:', error)
+    } finally {
+      await clearAuthCache()
+      await clearAdminUnlockCache()
+      window.location.href = '/login'
     }
   }
 

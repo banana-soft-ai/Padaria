@@ -2,17 +2,11 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { supabase } from '@/lib/supabase/client'
 import { Receita, Insumo } from '@/lib/supabase'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import Toast from '@/app/gestao/caderneta/Toast' // Componente de notificação
-import { Plus, ChefHat, Search, Edit, Trash2, Eye, Package, X, WifiOff, RefreshCw } from 'lucide-react'
+import { Plus, ChefHat, Search, Edit, Trash2, Eye, Package, X, RefreshCw } from 'lucide-react'
 import { useReceitasOffline } from '@/hooks/useReceitasOffline'
-import { useReceitas } from '@/hooks/useReceitas'
-import { useComposicoes } from '@/hooks/useComposicoes'
-import { useComposicoesFull } from '@/hooks/useComposicoesFull'
-import { useInsumos } from '@/hooks/useInsumos'
-import { calcularCustosCompletos } from '@/lib/preco'
 
 /*
   Alterações principais:
@@ -32,13 +26,21 @@ interface ComposicaoReceita {
 }
 
 export default function ReceitasPage() {
-  // Estados locais para dados
-  const { receitas, fetchReceitas, createReceita, updateReceita, softDeleteReceita } = useReceitas()
-  const { insumos, fetchInsumos } = useInsumos()
-  const { composicoes, fetchComposicoes } = useComposicoesFull()
+  const {
+    receitas,
+    composicoesComInsumo: composicoes,
+    insumos,
+    fetchReceitas,
+    fetchInsumos,
+    createReceita,
+    updateReceita,
+    softDeleteReceita,
+    deleteByReceitaId,
+    insertMany,
+    refreshComposicoes
+  } = useReceitasOffline()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const { deleteByReceitaId, insertMany } = useComposicoes()
 
   // Estados locais para UI
   const [showModal, setShowModal] = useState(false)
@@ -256,6 +258,7 @@ export default function ReceitasPage() {
   useEffect(() => {
     carregarDados()
     setIsMounted(true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleRefresh = async () => {
@@ -279,29 +282,13 @@ export default function ReceitasPage() {
     try {
       await Promise.all([
         fetchReceitas(),
-         fetchInsumos(),
-        carregarComposicoes()
+        fetchInsumos(),
+        refreshComposicoes()
       ])
     } catch (error) {
       console.error('Erro ao carregar dados:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const carregarComposicoes = async () => {
-    if (!supabase) return
-    try {
-      const { data, error } = await supabase
-        .from('composicao_receitas')
-        .select(`
-          *,
-          insumo:insumos(*)
-        `)
-
-      if (error) throw error
-    } catch (error) {
-      console.error('Erro ao carregar composições:', error)
     }
   }
 
@@ -374,7 +361,6 @@ export default function ReceitasPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!supabase) return
 
     const rendimentoNum = parseFloat(String(formData.rendimento)) || 0
     if (rendimentoNum <= 0) {
@@ -558,11 +544,9 @@ export default function ReceitasPage() {
   }
 
   const handleDelete = async (receita: Receita) => {
-    if (!supabase) return
     setConfirmTitle('Desativar Receita')
     setConfirmMessage(`Tem certeza que deseja desativar a receita "${receita.nome}"? O histórico será preservado.`)
     setConfirmAction(() => async () => {
-      if (!supabase) return
       try {
         const result = await softDeleteReceita(receita.id)
         if (result.error) throw result.error

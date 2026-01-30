@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import { canUnlockAdmin as checkCanUnlock } from '@/lib/permissions'
+import { offlineStorage } from '@/lib/offlineStorage'
+
+const AUTH_CACHE_KEY = 'authCache'
 
 export type UserRole = 'admin' | 'gerente' | 'funcionario' | 'caixa'
 
@@ -84,6 +87,24 @@ export function useUser(): UseUserReturn {
           updateState(null, null, true, null)
         }
 
+        // Offline: tentar usar cache primeiro
+        if (!navigator.onLine) {
+          const cached = await offlineStorage.getOfflineConfig(AUTH_CACHE_KEY)
+          const user = cached?.session?.user ?? cached?.user
+          const userData = cached?.userData
+          if (user && userData) {
+            globalUserData = { user, userData }
+            if (isMountedRef.current) {
+              updateState(user, userData, false)
+            } else {
+              setUser(user)
+              setUserData(userData)
+              setLoading(false)
+            }
+            return
+          }
+        }
+
         // Buscar usuário do Supabase Auth
         const { data: { user: authUser }, error: authError } = await supabase!.auth.getUser()
 
@@ -144,6 +165,25 @@ export function useUser(): UseUserReturn {
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar dados do usuário'
         console.error('Erro ao buscar dados do usuário:', err)
+        // Fallback: tentar cache offline quando fetch falhou
+        try {
+          const cached = await offlineStorage.getOfflineConfig(AUTH_CACHE_KEY)
+          const user = cached?.session?.user ?? cached?.user
+          const userData = cached?.userData
+          if (user && userData) {
+            globalUserData = { user, userData }
+            if (isMountedRef.current) {
+              updateState(user, userData, false)
+            } else {
+              setUser(user)
+              setUserData(userData)
+              setLoading(false)
+            }
+            return
+          }
+        } catch {
+          // ignorar
+        }
         if (isMountedRef.current) {
           updateState(null, null, false, errorMessage)
         }

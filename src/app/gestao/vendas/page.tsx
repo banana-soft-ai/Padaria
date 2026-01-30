@@ -3,12 +3,15 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
+import { offlineStorage } from '@/lib/offlineStorage'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import RouteGuard from '@/components/RouteGuard'
 import VendasTab from '@/components/gestao/VendasTab'
 import { RelatorioVendas, RankingVendas } from '@/types/gestao'
 import { obterInicioMes, obterInicioSemana, obterDataLocal } from '@/lib/dateUtils'
 
 export default function VendasPage() {
+  const { isOnline } = useOnlineStatus()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [periodoVendas, setPeriodoVendas] = useState<'dia' | 'semana' | 'mes' | 'trimestre' | 'semestre' | 'ano'>('mes')
@@ -35,11 +38,74 @@ export default function VendasPage() {
       setError(null)
       setLoading(true)
 
-      await Promise.all([
-        carregarRelatorioVendas(),
-        carregarRankingVendas(),
-        carregarMetricasResumo()
-      ])
+      if (isOnline) {
+        await Promise.all([
+          carregarRelatorioVendas(),
+          carregarRankingVendas(),
+          carregarMetricasResumo()
+        ])
+      } else {
+        // Offline: carregar do cache
+        const [vendasCache, itensCache, varejoCache] = await Promise.all([
+          offlineStorage.getOfflineData('vendas'),
+          offlineStorage.getOfflineData('venda_itens'),
+          offlineStorage.getOfflineData('varejo')
+        ])
+        const dataInicioYmd = obterDataInicioPeriodo(periodoVendas)
+        const hojeYmd = obterDataLocal()
+
+        const vendas = (vendasCache || []).filter((v: any) => v.data >= dataInicioYmd && v.data <= hojeYmd)
+        const vendaIds = vendas.map((v: any) => v.id).filter(Boolean)
+        const itens = (itensCache || []).filter((it: any) => vendaIds.includes(it.venda_id))
+        const varejoMap = new Map((varejoCache || []).map((p: any) => [p.id, p.nome]))
+
+        const vendasPorProdutoPreco = new Map<string, RelatorioVendas>()
+        itens.forEach((item: any) => {
+          const nomeProduto = varejoMap.get(item.varejo_id) || 'Produto'
+          const precoUnitario = item.preco_unitario || 0
+          const quantidade = item.quantidade || 0
+          const faturamento = precoUnitario * quantidade
+          const itemKey = `${item.varejo_id}_${precoUnitario}`
+          if (!vendasPorProdutoPreco.has(itemKey)) {
+            vendasPorProdutoPreco.set(itemKey, {
+              item: nomeProduto,
+              tipo: 'varejo',
+              quantidadeTotal: quantidade,
+              receitaTotal: faturamento,
+              mediaVendas: precoUnitario,
+              vendasPorDia: {}
+            })
+          } else {
+            const existing = vendasPorProdutoPreco.get(itemKey)!
+            existing.quantidadeTotal += quantidade
+            existing.receitaTotal += faturamento
+          }
+        })
+        setRelatorioVendas(Array.from(vendasPorProdutoPreco.values()))
+
+        const unidadesVendidas = itens.reduce((s: number, it: any) => s + (Number(it.quantidade) || 0), 0)
+        const receitaTotal = vendas.reduce((s: number, v: any) => s + (Number(v.valor_total) || 0), 0)
+        const ticketMedio = vendas.length > 0 ? receitaTotal / vendas.length : 0
+        const totalPix = vendas.filter((v: any) => v.forma_pagamento === 'pix').reduce((s: number, v: any) => s + (Number(v.valor_total) || 0), 0)
+        const totalDinheiro = vendas.filter((v: any) => v.forma_pagamento === 'dinheiro').reduce((s: number, v: any) => s + (Number(v.valor_total) || 0), 0)
+        const totalDebito = vendas.filter((v: any) => v.forma_pagamento === 'cartao_debito').reduce((s: number, v: any) => s + (Number(v.valor_total) || 0), 0)
+        const totalCredito = vendas.filter((v: any) => v.forma_pagamento === 'cartao_credito').reduce((s: number, v: any) => s + (Number(v.valor_total) || 0), 0)
+        const totalCaderneta = vendas.filter((v: any) => v.forma_pagamento === 'caderneta').reduce((s: number, v: any) => s + (Number(v.valor_total) || 0), 0)
+        const valorReceber = vendas.reduce((s: number, v: any) => s + (Number(v.valor_debito) || 0), 0)
+
+        setMetricasResumo({
+          unidadesVendidas,
+          receitaTotal,
+          ticketMedio,
+          totalPix,
+          totalDinheiro,
+          totalDebito,
+          totalCredito,
+          totalCaderneta,
+          valorReceber
+        })
+        setRankingVendas([])
+      }
     } catch (error) {
       console.error('Erro ao carregar dados:', error)
       setError('Erro ao carregar dados de vendas')

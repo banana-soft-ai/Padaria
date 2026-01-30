@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import RouteGuard from '@/components/RouteGuard'
+import { offlineStorage } from '@/lib/offlineStorage'
 import { 
   TrendingUp, 
   DollarSign, 
@@ -70,15 +71,90 @@ export default function DashboardPage() {
       setError(null)
 
       const res = await fetch('/api/dashboard')
-      if (!res.ok) {
-        throw new Error('Erro ao carregar dados do dashboard')
-      }
+      if (!res.ok) throw new Error('Erro ao carregar dados do dashboard')
 
       const dashboardData = await res.json()
       setData(dashboardData)
     } catch (err) {
       console.error('Erro ao carregar dashboard:', err)
-      setError('Erro ao carregar dados do dashboard')
+      // Fallback offline: agregar do cache (vendas, caixa_diario)
+      try {
+        const [vendasCache, itensCache] = await Promise.all([
+          offlineStorage.getOfflineData('vendas'),
+          offlineStorage.getOfflineData('venda_itens')
+        ])
+        const hoje = new Date().toISOString().split('T')[0]
+        const inicioMes = obterInicioMes()
+
+        const vendasHojeArr = (vendasCache || []).filter((v: any) => v.data === hoje)
+        const vendasMesArr = (vendasCache || []).filter((v: any) => v.data >= inicioMes && v.data <= hoje)
+
+        const vendasHojeTotal = vendasHojeArr.reduce((s: number, v: any) => s + Number(v.valor_total || 0), 0)
+        const vendasHojeCount = vendasHojeArr.length
+        const totalMesGestao = vendasMesArr.reduce((s: number, v: any) => s + Number(v.valor_total || 0), 0)
+        const vendasMesCount = vendasMesArr.length
+
+        const vendaIdsHoje = vendasHojeArr.map((v: any) => v.id).filter(Boolean)
+        const itensVendidosHoje = (itensCache || [])
+          .filter((it: any) => vendaIdsHoje.includes(it.venda_id))
+          .reduce((sum: number, it: any) => sum + (Number(it.quantidade) || 0), 0)
+        const ticketMedioHoje = vendasHojeCount > 0 ? vendasHojeTotal / vendasHojeCount : 0
+
+        const trintaDiasAtras = new Date()
+        trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30)
+        const trintaDiasStr = trintaDiasAtras.toISOString().split('T')[0]
+        const vendasTrinta = (vendasCache || []).filter((v: any) => v.data >= trintaDiasStr && v.data <= hoje)
+        const vendasPorDiaMap: Record<string, number> = {}
+        for (let i = 0; i < 30; i++) {
+          const d = new Date()
+          d.setDate(d.getDate() - i)
+          const dStr = d.toISOString().split('T')[0]
+          vendasPorDiaMap[dStr] = 0
+        }
+        vendasTrinta.forEach((v: any) => {
+          vendasPorDiaMap[v.data] = (vendasPorDiaMap[v.data] || 0) + Number(v.valor_total || 0)
+        })
+        const vendasPorDia = Object.entries(vendasPorDiaMap)
+          .map(([data, total]) => ({ data, total }))
+          .sort((a, b) => a.data.localeCompare(b.data))
+
+        const formatarForma = (forma: string) => {
+          const nomes: Record<string, string> = { dinheiro: 'Dinheiro', cartao_debito: 'Débito', cartao_credito: 'Crédito', pix: 'PIX', caderneta: 'Caderneta' }
+          return nomes[forma] || forma
+        }
+        const pagamentosAgrupados: Record<string, number> = {}
+        vendasMesArr.forEach((v: any) => {
+          const forma = formatarForma(v.forma_pagamento)
+          pagamentosAgrupados[forma] = (pagamentosAgrupados[forma] || 0) + Number(v.valor_total || 0)
+        })
+        const vendasPorPagamento = Object.entries(pagamentosAgrupados)
+          .map(([forma, total]) => ({ forma, total }))
+          .sort((a, b) => b.total - a.total)
+
+        const topProdutos: { nome: string; quantidade: number; total: number }[] = []
+        const vendasRecentesFormatadas = vendasHojeArr
+          .slice(0, 5)
+          .map((v: any) => ({
+            ...v,
+            hora: new Date(v.created_at || v.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            forma_pagamento: formatarForma(v.forma_pagamento)
+          }))
+
+        setData({
+          vendasHoje: { total: vendasHojeTotal, count: vendasHojeCount },
+          vendasMes: { total: totalMesGestao, count: vendasMesCount },
+          itensVendidosHoje,
+          ticketMedioHoje,
+          vendasPorDia,
+          topProdutos,
+          vendasPorPagamento,
+          vendasRecentes: vendasRecentesFormatadas
+        })
+        setError(null)
+      } catch (fallbackErr) {
+        console.error('Fallback cache falhou:', fallbackErr)
+        setError('Erro ao carregar dados. Verifique a conexão.')
+      }
     } finally {
       setLoading(false)
     }

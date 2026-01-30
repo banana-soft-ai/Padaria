@@ -106,9 +106,13 @@ class SyncService {
     return result
   }
 
-  // Sincronizar um lote de operações
+  // Mapa de IDs temporários para IDs reais (usado durante sincronização)
+  private tempIdMap: Map<number, number> = new Map()
+
+  // Sincronizar um lote de operações (sequencial para suportar dependências)
   private async syncBatch(operations: any[], result: SyncResult): Promise<void> {
-    const promises = operations.map(async (operation) => {
+    this.tempIdMap.clear()
+    for (const operation of operations) {
       try {
         await this.syncOperation(operation)
         await offlineStorage.markOperationAsSynced(operation.id)
@@ -118,9 +122,7 @@ class SyncService {
         result.errors.push(`Erro na operação ${operation.id}: ${error}`)
         console.error(`Erro ao sincronizar operação ${operation.id}:`, error)
       }
-    })
-
-    await Promise.allSettled(promises)
+    }
   }
 
   // Sincronizar uma operação específica
@@ -171,9 +173,35 @@ class SyncService {
       }
     }
 
+    let insertData = { ...data }
+    const tempVendaId = insertData._tempVendaId
+    if (tempVendaId !== undefined) {
+      delete insertData._tempVendaId
+    }
+
+    if (table === 'vendas') {
+      const { data: inserted, error } = await (supabase as any)
+        .from(table)
+        .insert(insertData)
+        .select()
+        .single()
+      if (error) throw error
+      if (tempVendaId !== undefined && inserted?.id) {
+        this.tempIdMap.set(tempVendaId, inserted.id)
+      }
+      return
+    }
+
+    if (table === 'venda_itens' && insertData.venda_id < 0) {
+      const realId = this.tempIdMap.get(insertData.venda_id)
+      if (realId !== undefined) {
+        insertData = { ...insertData, venda_id: realId }
+      }
+    }
+
     const { error } = await (supabase as any)
       .from(table)
-      .insert(data)
+      .insert(insertData)
 
     if (error) throw error
   }
@@ -205,7 +233,20 @@ class SyncService {
     if (!navigator.onLine) return
 
     try {
-      const tables = ['insumos', 'receitas', 'vendas', 'clientes_caderneta', 'caixa_diario']
+      const tables = [
+        'insumos',
+        'receitas',
+        'composicao_receitas',
+        'varejo',
+        'vendas',
+        'clientes_caderneta',
+        'movimentacoes_caderneta',
+        'caixa_diario',
+        'fluxo_caixa',
+        'funcionario',
+        'usuarios',
+        'precos_venda'
+      ]
 
       for (const table of tables) {
         const { data, error } = await (supabase as any)

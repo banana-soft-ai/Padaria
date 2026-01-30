@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
+import { offlineStorage } from '@/lib/offlineStorage'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import RouteGuard from '@/components/RouteGuard'
 import CaixasTab from '@/components/gestao/CaixasTab'
 import { CaixaDiario } from '@/types/gestao'
@@ -10,6 +12,7 @@ import { TrendingUp, TrendingDown, DollarSign, Calculator, CreditCard } from 'lu
 import { obterInicioMes, obterInicioSemana, calcularTotaisPeriodo } from '@/lib/dateUtils'
 
 export default function CaixasPage() {
+  const { isOnline } = useOnlineStatus()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [caixasDiarios, setCaixasDiarios] = useState<CaixaDiario[]>([])
@@ -89,64 +92,86 @@ export default function CaixasPage() {
 
   const carregarCaixasDiarios = async () => {
     try {
-      let query = supabase!
-        .from('caixa_diario')
-        .select('*')
-        .order('created_at', { ascending: false })
+      if (isOnline) {
+        let query = supabase!
+          .from('caixa_diario')
+          .select('*')
+          .order('created_at', { ascending: false })
 
-      if (dataInicio) {
-        query = query.gte('data', dataInicio)
-      }
-      if (dataFim) {
-        query = query.lte('data', dataFim)
-      }
+        if (dataInicio) query = query.gte('data', dataInicio)
+        if (dataFim) query = query.lte('data', dataFim)
 
-      const { data, error } = await query
+        const { data, error } = await query
 
-      if (error) {
-        const errorMessage = error.message || 'Tabela pode não existir ainda'
-        console.log('Informação ao buscar caixas diários:', errorMessage)
-        setCaixasDiarios([])
-        return
-      }
-      const caixas = (data || []) as CaixaDiario[]
+        if (error) {
+          console.log('Informação ao buscar caixas diários:', error.message)
+          setCaixasDiarios([])
+          return
+        }
+        const caixas = (data || []) as CaixaDiario[]
 
-      try {
-        // Buscar saídas vinculadas ao caixa_diario para popular `valor_saidas` quando não estiver preenchido corretamente
-        let saidasQuery = supabase!.from('fluxo_caixa').select('caixa_diario_id, valor').eq('tipo', 'saida').eq('categoria', 'caixa')
+        try {
+          let saidasQuery = supabase!.from('fluxo_caixa').select('caixa_diario_id, valor').eq('tipo', 'saida').eq('categoria', 'caixa')
+          if (dataInicio) saidasQuery = saidasQuery.gte('data', dataInicio)
+          if (dataFim) saidasQuery = saidasQuery.lte('data', dataFim)
 
-        if (dataInicio) saidasQuery = saidasQuery.gte('data', dataInicio)
-        if (dataFim) saidasQuery = saidasQuery.lte('data', dataFim)
+          const { data: saidasData, error: saidasError } = await saidasQuery
 
-        const { data: saidasData, error: saidasError } = await saidasQuery
-
-        if (!saidasError) {
-          const mapaSaidas: Record<number, number> = {}
-          ;(saidasData || []).forEach((r: any) => {
-            const caixaId = r.caixa_diario_id
-            if (!caixaId) return
-            const v = Number(r.valor) || 0
-            mapaSaidas[caixaId] = (mapaSaidas[caixaId] || 0) + v
-          })
-
-          const caixasComSaidas = caixas.map(c => {
-            const valorSaidasFluxo = mapaSaidas[c.id] || 0
-            // Prioriza o valor do fluxo_caixa se o valor_saidas do banco estiver zerado ou menor (para garantir que sangrias apareçam)
-            const valorFinal = Math.max(c.valor_saidas || 0, valorSaidasFluxo)
-            return { ...c, valor_saidas: valorFinal }
-          })
-          setCaixasDiarios(caixasComSaidas)
-        } else {
-          console.warn('Erro ao buscar saídas para caixas:', saidasError)
+          if (!saidasError && saidasData) {
+            const mapaSaidas: Record<number, number> = {}
+            saidasData.forEach((r: any) => {
+              const caixaId = r.caixa_diario_id
+              if (!caixaId) return
+              const v = Number(r.valor) || 0
+              mapaSaidas[caixaId] = (mapaSaidas[caixaId] || 0) + v
+            })
+            const caixasComSaidas = caixas.map(c => {
+              const valorSaidasFluxo = mapaSaidas[c.id] || 0
+              const valorFinal = Math.max(c.valor_saidas || 0, valorSaidasFluxo)
+              return { ...c, valor_saidas: valorFinal }
+            })
+            setCaixasDiarios(caixasComSaidas)
+          } else {
+            setCaixasDiarios(caixas)
+          }
+        } catch (e) {
           setCaixasDiarios(caixas)
         }
-      } catch (e) {
-        console.warn('Erro ao agregar saídas por ID do caixa:', e)
-        setCaixasDiarios(caixas)
+      } else {
+        // Offline: buscar do cache
+        const [caixaCache, fluxoCache] = await Promise.all([
+          offlineStorage.getOfflineData('caixa_diario'),
+          offlineStorage.getOfflineData('fluxo_caixa')
+        ])
+        let caixas = (caixaCache || []).filter((c: any) => {
+          if (dataInicio && c.data < dataInicio) return false
+          if (dataFim && c.data > dataFim) return false
+          return true
+        }) as CaixaDiario[]
+        caixas = caixas.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+
+        const saidasFiltradas = (fluxoCache || []).filter((r: any) => {
+          if (r.tipo !== 'saida' || r.categoria !== 'caixa') return false
+          if (dataInicio && r.data < dataInicio) return false
+          if (dataFim && r.data > dataFim) return false
+          return true
+        })
+        const mapaSaidas: Record<number, number> = {}
+        saidasFiltradas.forEach((r: any) => {
+          const caixaId = r.caixa_diario_id
+          if (!caixaId) return
+          const v = Number(r.valor) || 0
+          mapaSaidas[caixaId] = (mapaSaidas[caixaId] || 0) + v
+        })
+        const caixasComSaidas = caixas.map(c => {
+          const valorSaidasFluxo = mapaSaidas[c.id] || 0
+          const valorFinal = Math.max(c.valor_saidas || 0, valorSaidasFluxo)
+          return { ...c, valor_saidas: valorFinal }
+        })
+        setCaixasDiarios(caixasComSaidas)
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
-      console.log('Informação ao carregar caixas diários:', errorMessage)
+      console.log('Informação ao carregar caixas diários:', error)
       setCaixasDiarios([])
     }
   }

@@ -7,27 +7,40 @@ const CACHE_NAME = 'rey-dos-paes-v1'
 const STATIC_CACHE_NAME = 'rey-dos-paes-static-v1'
 const API_CACHE_NAME = 'rey-dos-paes-api-v1'
 
-// Arquivos estáticos para cache
+// Arquivos estáticos e rotas críticas para precache (primeira visita offline)
 const STATIC_FILES = [
   '/',
+  '/login',
+  '/caixa',
+  '/receitas',
+  '/estoque',
+  '/configuracoes',
   '/manifest.json',
   '/favicon.svg',
   '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
+  '/icons/icon-512x512.png',
+  '/offline.html'
 ]
 
 // Instalar Service Worker
 self.addEventListener('install', (event) => {
   console.log('Service Worker instalando...')
-  
+
   event.waitUntil(
     caches.open(STATIC_CACHE_NAME)
       .then((cache) => {
         console.log('Cache estático aberto')
-        return cache.addAll(STATIC_FILES)
+        // addAll falha se qualquer URL falhar; usar add individual para resiliência
+        return Promise.allSettled(
+          STATIC_FILES.map((url) =>
+            cache.add(url).catch((err) => {
+              console.warn('Falha ao precache:', url, err)
+            })
+          )
+        )
       })
       .then(() => {
-        console.log('Arquivos estáticos em cache')
+        console.log('Precache concluído')
         return self.skipWaiting()
       })
   )

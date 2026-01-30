@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
-import { CheckCircle, AlertTriangle, XCircle, Loader2 } from 'lucide-react'
+import { clearAuthCache, clearAdminUnlockCache } from '@/lib/authCache'
+import { CheckCircle, XCircle, Loader2 } from 'lucide-react'
 
 type LogoutStatus = 'loading' | 'success' | 'error'
 
@@ -14,6 +15,10 @@ export default function LogoutPage() {
   useEffect(() => {
     const handleLogout = async () => {
       try {
+        // Limpar cache de autenticação e desbloqueio admin
+        await clearAuthCache()
+        await clearAdminUnlockCache()
+
         // Logout Supabase
         await supabase!.auth.signOut()
 

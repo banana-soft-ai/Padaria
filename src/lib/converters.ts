@@ -27,9 +27,11 @@ export function toReceita(obj: any): ReceitaSupabase {
     unidade_rendimento: toString(obj?.unidade_rendimento, ''),
     categoria: (obj?.categoria as ReceitaSupabase['categoria']) || 'outro',
     preco_venda: obj?.preco_venda ?? undefined,
+    custosInvisiveis: obj?.custosInvisiveis ?? undefined,
     instrucoes: obj?.instrucoes ?? undefined,
     created_at: toISODate(obj?.created_at),
     updated_at: obj?.updated_at ?? '',
+    ativo: typeof obj?.ativo === 'boolean' ? obj.ativo : obj?.ativo ?? true,
   }
 }
 

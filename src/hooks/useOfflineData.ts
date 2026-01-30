@@ -19,7 +19,8 @@ interface UseOfflineDataReturn<T> {
   data: T[]
   loading: boolean
   error: string | null
-  addItem: (item: Omit<T, 'id'>) => Promise<void>
+  addItem: (item: Omit<T, 'id'>) => Promise<T>
+  addMany: (items: Omit<T, 'id'>[]) => Promise<T[]>
   updateItem: (id: number, updates: Partial<T>) => Promise<void>
   deleteItem: (id: number) => Promise<void>
   refresh: () => Promise<void>
@@ -52,7 +53,7 @@ export function useOfflineData<T extends { id: number }>({
           .select('*')
 
         // Filtrar por 'ativo = true' para tabelas que têm essa coluna
-        if (table === 'clientes_caderneta') {
+        if (table === 'clientes_caderneta' || table === 'receitas') {
           query = query.eq('ativo', true)
         }
 
@@ -90,17 +91,17 @@ export function useOfflineData<T extends { id: number }>({
     }
   }, [table, isOnline])
 
-  // Adicionar item
-  const addItem = useCallback(async (item: Omit<T, 'id'>) => {
-    try {
-      const newItem = {
-        ...item,
-        // ID temporário negativo (evita colisão com IDs do servidor e cabe em integer)
-        id: -(Math.floor(Math.random() * 1e9) + 1),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      } as unknown as T
+  // Adicionar item - retorna o item criado (com id real quando online, temp quando offline)
+  const addItem = useCallback(async (item: Omit<T, 'id'>): Promise<T> => {
+    const newItem = {
+      ...item,
+      // ID temporário negativo (evita colisão com IDs do servidor e cabe em integer)
+      id: -(Math.floor(Math.random() * 1e9) + 1),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    } as unknown as T
 
+    try {
       // Adicionar localmente
       setData(prev => [newItem, ...prev])
 
@@ -126,9 +127,15 @@ export function useOfflineData<T extends { id: number }>({
           }
 
           // Atualizar com ID real do servidor
-          setData(prev => prev.map(item =>
-            item.id === newItem.id ? { ...item, ...insertedData } : item
+          setData(prev => prev.map(it =>
+            it.id === newItem.id ? { ...it, ...insertedData } : it
           ))
+
+          // Salvar no cache offline
+          const updatedData = [insertedData, ...data]
+          await offlineStorage.saveOfflineData(table, updatedData)
+
+          return insertedData as T
         } catch (supErr) {
           // Logar objeto de erro completo para diagnóstico
           try {
@@ -136,6 +143,7 @@ export function useOfflineData<T extends { id: number }>({
           } catch (e) {
             console.error('[useOfflineData] Erro ao serializar supErr:', supErr)
           }
+          setData(prev => prev.filter(it => it.id !== newItem.id))
           throw supErr
         }
       } else {
@@ -146,18 +154,77 @@ export function useOfflineData<T extends { id: number }>({
           data: newItem
         })
         setPendingSync(true)
+
+        // Salvar no cache offline
+        await offlineStorage.saveOfflineData(table, [newItem, ...data])
+
+        return newItem
       }
-
-      // Salvar no cache offline
-      await offlineStorage.saveOfflineData(table, [newItem, ...data])
-
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao adicionar item'
       console.log(`Informação ao adicionar item na tabela ${table}:`, errorMessage)
       setError(errorMessage)
 
       // Reverter mudança local em caso de erro
-      setData(prev => prev.filter(item => item.id !== (item as any).id))
+      setData(prev => prev.filter(it => it.id !== newItem.id))
+      throw err
+    }
+  }, [table, isOnline, data])
+
+  // Adicionar vários itens em lote (evita problemas de cache em loops)
+  const addMany = useCallback(async (items: Omit<T, 'id'>[]): Promise<T[]> => {
+    if (items.length === 0) return []
+
+    const newItems: T[] = items.map((item, idx) => ({
+      ...item,
+      id: -(Math.floor(Math.random() * 1e9) + 1 + idx),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })) as unknown as T[]
+
+    try {
+      const mergedData = [...newItems, ...data]
+      setData(prev => [...newItems, ...prev])
+
+      if (isOnline) {
+        const insertedItems: T[] = []
+        for (let i = 0; i < newItems.length; i++) {
+          const payload: any = { ...newItems[i] }
+          delete payload.id
+          const { data: insertedData, error: supabaseError } = await supabase
+            .from(table)
+            .insert(payload)
+            .select()
+            .single()
+          if (supabaseError) throw supabaseError
+          insertedItems.push(insertedData as T)
+        }
+        setData(prev => {
+          const tempIds = new Set(newItems.map(n => (n as any).id))
+          const without = prev.filter(it => !tempIds.has((it as any).id))
+          return [...insertedItems, ...without]
+        })
+        const finalData = [...insertedItems, ...data]
+        await offlineStorage.saveOfflineData(table, finalData)
+        return insertedItems
+      } else {
+        for (const newItem of newItems) {
+          await offlineStorage.addPendingOperation({
+            type: 'INSERT',
+            table,
+            data: newItem
+          })
+        }
+        setPendingSync(true)
+        await offlineStorage.saveOfflineData(table, mergedData)
+        return newItems
+      }
+    } catch (err) {
+      setData(prev => {
+        const tempIds = new Set(newItems.map(n => (n as any).id))
+        return prev.filter(it => !tempIds.has((it as any).id))
+      })
+      throw err
     }
   }, [table, isOnline, data])
 
@@ -306,6 +373,7 @@ export function useOfflineData<T extends { id: number }>({
     loading,
     error,
     addItem,
+    addMany,
     updateItem,
     deleteItem,
     refresh,

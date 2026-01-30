@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useUser } from './useUser'
+import { getAuthCache, getAdminUnlockCache, saveAdminUnlockCache, verifyPasswordOffline, derivePasswordHash } from '@/lib/authCache'
 
 const STORAGE_KEY = 'admin-menu-unlocked'
 // Ref global para evitar múltiplas verificações
@@ -62,10 +63,49 @@ export function useAdminUnlock(): UseAdminUnlockReturn {
     setError(null)
 
     try {
-      // Salvar sessão atual antes de validar
+      // Offline: validar contra credenciais cacheadas (desbloqueou online antes OU login)
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine
+      if (isOffline) {
+        // 1) Tentar cache do desbloqueio (salvo quando desbloqueou online)
+        const adminCache = await getAdminUnlockCache()
+        if (adminCache && adminCache.email?.toLowerCase() === email?.toLowerCase()) {
+          const valid = await verifyPasswordOffline(password, email, adminCache.passwordHash)
+          if (valid && (adminCache.role === 'admin' || adminCache.role === 'gerente')) {
+            setIsUnlocked(true)
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem(STORAGE_KEY, 'true')
+              window.dispatchEvent(new CustomEvent('admin-menu-unlocked-change', { detail: { unlocked: true } }))
+            }
+            globalHasChecked = true
+            setIsUnlocking(false)
+            return true
+          }
+        }
+
+        // 2) Fallback: cache do login (usuário logou como admin/gerente)
+        const authCache = await getAuthCache()
+        if (authCache && authCache.userData.email?.toLowerCase() === email?.toLowerCase()) {
+          const valid = await verifyPasswordOffline(password, email, authCache.passwordHash)
+          if (valid && (authCache.userData.role === 'admin' || authCache.userData.role === 'gerente')) {
+            setIsUnlocked(true)
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem(STORAGE_KEY, 'true')
+              window.dispatchEvent(new CustomEvent('admin-menu-unlocked-change', { detail: { unlocked: true } }))
+            }
+            globalHasChecked = true
+            setIsUnlocking(false)
+            return true
+          }
+        }
+
+        setError('Modo offline: desbloqueie online primeiro ou use o email do login.')
+        setIsUnlocking(false)
+        return false
+      }
+
+      // Online: fluxo normal com Supabase
       const { data: { session: currentSession } } = await supabase!.auth.getSession()
 
-      // Tentar fazer login com as credenciais fornecidas para validação
       const { data: authData, error: authError } = await supabase!.auth.signInWithPassword({
         email,
         password
@@ -83,7 +123,6 @@ export function useAdminUnlock(): UseAdminUnlockReturn {
         return false
       }
 
-      // Verificar se o usuário tem role de admin ou gerente
       const { data: userData, error: dbError } = await supabase!
         .from('usuarios')
         .select('role')
@@ -94,7 +133,6 @@ export function useAdminUnlock(): UseAdminUnlockReturn {
       if (dbError || !userData) {
         setError('Usuário não encontrado ou inativo')
         setIsUnlocking(false)
-        // Tentar restaurar sessão original
         if (currentSession) {
           await supabase!.auth.setSession({
             access_token: currentSession.access_token,
@@ -108,7 +146,6 @@ export function useAdminUnlock(): UseAdminUnlockReturn {
       if (userRole !== 'admin' && userRole !== 'gerente') {
         setError('Apenas administradores e gerentes podem desbloquear o menu administrativo')
         setIsUnlocking(false)
-        // Tentar restaurar sessão original
         if (currentSession) {
           await supabase!.auth.setSession({
             access_token: currentSession.access_token,
@@ -118,7 +155,6 @@ export function useAdminUnlock(): UseAdminUnlockReturn {
         return false
       }
 
-      // Restaurar sessão original do usuário logado
       if (currentSession) {
         await supabase!.auth.setSession({
           access_token: currentSession.access_token,
@@ -126,14 +162,21 @@ export function useAdminUnlock(): UseAdminUnlockReturn {
         })
       }
 
-      // Desbloquear menu
+      // Salvar no cache para permitir desbloqueio offline depois
+      const passwordHash = await derivePasswordHash(password, email)
+      await saveAdminUnlockCache({
+        email: email.toLowerCase(),
+        passwordHash,
+        role: userRole,
+        timestamp: Date.now()
+      })
+
       setIsUnlocked(true)
       if (typeof window !== 'undefined') {
         sessionStorage.setItem(STORAGE_KEY, 'true')
-        // Notificar outras instâncias do hook na mesma janela
         window.dispatchEvent(new CustomEvent('admin-menu-unlocked-change', { detail: { unlocked: true } }))
       }
-      globalHasChecked = true // Marcar como verificado após unlock
+      globalHasChecked = true
 
       setIsUnlocking(false)
       return true

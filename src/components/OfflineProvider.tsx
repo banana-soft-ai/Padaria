@@ -106,8 +106,17 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (allConflicts.length > 0) {
-        setConflicts(allConflicts)
-        setShowConflicts(true)
+        const isProduction = process.env.NODE_ENV === 'production'
+        if (isProduction) {
+          // Em produção: resolver automaticamente com versão remota (sem mostrar UI)
+          for (const conflict of allConflicts) {
+            await syncService.resolveConflict(conflict, 'remote')
+          }
+        } else {
+          // Em desenvolvimento: mostrar diálogo para o usuário resolver
+          setConflicts(allConflicts)
+          setShowConflicts(true)
+        }
       }
     } catch (error) {
       console.error('Erro ao verificar conflitos:', error)

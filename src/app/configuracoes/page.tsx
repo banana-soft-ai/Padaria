@@ -25,12 +25,30 @@ export default function ConfiguracoesPage() {
 
   const carregarUsuario = async () => {
     try {
+      // Offline: ir direto para cache (evita chamada que falharia)
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        const cache = await getAuthCache()
+        if (cache?.session?.user) {
+          setUser({
+            id: cache.session.user.id,
+            email: cache.session.user.email,
+            last_sign_in_at: cache.session.user.last_sign_in_at
+          })
+        } else if (cache?.userData) {
+          setUser({
+            id: cache.userData.id,
+            email: cache.userData.email,
+            last_sign_in_at: undefined
+          })
+        }
+        return
+      }
       const { data: { user: authUser } } = await supabase!.auth.getUser()
       if (authUser) {
         setUser(authUser)
         return
       }
-      // Fallback: buscar do cache (offline ou getUser falhou)
+      // Fallback: buscar do cache (getUser falhou)
       const cache = await getAuthCache()
       if (cache?.session?.user) {
         setUser({

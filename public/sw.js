@@ -3,9 +3,10 @@
  * Gerencia cache offline e sincronização em background
  */
 
-const CACHE_NAME = 'rey-dos-paes-v1'
-const STATIC_CACHE_NAME = 'rey-dos-paes-static-v1'
-const API_CACHE_NAME = 'rey-dos-paes-api-v1'
+const CACHE_NAME = 'rey-dos-paes-v2'
+const STATIC_CACHE_NAME = 'rey-dos-paes-static-v2'
+const API_CACHE_NAME = 'rey-dos-paes-api-v2'
+const NEXT_CACHE_NAME = 'rey-dos-paes-next-v2'
 
 // Arquivos estáticos e rotas críticas para precache (primeira visita offline)
 const STATIC_FILES = [
@@ -15,6 +16,9 @@ const STATIC_FILES = [
   '/receitas',
   '/estoque',
   '/configuracoes',
+  '/gestao',
+  '/gestao/dashboard',
+  '/offline',
   '/manifest.json',
   '/favicon.svg',
   '/icons/icon-192x192.png',
@@ -46,6 +50,9 @@ self.addEventListener('install', (event) => {
   )
 })
 
+// Caches válidos (manter ao limpar)
+const VALID_CACHES = [STATIC_CACHE_NAME, API_CACHE_NAME, NEXT_CACHE_NAME]
+
 // Ativar Service Worker
 self.addEventListener('activate', (event) => {
   console.log('Service Worker ativando...')
@@ -55,7 +62,7 @@ self.addEventListener('activate', (event) => {
       .then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (cacheName !== STATIC_CACHE_NAME && cacheName !== API_CACHE_NAME) {
+            if (!VALID_CACHES.includes(cacheName)) {
               console.log('Removendo cache antigo:', cacheName)
               return caches.delete(cacheName)
             }
@@ -73,9 +80,14 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
-  // Ignorar arquivos internos do Next.js (chunks em /_next) para evitar
-  // cache de assets que podem conter host/port antigos (ex: localhost:3001)
+  // Só interceptar requisições do mesmo origin (evitar problemas em dev com host/port)
+  if (url.origin !== self.location.origin) {
+    return
+  }
+
+  // Chunks e assets do Next.js (_next) - essenciais para o app funcionar offline
   if (url.pathname.startsWith('/_next/')) {
+    event.respondWith(networkFirstWithCache(request, NEXT_CACHE_NAME))
     return
   }
 
@@ -156,6 +168,22 @@ async function cacheFirst(request) {
   }
 }
 
+// Estratégia Network First com cache específico (para _next e outros)
+async function networkFirstWithCache(request, cacheName) {
+  try {
+    const response = await fetch(request)
+    if (response.status === 200) {
+      const cache = await caches.open(cacheName)
+      cache.put(request, response.clone())
+    }
+    return response
+  } catch (error) {
+    const cache = await caches.open(cacheName)
+    const cached = await cache.match(request)
+    return cached || new Response('Offline', { status: 503 })
+  }
+}
+
 // Estratégia Network First com Fallback
 async function networkFirstWithFallback(request) {
   try {
@@ -172,9 +200,13 @@ async function networkFirstWithFallback(request) {
   } catch (error) {
     console.log('Rede indisponível, tentando cache:', request.url)
     
-    // Fallback para cache
-    const cache = await caches.open(API_CACHE_NAME)
-    const cached = await cache.match(request)
+    // Fallback: verificar API_CACHE (páginas visitadas) e STATIC_CACHE (precache)
+    const apiCache = await caches.open(API_CACHE_NAME)
+    let cached = await apiCache.match(request)
+    if (!cached && isPageRequest(request)) {
+      const staticCache = await caches.open(STATIC_CACHE_NAME)
+      cached = await staticCache.match(request)
+    }
     
     if (cached) {
       return cached
@@ -234,11 +266,7 @@ async function syncPendingOperations() {
 setInterval(async () => {
   try {
     const cacheNames = await caches.keys()
-    const oldCaches = cacheNames.filter(name => 
-      name !== STATIC_CACHE_NAME && 
-      name !== API_CACHE_NAME &&
-      name !== CACHE_NAME
-    )
+    const oldCaches = cacheNames.filter(name => !VALID_CACHES.includes(name))
     
     for (const cacheName of oldCaches) {
       await caches.delete(cacheName)

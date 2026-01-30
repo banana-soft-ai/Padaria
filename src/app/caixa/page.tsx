@@ -1420,9 +1420,10 @@ export default function PDVPage() {
             const valorDesconto = Number(venda.desconto ?? 0)
             const subtotalBruto = valorTotal + valorDesconto
             const operadorNome = (venda.operador_nome || '').trim() || '—'
-            const isDinheiro = (venda.forma_pagamento || '').toLowerCase() === 'dinheiro'
-            const valorRecebidoDinheiro = Number(venda.valor_pago ?? 0)
+            const valorPago = Number(venda.valor_pago ?? 0)
             const valorTroco = Number(venda.valor_troco ?? 0)
+            const valorRecebidoExibir = valorPago > 0 ? valorPago : valorTotal
+            const isDinheiro = (venda.forma_pagamento || '').toLowerCase() === 'dinheiro'
 
             const html = `
                 <!DOCTYPE html>
@@ -1495,23 +1496,16 @@ export default function PDVPage() {
                         <span>SUBTOTAL R$</span>
                         <span>${subtotalBruto.toFixed(2)}</span>
                     </div>
-                    ${isDinheiro && valorRecebidoDinheiro > 0 ? `
                     <div style="display: flex; justify-content: space-between; font-size: 10px;">
-                        <span>DINHEIRO R$</span>
-                        <span>${valorRecebidoDinheiro.toFixed(2)}</span>
+                        <span>VALOR RECEBIDO (${formaPagamentoDisplay}) R$</span>
+                        <span>${valorRecebidoExibir.toFixed(2)}</span>
                     </div>
-                    ${valorTroco > 0 ? `
+                    ${isDinheiro ? `
                     <div style="display: flex; justify-content: space-between; font-size: 10px;">
                         <span>TROCO R$</span>
                         <span>${valorTroco.toFixed(2)}</span>
                     </div>
                     ` : ''}
-                    ` : `
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
-                        <span>${formaPagamentoDisplay} R$</span>
-                        <span>${valorTotal.toFixed(2)}</span>
-                    </div>
-                    `}
                     <div style="display: flex; justify-content: space-between; font-size: 10px;">
                         <span>DESCONTO R$</span>
                         <span>${valorDesconto > 0 ? '-' : ''}${valorDesconto.toFixed(2)}</span>
@@ -1575,9 +1569,10 @@ export default function PDVPage() {
         const valorDesconto = Number(venda.desconto ?? 0)
         const subtotalBruto = valorTotal + valorDesconto
         const operadorNome = (venda.operador_nome || '').trim() || '-'
-        const isDinheiro = (venda.forma_pagamento || '').toLowerCase() === 'dinheiro'
-        const valorRecebidoDinheiro = Number(venda.valor_pago ?? 0)
+        const valorPago = Number(venda.valor_pago ?? 0)
         const valorTroco = Number(venda.valor_troco ?? 0)
+        const valorRecebidoExibir = valorPago > 0 ? valorPago : valorTotal
+        const isDinheiro = (venda.forma_pagamento || '').toLowerCase() === 'dinheiro'
 
         const linhas: string[] = []
         const L = 48
@@ -1608,12 +1603,8 @@ export default function PDVPage() {
         })
         linhas.push('--------------------------------')
         linhas.push(`SUBTOTAL R$`.padEnd(L - 12) + subtotalBruto.toFixed(2))
-        if (isDinheiro && valorRecebidoDinheiro > 0) {
-            linhas.push(`DINHEIRO R$`.padEnd(L - 12) + valorRecebidoDinheiro.toFixed(2))
-            if (valorTroco > 0) linhas.push(`TROCO R$`.padEnd(L - 12) + valorTroco.toFixed(2))
-        } else {
-            linhas.push(`${formaPagamentoDisplay} R$`.padEnd(L - 12) + valorTotal.toFixed(2))
-        }
+        linhas.push(`VALOR RECEBIDO (${formaPagamentoDisplay}) R$`.padEnd(L - 12) + valorRecebidoExibir.toFixed(2))
+        if (isDinheiro) linhas.push(`TROCO R$`.padEnd(L - 12) + valorTroco.toFixed(2))
         linhas.push(`DESCONTO R$`.padEnd(L - 12) + (valorDesconto > 0 ? '-' : '') + valorDesconto.toFixed(2))
         linhas.push('--------------------------------')
         linhas.push(`TOTAL R$`.padEnd(L - 12) + valorTotal.toFixed(2))

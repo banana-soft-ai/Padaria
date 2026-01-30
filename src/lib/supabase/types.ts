@@ -66,6 +66,7 @@ export interface Database {
                     estoque_atual?: number
                     preco_venda?: number
                     codigo_barras?: string | null
+                    codigo_balanca?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -77,6 +78,7 @@ export interface Database {
                     estoque_atual?: number
                     preco_venda?: number
                     codigo_barras?: string | null
+                    codigo_balanca?: string | null
                     created_at?: string
                     updated_at?: string
                 }>
@@ -88,6 +90,7 @@ export interface Database {
                     estoque_atual?: number
                     preco_venda?: number
                     codigo_barras?: string | null
+                    codigo_balanca?: string | null
                     created_at?: string
                     updated_at?: string
                 }>

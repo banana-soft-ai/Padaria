@@ -23,6 +23,7 @@ interface Insumo {
   quantidade_pacote?: number | null
   preco_unitario?: number | null
   codigo_barras: string
+  codigo_balanca?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -73,7 +74,8 @@ export default function EstoquePage() {
     preco_pacote: '',
     estoque_atual: '',
     estoque_minimo: '',
-    codigo_barras: ''
+    codigo_barras: '',
+    codigo_balanca: ''
   })
 
   const categoriaOptions = [
@@ -180,7 +182,7 @@ export default function EstoquePage() {
       if (filtroEstoque === 'todos' || filtroEstoque === 'varejo') {
         const { data: varejoData, error: varejoError } = await supabase!
         .from('varejo')
-          .select('id, nome, categoria, marca, fornecedor, unidade, unidade_medida_base, quantidade_pacote, preco_venda, preco_pacote, preco_unitario, peso_pacote, quantidade_minima, estoque_atual, estoque_minimo, codigo_barras, ativo, created_at, updated_at')
+          .select('id, nome, categoria, marca, fornecedor, unidade, unidade_medida_base, quantidade_pacote, preco_venda, preco_pacote, preco_unitario, peso_pacote, quantidade_minima, estoque_atual, estoque_minimo, codigo_barras, codigo_balanca, ativo, created_at, updated_at')
           .eq('ativo', true)
           .order('nome', { ascending: true })
         if (varejoError) throw varejoError
@@ -211,6 +213,7 @@ export default function EstoquePage() {
             quantidade_minima: v.quantidade_minima ?? null,
             preco_unitario: precoUnitStored ?? precoUnitCalculated,
             codigo_barras: v.codigo_barras ?? '',
+            codigo_balanca: v.codigo_balanca ?? undefined,
             created_at: v.created_at,
             updated_at: v.updated_at,
           }
@@ -267,6 +270,11 @@ export default function EstoquePage() {
             return
           }
         }
+        const codigoBalancaSan = (formData.codigo_balanca || '').replace(/\D/g, '').trim()
+        if (codigoBalancaSan && codigoBalancaSan.length !== 5) {
+          showToast('Código balança deve ter exatamente 5 dígitos', 'error')
+          return
+        }
 
         const produtoPayload = {
           nome: formData.nome,
@@ -284,6 +292,7 @@ export default function EstoquePage() {
           estoque_atual: formData.estoque_atual ? parseFloat(formData.estoque_atual) : 0,
           estoque_minimo: formData.estoque_minimo ? parseFloat(formData.estoque_minimo) : 0,
           codigo_barras: (formData.codigo_barras || '').trim() || null,
+          codigo_balanca: codigoBalancaSan || null,
           ativo: true,
         }
 
@@ -409,7 +418,8 @@ export default function EstoquePage() {
         preco_pacote: '',
         estoque_atual: '',
         estoque_minimo: '',
-        codigo_barras: ''
+        codigo_barras: '',
+        codigo_balanca: ''
       })
 
       carregarItens()
@@ -454,7 +464,8 @@ export default function EstoquePage() {
       preco_pacote: insumo.preco_pacote?.toString() || '',
       estoque_atual: insumo.estoque_atual?.toString() || '',
       estoque_minimo: insumo.estoque_minimo?.toString() || '',
-      codigo_barras: insumo.codigo_barras || ''
+      codigo_barras: insumo.codigo_barras || '',
+      codigo_balanca: insumo.codigo_balanca || ''
     })
     setActiveModal(insumo.tipo_estoque === 'varejo' ? 'varejo' : 'insumo')
   }
@@ -542,7 +553,8 @@ export default function EstoquePage() {
                   preco_pacote: '',
                   estoque_atual: '',
                   estoque_minimo: '',
-                  codigo_barras: ''
+                  codigo_barras: '',
+                  codigo_balanca: ''
                 })
                 setActiveModal('insumo')
               }}
@@ -568,7 +580,8 @@ export default function EstoquePage() {
                   preco_pacote: '',
                   estoque_atual: '',
                   estoque_minimo: '',
-                  codigo_barras: ''
+                  codigo_barras: '',
+                  codigo_balanca: ''
                 })
                 setActiveModal('varejo')
               }}
@@ -753,6 +766,20 @@ export default function EstoquePage() {
                     className="w-full px-3 py-2 border rounded-md"
                   />
                 </div>
+
+                {isVarejoModal && (formData.unidade === 'kg' || formData.unidade === 'g') && (
+                  <div>
+                    <label className="text-sm">Código Balança (5 dígitos MGV7)</label>
+                    <input
+                      type="text"
+                      maxLength={5}
+                      value={formData.codigo_balanca}
+                      onChange={(e) => setFormData({ ...formData, codigo_balanca: e.target.value.replace(/\D/g, '').slice(0, 5) })}
+                      placeholder="00123"
+                      className="w-full px-3 py-2 border rounded-md"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="text-sm">Estoque Atual</label>

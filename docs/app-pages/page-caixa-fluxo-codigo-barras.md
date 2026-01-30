@@ -120,26 +120,41 @@ sequenceDiagram
 
 ## 4. Função `adicionarPorCodigo`
 
-**Localização:** ~linha 973
+**Localização:** ~linha 1224
 
 ### 4.1 Fluxo Interno
 
 ```mermaid
-flowchart LR
+flowchart TD
     A[codigoBruto] --> B[Normaliza: trim + remove não-dígitos]
-    B --> C[Busca em produtos locais]
-    C --> D{Encontrou?}
-    D -->|Sim| E[adicionarAoCarrinho]
-    D -->|Não| F[Consulta Supabase varejo]
-    F --> G{Encontrou?}
-    G -->|Sim| H[Cache local + adicionarAoCarrinho]
-    G -->|Não| I[return false]
+    B --> C{parseEan13Balanca: 13 dígitos e prefixo 20-29?}
+    C -->|Sim| D[Fluxo Balança]
+    C -->|Não| E[Fluxo Normal]
+    D --> D1[Busca codigo_balanca = CCCCC]
+    D1 --> D2{unidade kg/g?}
+    D2 -->|Sim| D3[peso_kg = VVVVV/1000, preco = preco_venda]
+    D2 -->|Não| D4[preco = VVVVV/100, qtd = 1]
+    D3 --> D5[adicionarAoCarrinhoComPesoOuPreco]
+    D4 --> D5
+    E --> E1[Busca em produtos locais por codigoBarras]
+    E1 --> E2{Encontrou?}
+    E2 -->|Sim| E3[adicionarAoCarrinho]
+    E2 -->|Não| E4[Consulta Supabase varejo]
+    E4 --> E5{Encontrou?}
+    E5 -->|Sim| E6[Cache local + adicionarAoCarrinho]
+    E5 -->|Não| E7[return false]
 ```
 
-### 4.2 Busca
+### 4.2 Busca (Produto Comum)
 
 - **Local:** `produtos.find()` por `codigoBarras` (exato ou normalizado)
 - **Remoto:** `getSupabase().from('varejo').or('codigo_barras.eq.X,codigo_barras.eq.Y')`
+
+### 4.3 Busca (Produto de Balança)
+
+- **Local:** `produtos.find()` por `codigoBalanca` = CCCCC (5 dígitos extraídos do EAN-13)
+- **Remoto:** `getSupabase().from('varejo').eq('codigo_balanca', CCCCC)`
+- **VVVVV:** Se `unidade` kg/g → peso em gramas (peso_kg = VVVVV/1000). Senão → valor em centavos (preco = VVVVV/100).
 
 ---
 
@@ -156,7 +171,31 @@ Ou seja: o fluxo antigo (input focado) continua funcionando; o buffer global é 
 
 ---
 
-## 6. Cleanup
+## 6. Integração Balança Toledo Prix
+
+O sistema suporta etiquetas EAN-13 de peso variável (prefixos GS1 20-29) geradas pela balança Toledo Prix.
+
+### 6.1 Estrutura do Código
+
+| Posição | Campo | Significado |
+|---------|-------|-------------|
+| 1-2 | PP | Prefixo balança (20-29) |
+| 3-7 | CCCCC | Código interno MGV7 (5 dígitos) |
+| 8-12 | VVVVV | Peso em gramas ou valor em centavos |
+| 13 | D | Dígito verificador EAN-13 |
+
+### 6.2 Cadastro
+
+Produtos de balança devem ter o campo `codigo_balanca` preenchido na tela de Gestão > Estoque. O campo aparece quando o produto é de varejo e a unidade é `kg` ou `g`. O valor deve ter exatamente 5 dígitos (ex.: `00123`).
+
+### 6.3 Interpretação de VVVVV
+
+- **unidade kg ou g:** VVVVV = peso em gramas → `peso_kg = VVVVV / 1000`
+- **outras unidades:** VVVVV = valor em centavos → `preco = VVVVV / 100`
+
+---
+
+## 7. Cleanup
 
 No `useEffect` de hotkeys, o cleanup:
 

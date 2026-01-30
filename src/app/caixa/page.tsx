@@ -48,10 +48,28 @@ import { getTurnoOperadorAtual, finalizarTurnoOperador } from '@/repositories/tu
 // e assim isolar se o problema está no trigger/DB ou na inserção da venda.
 const USE_DB_TRIGGER = false
 
+/** EAN-13 de balança (prefixos 20-29): PP CCCCC VVVVV D */
+function parseEan13Balanca(codeNum: string): { codigoProduto: string; valorEmbutido: number } | null {
+    if (!codeNum || codeNum.length !== 13 || !/^\d+$/.test(codeNum)) return null
+    const prefix = parseInt(codeNum.slice(0, 2), 10)
+    if (prefix < 20 || prefix > 29) return null
+    // Validar dígito verificador EAN-13
+    let sum = 0
+    for (let i = 0; i < 12; i++) {
+        sum += parseInt(codeNum[i], 10) * (i % 2 === 0 ? 1 : 3)
+    }
+    const check = (10 - (sum % 10)) % 10
+    if (parseInt(codeNum[12], 10) !== check) return null
+    const codigoProduto = codeNum.slice(2, 7)
+    const valorEmbutido = parseInt(codeNum.slice(7, 12), 10)
+    return { codigoProduto, valorEmbutido }
+}
+
 // Interfaces baseadas na estrutura do seu banco de dados
 interface Produto {
     id: number
     codigoBarras: string
+    codigoBalanca?: string
     nome: string
     preco: number
     estoque: number
@@ -1038,6 +1056,7 @@ export default function PDVPage() {
                 const produtosFormatados: Produto[] = data.map((item: any) => ({
                     id: item.id,
                     codigoBarras: item.codigo_barras || '',
+                    codigoBalanca: item.codigo_balanca || undefined,
                     nome: item.nome,
                     preco: item.preco_venda || 0,
                     estoque: item.estoque_atual || 0,
@@ -1057,6 +1076,7 @@ export default function PDVPage() {
             const produtosFormatados: Produto[] = (data || []).map((item: any) => ({
                 id: item.id,
                 codigoBarras: item.codigo_barras || '',
+                codigoBalanca: item.codigo_balanca || undefined,
                 nome: item.nome,
                 preco: item.preco_venda || 0,
                 estoque: item.estoque_atual || 0,
@@ -1075,6 +1095,7 @@ export default function PDVPage() {
                     const produtosFormatados: Produto[] = data.map((item: any) => ({
                         id: item.id,
                         codigoBarras: item.codigo_barras || '',
+                        codigoBalanca: item.codigo_balanca || undefined,
                         nome: item.nome,
                         preco: item.preco_venda || 0,
                         estoque: item.estoque_atual || 0,
@@ -1209,7 +1230,9 @@ export default function PDVPage() {
                 if (item.id === id) {
                     const novaQtd = item.qtdCarrinho + delta
                     if (novaQtd <= 0) return null
-                    if (novaQtd > item.estoque) {
+                    const isPeso = item.unidade === 'kg' || item.unidade === 'g'
+                    const estoqueOk = !isPeso || item.estoque <= 0 || item.estoque == null || novaQtd <= item.estoque
+                    if (!estoqueOk) {
                         showToast('Estoque limite atingido', 'warning')
                         return item
                     }
@@ -1220,11 +1243,85 @@ export default function PDVPage() {
         })
     }
 
+    const adicionarAoCarrinhoComPesoOuPreco = (produto: Produto, qtd: number, precoUnit: number) => {
+        const isPeso = produto.unidade === 'kg' || produto.unidade === 'g'
+        const estoqueOk = !isPeso || produto.estoque <= 0 || produto.estoque == null || qtd <= produto.estoque
+        if (!estoqueOk) {
+            showToast('Estoque insuficiente', 'warning')
+            return
+        }
+        setCarrinho(prev => {
+            const existente = prev.find(p => p.id === produto.id)
+            if (existente) {
+                const novaQtd = existente.qtdCarrinho + qtd
+                const estoqueOkMerge = !isPeso || produto.estoque <= 0 || produto.estoque == null || novaQtd <= produto.estoque
+                if (!estoqueOkMerge) {
+                    showToast('Estoque insuficiente', 'warning')
+                    return prev
+                }
+                const updated = prev.map(p =>
+                    p.id === produto.id ? { ...p, qtdCarrinho: novaQtd, preco: precoUnit } : p
+                )
+                setLastAddedItem({ ...produto, qtdCarrinho: novaQtd, preco: precoUnit })
+                return updated
+            }
+            setLastAddedItem({ ...produto, qtdCarrinho: qtd, preco: precoUnit })
+            return [...prev, { ...produto, qtdCarrinho: qtd, preco: precoUnit }]
+        })
+        setSearchTerm('')
+        searchInputRef.current?.blur()
+    }
+
     // Adiciona via código de barras (busca local e, se faltar, no Supabase)
     const adicionarPorCodigo = async (codigoBruto: string) => {
         const normaliza = (s: string) => s.replace(/\D/g, '')
         const code = (codigoBruto || '').trim()
         const codeNum = normaliza(code)
+
+        const parsed = parseEan13Balanca(codeNum)
+        if (parsed) {
+            const { codigoProduto, valorEmbutido } = parsed
+            let prodBalança = produtos.find(p => (p.codigoBalanca || '').trim() === codigoProduto)
+            if (!prodBalança) {
+                try {
+                    const { data, error } = await getSupabase()
+                        .from('varejo')
+                        .select('*')
+                        .eq('codigo_balanca', codigoProduto)
+                        .limit(1)
+                    if (error) throw error
+                    const item = data?.[0]
+                    if (!item) return false
+                    const prod: Produto = {
+                        id: item.id,
+                        codigoBarras: item.codigo_barras || '',
+                        codigoBalanca: item.codigo_balanca || undefined,
+                        nome: item.nome,
+                        preco: item.preco_venda || 0,
+                        estoque: item.estoque_atual ?? 0,
+                        unidade: item.unidade || 'un'
+                    }
+                    setProdutos(prev => (prev.some(p => p.id === prod.id) ? prev : [...prev, prod]))
+                    prodBalança = prod
+                } catch (e) {
+                    console.error('Erro buscando por codigo_balanca:', e)
+                    return false
+                }
+            }
+            const un = (prodBalança.unidade || '').toLowerCase()
+            const isPeso = un === 'kg' || un === 'g'
+            let qtd: number
+            let precoUnit: number
+            if (isPeso) {
+                qtd = valorEmbutido / 1000
+                precoUnit = prodBalança.preco
+            } else {
+                qtd = 1
+                precoUnit = valorEmbutido / 100
+            }
+            adicionarAoCarrinhoComPesoOuPreco(prodBalança, qtd, precoUnit)
+            return true
+        }
 
         // 1) Busca nos itens já carregados
         let encontrado = produtos.find(p => {
@@ -1251,6 +1348,7 @@ export default function PDVPage() {
             const prod: Produto = {
                 id: item.id,
                 codigoBarras: item.codigo_barras || '',
+                codigoBalanca: item.codigo_balanca || undefined,
                 nome: item.nome,
                 preco: item.preco_venda || 0,
                 estoque: item.estoque_atual || 0,
@@ -3322,22 +3420,34 @@ export default function PDVPage() {
                                                         <span className="text-[9px] text-gray-400 font-bold uppercase">REF: {item.id}</span>
                                                     </div>
                                                     <div className="w-24 text-center text-xs font-bold text-gray-400">
-                                                        R$ {item.preco.toFixed(2)}
+                                                        {item.unidade === 'kg' || item.unidade === 'g' ? 'R$/kg' : 'R$'} {item.preco.toFixed(2)}
                                                     </div>
                                                     <div className="w-32 flex items-center justify-center gap-2">
-                                                        <button
-                                                            onClick={() => alterarQtd(item.id, -1)}
-                                                            className="w-8 h-8 bg-blue-50 rounded-xl text-blue-600 flex items-center justify-center hover:bg-blue-100"
-                                                        >
-                                                            <Minus className="h-4 w-4" />
-                                                        </button>
-                                                        <span className="font-black text-sm text-gray-700 w-8 text-center">{item.qtdCarrinho}</span>
-                                                        <button
-                                                            onClick={() => alterarQtd(item.id, 1)}
-                                                            className="w-8 h-8 bg-blue-50 rounded-xl text-blue-600 flex items-center justify-center hover:bg-blue-100"
-                                                        >
-                                                            <Plus className="h-4 w-4" />
-                                                        </button>
+                                                        {(() => {
+                                                            const isPeso = item.unidade === 'kg' || item.unidade === 'g'
+                                                            const delta = isPeso ? 0.1 : 1
+                                                            return (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => alterarQtd(item.id, -delta)}
+                                                                        className="w-8 h-8 bg-blue-50 rounded-xl text-blue-600 flex items-center justify-center hover:bg-blue-100"
+                                                                    >
+                                                                        <Minus className="h-4 w-4" />
+                                                                    </button>
+                                                                    <span className="font-black text-sm text-gray-700 w-12 text-center">
+                                                                        {isPeso
+                                                                            ? `${Number(item.qtdCarrinho).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`
+                                                                            : item.qtdCarrinho}
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={() => alterarQtd(item.id, delta)}
+                                                                        className="w-8 h-8 bg-blue-50 rounded-xl text-blue-600 flex items-center justify-center hover:bg-blue-100"
+                                                                    >
+                                                                        <Plus className="h-4 w-4" />
+                                                                    </button>
+                                                                </>
+                                                            )
+                                                        })()}
                                                     </div>
                                                     <span className="w-24 text-right font-black text-blue-600 text-sm">
                                                         R$ {(item.preco * item.qtdCarrinho).toFixed(2)}

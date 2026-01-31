@@ -1149,30 +1149,30 @@ export default function PDVPage() {
         const dataFormatada = now.toLocaleDateString('pt-BR')
         const horaFormatada = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
         const htmlItems = `
-            <tr><td style="padding: 2px 0; font-size: 10px;">1 12345 PÃO FRANCÊS</td><td style="text-align: right;">2,50</td></tr>
-            <tr><td style="font-size: 9px; color: #555;">1 UN x 2,50</td><td></td></tr>
-            <tr><td style="padding: 2px 0; font-size: 10px;">2 67890 CAFÉ</td><td style="text-align: right;">5,00</td></tr>
-            <tr><td style="font-size: 9px; color: #555;">1 UN x 5,00</td><td></td></tr>
+            <tr><td style="padding: 2px 0; font-size: 11px; font-weight: 600; color: #000;">1 12345 PÃO FRANCÊS</td><td style="text-align: right; font-size: 11px; font-weight: 600;">2,50</td></tr>
+            <tr><td style="font-size: 10px; font-weight: 600; color: #000;">1 UN x 2,50</td><td></td></tr>
+            <tr><td style="padding: 2px 0; font-size: 11px; font-weight: 600; color: #000;">2 67890 CAFÉ</td><td style="text-align: right; font-size: 11px; font-weight: 600;">5,00</td></tr>
+            <tr><td style="font-size: 10px; font-weight: 600; color: #000;">1 UN x 5,00</td><td></td></tr>
         `
         const html = `
             <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cupom Teste</title>
-            <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:10px;width:280px;padding:8px;background:#fff;line-height:1.2}.center{text-align:center}.divider{border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}</style></head>
+            <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:11px;font-weight:600;width:280px;padding:6px;background:#fff;line-height:1.2;color:#000}.center{text-align:center}.divider{border-top:1px dashed #000;margin:4px 0}table{width:100%;border-collapse:collapse}</style></head>
             <body>
-                <div class="center" style="margin-bottom:6px">
-                    <div style="font-size:12px;font-weight:bold">${esc(cupomNomeLoja)}</div>
-                    <div style="font-size:9px;color:#333">${esc(cupomEndereco)} / ${esc(cupomCidadeUf)}</div>
-                    <div style="font-size:9px;color:#333">CNPJ: ${esc(cupomCnpj)} | ${dataFormatada} ${horaFormatada}</div>
+                <div class="center" style="margin-bottom:4px">
+                    <div style="font-size:13px;font-weight:bold">${esc(cupomNomeLoja)}</div>
+                    <div style="font-size:10px;font-weight:600;color:#000">${esc(cupomEndereco)} / ${esc(cupomCidadeUf)}</div>
+                    <div style="font-size:10px;font-weight:600;color:#000">CNPJ: ${esc(cupomCnpj)} | ${dataFormatada} ${horaFormatada}</div>
                 </div>
                 <div class="divider"></div>
-                <div class="center" style="font-size:11px;font-weight:bold;margin-bottom:2px">CUPOM FISCAL</div>
-                <div class="center" style="font-size:9px;color:#333">Comprovante de Venda (TESTE)</div>
+                <div class="center" style="font-size:12px;font-weight:bold;margin-bottom:2px">CUPOM FISCAL</div>
+                <div class="center" style="font-size:10px;font-weight:600;color:#000">Comprovante de Venda (TESTE)</div>
                 <div class="divider"></div>
                 <table><tbody>${htmlItems}</tbody></table>
                 <div class="divider"></div>
-                <div style="display:flex;justify-content:space-between;font-size:10px"><span>SUBTOTAL R$</span><span>7,50</span></div>
-                <div style="display:flex;justify-content:space-between;font-size:10px"><span>TOTAL R$</span><span>7,50</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600"><span>SUBTOTAL R$</span><span>7,50</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600"><span>TOTAL R$</span><span>7,50</span></div>
                 <div class="divider"></div>
-                <div class="center" style="font-size:9px;margin:8px 0">${esc(cupomMensagem)}</div>
+                <div class="center" style="font-size:10px;font-weight:600;margin:6px 0;color:#000">${esc(cupomMensagem)}</div>
             </body></html>
         `
         const w = window.open('', '_blank', 'width=320,height=500')
@@ -1646,13 +1646,13 @@ export default function PDVPage() {
                 const qtdExibir = Number.isInteger(qtd) ? String(qtd) : qtd.toFixed(3)
                 const descLinha = `${qtdExibir} UN x ${unitario.toFixed(2)}`
                 return `
-                    <tr style="border-bottom: 1px dotted #999;">
-                        <td style="padding: 2px 0; font-size: 10px; vertical-align: top;">${idx + 1} ${codigo} ${nome}</td>
-                        <td style="padding: 2px 0 2px 6px; font-size: 10px; text-align: right; vertical-align: top; white-space: nowrap;">${subtotal.toFixed(2)}</td>
+                    <tr style="border-bottom: 1px dotted #000;">
+                        <td style="padding: 2px 0; font-size: 11px; font-weight: 600; vertical-align: top; color: #000;">${idx + 1} ${codigo} ${nome}</td>
+                        <td style="padding: 2px 0 2px 6px; font-size: 11px; font-weight: 600; text-align: right; vertical-align: top; white-space: nowrap; color: #000;">${subtotal.toFixed(2)}</td>
                     </tr>
-                    <tr style="border-bottom: 1px dotted #999;">
-                        <td style="padding: 0 0 4px 0; font-size: 9px; color: #555;">${descLinha}</td>
-                        <td style="padding: 0 0 4px 6px; font-size: 9px;"></td>
+                    <tr style="border-bottom: 1px dotted #000;">
+                        <td style="padding: 0 0 3px 0; font-size: 10px; font-weight: 600; color: #000;">${descLinha}</td>
+                        <td style="padding: 0 0 3px 6px; font-size: 10px;"></td>
                     </tr>
                 `
             }).join('')
@@ -1676,27 +1676,29 @@ export default function PDVPage() {
                         * { margin: 0; padding: 0; box-sizing: border-box; }
                         body {
                             font-family: 'Courier New', monospace;
-                            font-size: 10px;
+                            font-size: 11px;
+                            font-weight: 600;
                             width: 280px;
-                            padding: 8px;
+                            padding: 6px;
                             background: #fff;
                             line-height: 1.2;
+                            color: #000;
                         }
                         .center { text-align: center; }
                         .right { text-align: right; }
                         .bold { font-weight: bold; }
-                        .divider { border-top: 1px dashed #000; margin: 6px 0; }
-                        .header-cupom { margin-bottom: 6px; }
-                        .empresa { font-size: 12px; font-weight: bold; margin-bottom: 2px; }
-                        .endereco { font-size: 9px; color: #333; margin-bottom: 2px; }
-                        .cnpj-data { font-size: 9px; color: #333; display: flex; justify-content: space-between; align-items: center; }
+                        .divider { border-top: 1px dashed #000; margin: 4px 0; }
+                        .header-cupom { margin-bottom: 4px; }
+                        .empresa { font-size: 13px; font-weight: bold; margin-bottom: 2px; }
+                        .endereco { font-size: 10px; font-weight: 600; color: #000; margin-bottom: 2px; }
+                        .cnpj-data { font-size: 10px; font-weight: 600; color: #000; display: flex; justify-content: space-between; align-items: center; }
                         table { width: 100%; border-collapse: collapse; table-layout: fixed; }
                         .col-desc { width: 70%; word-break: break-word; }
                         .col-valor { width: 30%; }
                         .total-line { font-size: 12px; font-weight: bold; }
                         @media print {
-                            body { width: 80mm; padding: 4px; padding-bottom: 20mm; font-size: 9px; }
-                            @page { margin: 0; margin-bottom: 15mm; size: 80mm auto; }
+                            body { width: 80mm; padding: 4px; padding-bottom: 12mm; font-size: 10px; font-weight: 600; }
+                            @page { margin: 0; margin-bottom: 10mm; size: 80mm auto; }
                         }
                     </style>
                 </head>
@@ -1715,15 +1717,15 @@ export default function PDVPage() {
                     <div class="center bold" style="font-size: 11px; margin-bottom: 2px;">
                         CUPOM FISCAL
                     </div>
-                    <div class="center" style="font-size: 9px; color: #333;">Comprovante de Venda</div>
+                    <div class="center" style="font-size: 10px; font-weight: 600; color: #000;">Comprovante de Venda</div>
 
                     <div class="divider"></div>
 
                     <table>
                         <thead>
                             <tr style="border-bottom: 1px solid #000;">
-                                <th style="font-size: 9px; text-align: left;">ITEM CÓD. DESCRIÇÃO</th>
-                                <th style="font-size: 9px; text-align: right;">VALOR</th>
+                                <th style="font-size: 10px; font-weight: 700; text-align: left;">ITEM CÓD. DESCRIÇÃO</th>
+                                <th style="font-size: 10px; font-weight: 700; text-align: right;">VALOR</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1733,21 +1735,21 @@ export default function PDVPage() {
 
                     <div class="divider"></div>
 
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600;">
                         <span>SUBTOTAL R$</span>
                         <span>${subtotalBruto.toFixed(2)}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600;">
                         <span>VALOR RECEBIDO (${formaPagamentoDisplay}) R$</span>
                         <span>${valorRecebidoExibir.toFixed(2)}</span>
                     </div>
                     ${isDinheiro ? `
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600;">
                         <span>TROCO R$</span>
                         <span>${valorTroco.toFixed(2)}</span>
                     </div>
                     ` : ''}
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600;">
                         <span>DESCONTO R$</span>
                         <span>${valorDesconto > 0 ? '-' : ''}${valorDesconto.toFixed(2)}</span>
                     </div>
@@ -1757,22 +1759,22 @@ export default function PDVPage() {
                     </div>
 
                     <div class="divider"></div>
-                    <div style="font-size: 9px; color: #333; margin-bottom: 8px;">
+                    <div style="font-size: 10px; font-weight: 600; color: #000; margin-bottom: 6px;">
                         OPERADOR: ${esc(operadorNome)}
                     </div>
                     ${cadernetaData ? `
                     <div class="divider"></div>
                     <div class="center bold" style="font-size: 10px; margin-bottom: 4px;">ATUALIZAÇÃO DO CLIENTE</div>
                     <div class="divider"></div>
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600;">
                         <span>Saldo devedor anterior</span>
                         <span>R$ ${cadernetaData.saldoDevedorAnterior.toFixed(2)}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600;">
                         <span>Valor da compra</span>
                         <span>R$ ${cadernetaData.valorCompra.toFixed(2)}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600;">
                         <span>Saldo devedor atual.</span>
                         <span>R$ ${cadernetaData.saldoDevedorAtualizado.toFixed(2)}</span>
                     </div>
@@ -1781,10 +1783,10 @@ export default function PDVPage() {
                     <div class="center bold" style="font-size: 11px; margin: 8px 0;">
                         OBRIGADO, VOLTE SEMPRE!
                     </div>
-                    <div class="center" style="font-size: 9px; color: #333;">
+                    <div class="center" style="font-size: 10px; font-weight: 600; color: #000;">
                         ${esc(mensagemCupom)}
                     </div>
-                    <div style="height: 40px; min-height: 40px;"></div>
+                    <div style="height: 20px; min-height: 20px;"></div>
                 </body>
                 </html>
             `
@@ -1842,6 +1844,9 @@ export default function PDVPage() {
         const center = (s: string) => s.padStart(Math.floor((L + s.length) / 2)).padEnd(L)
         const right = (s: string) => s.padStart(L)
 
+        // ESC E 1 = ativar negrito em toda impressão (Elgin i9 / ESC/POS)
+        const ESC_BOLD = '\x1b\x45\x01'
+        linhas.push(ESC_BOLD)
         linhas.push('')
         linhas.push(center(nomeLoja))
         linhas.push(center(`${enderecoCupom} / ${cidadeUfCupom}`))
@@ -1885,9 +1890,6 @@ export default function PDVPage() {
         linhas.push('')
         linhas.push(center('OBRIGADO, VOLTE SEMPRE!'))
         linhas.push(center(mensagemCupom))
-        linhas.push('')
-        linhas.push('')
-        linhas.push('')
         linhas.push('')
         linhas.push('')
         return linhas
@@ -3375,20 +3377,20 @@ export default function PDVPage() {
                                     Caixa (F4)
                                 </button>
                                 <button
-                                    onClick={() => setView('caderneta')}
-                                    title="Ir para Caderneta (F11)"
-                                    className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
-                                    style={{ backgroundColor: view === 'caderneta' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
-                                >
-                                    Caderneta (F11)
-                                </button>
-                                <button
                                     onClick={() => setView('saida')}
                                     title="Ir para Saída (F10)"
                                     className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
                                     style={{ backgroundColor: view === 'saida' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
                                 >
                                     Saída (F10)
+                                </button>
+                                <button
+                                    onClick={() => setView('caderneta')}
+                                    title="Ir para Caderneta (F11)"
+                                    className="px-4 py-2 rounded-lg text-xs font-bold transition uppercase hover:opacity-90 text-white"
+                                    style={{ backgroundColor: view === 'caderneta' ? 'color-mix(in srgb, var(--primary-color, #d97706) 90%, black)' : 'transparent' }}
+                                >
+                                    Caderneta (F11)
                                 </button>
                                 <button
                                     onClick={() => setView('cupom')}

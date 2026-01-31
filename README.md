@@ -1,368 +1,332 @@
-# Rey dos Pães - Sistema de Gestão para Padaria
+# Rey dos Pães — Sistema de Gestão para Padaria
 
-Sistema completo de gestão para a padaria Rey dos Pães, desenvolvido com Next.js, TypeScript, Tailwind CSS e Supabase.
+> Sistema completo de gestão operacional e financeira para padarias, com suporte offline, PDV integrado e sincronização em tempo real.
 
-## 🚀 Funcionalidades
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase)](https://supabase.com/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
 
-### 📦 Estoque
-- Gestão de produtos e insumo
-- Controle de preços unitários
-- Alertas de estoque baixo
-- Categorização de produto
+---
 
-### 👨‍🍳 Receitas
-- Cadastro de receitas com instruções
-- Composição de ingredientes
-- Cálculo automático de custos
-- Controle de rendimento
+## Índice
 
-### 🛒 Vendas
-- Registro de vendas de receitas
-- Vendas de produtos de varejo
-- Histórico completo de vendas
-- Relatórios de faturamento
-- Sistema de caderneta para clientes
+- [Visão Geral](#visão-geral)
+- [Arquitetura](#arquitetura)
+- [Stack Tecnológico](#stack-tecnológico)
+- [Funcionalidades](#funcionalidades)
+- [Estrutura do Projeto](#estrutura-do-projeto)
+- [Pré-requisitos](#pré-requisitos)
+- [Instalação](#instalação)
+- [Variáveis de Ambiente](#variáveis-de-ambiente)
+- [Scripts Disponíveis](#scripts-disponíveis)
+- [Deploy](#deploy)
+- [Segurança](#segurança)
+- [Documentação](#documentação)
+- [Licença](#licença)
 
-### 📊 Gestão
-- Análise de margem de lucro
-- Fluxo de caixa detalhado
-- Gráficos e relatórios
-- Balanço financeiro
-- Controle de caixa diário
+---
 
-### 🏪 Caderneta
-- Gestão de clientes fiéis
-- Controle de limite de crédito
-- Histórico de compras
-- Acompanhamento de saldo devedor
+## Visão Geral
 
-## 🛠️ Tecnologias Utilizadas
+O **Rey dos Pães** é um sistema de gestão desenvolvido para padarias, cobrindo o ciclo completo: desde o cadastro de insumos e receitas até o PDV (Ponto de Venda), controle de caixa, caderneta de clientes e relatórios gerenciais. O sistema foi projetado para funcionar **online e offline**, garantindo continuidade operacional mesmo em ambientes com conectividade instável.
 
-- **Frontend**: Next.js 15, React 19, TypeScript
-- **Styling**: Tailwind CSS
-- **Banco de Dados**: Supabase (PostgreSQL)
-- **Gráficos**: Recharts
-- **Ícones**: Lucide React
-- **Deploy**: Railway
+### Diferenciais
 
-## 📋 Pré-requisitos
+- **Modo offline completo** — Vendas, estoque, receitas e caderneta funcionam sem internet
+- **Sincronização automática** — Dados locais sincronizam ao reconectar
+- **PWA** — Instalável em dispositivos móveis e desktops
+- **Integração com balança** — Leitura de códigos EAN-13 (Toledo Prix)
+- **Impressão direta** — Cupom fiscal na Elgin i9 sem diálogo do navegador
+- **Controle de turno** — Operador e caixa por sessão
 
-- Node.js 20+
-- npm 10+
-- Conta no Supabase
+---
 
-## 🔧 Instalação
+## Arquitetura
+
+O projeto segue uma arquitetura em camadas com separação clara de responsabilidades:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        PRESENTATION LAYER                        │
+│  src/app/ (Next.js App Router) • src/components/ • hooks/       │
+└─────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        BUSINESS LAYER                            │
+│  src/services/ • src/repositories/ • src/lib/ (utils, config)    │
+└─────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        DATA LAYER                                │
+│  Supabase (PostgreSQL) • IndexedDB (offline) • syncService       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Camadas
+
+| Camada | Responsabilidade | Localização |
+|--------|------------------|-------------|
+| **Presentation** | UI, páginas, componentes React, hooks | `src/app/`, `src/components/`, `src/hooks/` |
+| **Business** | Regras de negócio, serviços, repositórios | `src/services/`, `src/repositories/`, `src/lib/` |
+| **Data** | Persistência, Supabase, IndexedDB, sincronização | `src/lib/supabase/`, `src/lib/offlineStorage.ts`, `src/lib/syncService.ts` |
+
+### Fluxo Offline
+
+1. **Online** — Dados vão direto ao Supabase; cache local é atualizado em paralelo
+2. **Offline** — Operações são persistidas no IndexedDB e enfileiradas para sync
+3. **Reconexão** — `syncService` processa a fila, resolve conflitos e notifica o usuário
+
+---
+
+## Stack Tecnológico
+
+| Categoria | Tecnologia |
+|-----------|------------|
+| **Framework** | Next.js 15 (App Router) |
+| **UI** | React 19, Tailwind CSS 3.4, Headless UI, Lucide React |
+| **Backend** | Supabase (PostgreSQL, Auth, RLS) |
+| **Formulários** | React Hook Form, Zod |
+| **Gráficos** | Recharts |
+| **Código de barras** | @zxing/browser, BarcodeDetector (nativo) |
+| **Testes** | Jest, Testing Library |
+| **Deploy** | Railway, Docker, Vercel |
+
+---
+
+## Funcionalidades
+
+### Operacional (Colaborador)
+
+| Módulo | Funcionalidades |
+|--------|-----------------|
+| **PDV (Caixa)** | Vendas com múltiplas formas de pagamento (Dinheiro, Débito, Crédito, PIX, Caderneta), leitor USB e scanner de câmera, códigos de balança (EAN-13 peso variável), impressão de cupom, abertura/fechamento de caixa |
+| **Receitas** | Cadastro de receitas, composição (massa, cobertura, embalagem), cálculo de custo, rendimento, categorias (pão, doce, salgado, torta, bolo) |
+| **Estoque** | Insumos e varejo unificados, preços unitários, alertas de estoque mínimo, código de barras, código balança (Toledo Prix) |
+| **Caderneta** | Clientes fiéis, limite de crédito, saldo devedor/credor, movimentações, pagamentos |
+| **Configurações** | Perfil do usuário, informações do sistema, logout |
+
+### Administrativo (Admin/Gerente)
+
+| Módulo | Funcionalidades |
+|--------|-----------------|
+| **Dashboard** | Indicadores, estatísticas, visão geral |
+| **Caixas** | Histórico de abertura/fechamento, movimentações |
+| **Saídas** | Registro de saídas financeiras |
+| **Vendas** | Histórico completo, filtros, detalhes |
+| **Preços** | Gestão de preços de venda e custo |
+| **Operadores** | Turno e operador por sessão |
+| **Estoque** | Gestão avançada, `codigo_balanca` |
+| **Gestão Financeira** | Margem de lucro, fluxo de caixa, lucratividade |
+| **Usuários** | Gestão de usuários do sistema |
+| **Fiscal / Pagamentos** | Em breve |
+
+### Sistema
+
+| Funcionalidade | Descrição |
+|----------------|-----------|
+| **Autenticação** | Supabase Auth, roles (admin, gerente, funcionario, caixa) |
+| **Permissões** | RLS, RouteGuard, AuthGuard, desbloqueio admin |
+| **Offline** | IndexedDB, Service Worker, sincronização, resolução de conflitos |
+| **PWA** | Manifest, precache, instalável |
+| **Impressão local** | Serviço Node.js para Elgin i9 (cupom direto na impressora) |
+
+---
+
+## Estrutura do Projeto
+
+```
+rey-dos-paes/
+├── src/
+│   ├── app/                    # Páginas (Next.js App Router)
+│   │   ├── api/                # Rotas API (dashboard, health, logs, env)
+│   │   ├── caixa/              # PDV e caderneta no caixa
+│   │   ├── codigo-barras/      # Gestão de códigos
+│   │   ├── configuracoes/
+│   │   ├── estoque/
+│   │   ├── gestao/             # Dashboard, caixas, vendas, precos, etc.
+│   │   ├── login/ logout/
+│   │   ├── offline/            # Página offline
+│   │   ├── receitas/
+│   │   ├── sistema/            # Usuários, pagamentos
+│   │   └── vendas/
+│   ├── components/             # Componentes reutilizáveis
+│   │   ├── caixa/              # Modais, resumo, status
+│   │   ├── caderneta/
+│   │   ├── gestao/
+│   │   └── vendas/
+│   ├── hooks/                  # Custom hooks (incl. offline)
+│   ├── lib/                    # Utilitários, Supabase, sync, preco
+│   ├── repositories/           # Acesso a dados
+│   ├── services/               # Lógica de negócio
+│   └── types/                  # Tipos TypeScript
+├── public/                     # sw.js, manifest.json, ícones
+├── scripts/
+│   ├── migrations/             # Migrações SQL
+│   ├── tabelas/                # DDL
+│   ├── js/                     # Scripts Node (setup-admin, etc.)
+│   └── ...
+├── servicos/
+│   └── impressao-local/        # Serviço de impressão Elgin i9
+├── docs/                       # Documentação
+├── tests/
+├── docker-compose.yml
+├── Dockerfile
+├── railway.json
+└── package.json
+```
+
+---
+
+## Pré-requisitos
+
+- **Node.js** ≥ 20.0.0
+- **npm** ≥ 10.0.0
+- Conta no [Supabase](https://supabase.com)
+
+---
+
+## Instalação
 
 ### 1. Clone o repositório
+
 ```bash
 git clone <url-do-repositorio>
 cd rey-dos-paes
 ```
 
 ### 2. Instale as dependências
+
 ```bash
 npm install
 ```
 
 ### 3. Configure o Supabase
 
-#### 3.1 Crie um projeto no Supabase
-1. Acesse [supabase.com](https://supabase.com)
-2. Crie uma nova conta ou faça login
-3. Crie um novo projeto
-4. Anote a URL e a chave anônima do projeto
-
-#### 3.2 Execute o script SQL
-1. No painel do Supabase, vá para "SQL Editor"
-2. Crie as tabelas necessárias para o sistema
+1. Crie um projeto em [supabase.com](https://supabase.com)
+2. Execute os scripts em `scripts/tabelas/` e `scripts/migrations/` no SQL Editor
+3. Anote a URL e as chaves (anon, service_role)
 
 ### 4. Configure as variáveis de ambiente
 
-Crie um arquivo `.env.local` na raiz do projeto baseado no `env.example`:
+Crie `.env.local` na raiz (veja [Variáveis de Ambiente](#variáveis-de-ambiente)).
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=sua_url_do_supabase
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima_do_supabase
-```
+### 5. Inicie o servidor de desenvolvimento
 
-### 5. Execute o projeto
 ```bash
 npm run dev
 ```
 
-O sistema estará disponível em `http://localhost:3000`
+Acesse `http://localhost:3000`.
 
-### 6. (Opcional) Impressão direta na Elgin i9
+### 6. (Opcional) Impressão local — Elgin i9
 
-Para imprimir o cupom fiscal direto na impressora Elgin i9 (sem abrir o diálogo do navegador), inicie o serviço local no mesmo PC onde está o PDV e a impressora:
+Para imprimir cupom direto na impressora (sem diálogo do navegador):
 
 ```bash
 npm run impressao-local
 ```
 
-Por padrão o serviço escuta em `http://127.0.0.1:3333`. No PDV, ao finalizar a venda e clicar em **Sim** em "Deseja imprimir o cupom fiscal?", o sistema envia o cupom para esse serviço e a impressora imprime direto. Se o serviço não estiver rodando, o sistema abre a impressão no navegador (comportamento anterior). Detalhes em `servicos/impressao-local/README.md`.
+O serviço escuta em `http://127.0.0.1:3333`. Detalhes em `servicos/impressao-local/README.md`.
 
-> **Nota:** por padrão o comando acima roda sem **Turbopack** (mais estável em Windows). Se quiser testar o Turbopack (experimental), execute:
->
-> ```bash
-> npm run dev -- --turbopack
-> ```
->
-> Se encontrar erros do tipo `ENOENT` ao escrever arquivos em `.next`, prefira rodar sem o `--turbopack`.  
+---
 
-## 📁 Estrutura do Projeto
+## Variáveis de Ambiente
 
-```
-rey-dos-paes/
-├── src/
-│   ├── app/                 # Páginas da aplicação
-│   │   ├── page.tsx         # Dashboard
-│   │   ├── estoque/         # Gestão de estoque
-│   │   ├── receitas/        # Gestão de receitas
-│   │   ├── vendas/          # Registro de vendas
-│   │   ├── caderneta/       # Sistema de caderneta
-│   │   ├── gestao/          # Análise financeira
-│   │   └── configuracoes/   # Configurações
-│   ├── components/          # Componentes reutilizáveis
-│   ├── hooks/               # Custom hooks
-│   ├── lib/                 # Configurações e utilitários
-│   └── types/               # Definições de tipos
-├── public/                  # Arquivos estáticos
-└── README.md               # Este arquivo
+| Variável | Obrigatória | Descrição |
+|----------|-------------|-----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Sim | URL do projeto Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Sim | Chave anônima (pode ser exposta) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Sim (server) | Service Role Key — **nunca** expor no client |
+| `SUPABASE_URL` | Sim (server) | URL do Supabase |
+| `SUPABASE_ANON_KEY` | Sim (server) | Chave anônima |
+| `DATABASE_URL` | Sim (server) | Connection string PostgreSQL |
+| `JWT_SECRET` | Sim (server) | Chave para assinatura de JWTs |
+
+Exemplo mínimo de `.env.local`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima
+
+SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_ANON_KEY=sua_chave_anonima
+DATABASE_URL=postgres://...
+JWT_SECRET=string_aleatoria_segura
 ```
 
-## 🚀 Como Usar
+---
 
-### 1. Configuração Inicial
-1. Acesse a página "Configurações"
-2. Configure as informações da padaria Rey dos Pães
-3. Verifique a conexão com o banco de dados
+## Scripts Disponíveis
 
-### 2. Cadastro de Insumos
-1. Vá para "Estoque"
-2. Clique em "Novo Insumo"
-3. Preencha as informações dos produtos e ingredientes
+| Script | Descrição |
+|--------|-----------|
+| `npm run dev` | Servidor de desenvolvimento |
+| `npm run build` | Build de produção |
+| `npm run start` | Inicia o servidor (usa `server.js`) |
+| `npm run lint` | ESLint |
+| `npm run test` | Jest |
+| `npm run test:watch` | Jest em modo watch |
+| `npm run test:coverage` | Jest com cobertura |
+| `npm run check-env` | Verifica variáveis de ambiente |
+| `npm run setup-admin` | Configura usuário admin |
+| `npm run impressao-local` | Serviço de impressão local |
 
-### 3. Cadastro de Receitas
-1. Vá para "Receitas"
-2. Clique em "Nova Receita"
-3. Preencha as informações da receita
-4. Adicione os insumos necessários com suas quantidades
+---
 
-### 4. Registro de Vendas
-1. Vá para "Vendas"
-2. Clique em "Nova Venda"
-3. Selecione o tipo (receita ou varejo)
-4. Escolha o item e informe a quantidade
+## Deploy
 
-### 5. Sistema de Caderneta
-1. Vá para "Caderneta"
-2. Cadastre clientes fiéis
-3. Configure limites de crédito
-4. Acompanhe vendas a prazo
+### Railway (recomendado)
 
-### 6. Análise Financeira
-1. Vá para "Gestão"
-2. Visualize os gráficos de margem de lucro
-3. Acompanhe o fluxo de caixa
-4. Registre entradas e saídas adicionais
-
-## 📊 Relatórios Disponíveis
-
-- **Dashboard**: Visão geral com principais indicadores
-- **Margem de Lucro**: Análise detalhada por item
-- **Fluxo de Caixa**: Controle de entradas e saídas
-- **Histórico de Vendas**: Relatório completo de vendas
-- **Estoque Baixo**: Alertas de produtos com estoque mínimo
-- **Clientes Caderneta**: Relatório de saldos devedores
-
-## 🔒 Segurança
-
-- Todas as tabelas possuem Row Level Security (RLS) habilitado
-- Políticas de acesso configuradas
-- Validação de dados no frontend e backend
-
-## 🚀 Deploy
-
-### Railway (Recomendado)
-1. Conecte seu repositório ao Railway
+1. Conecte o repositório ao Railway
 2. Configure as variáveis de ambiente
 3. Deploy automático a cada push
 
-### Vercel
-1. Conecte seu repositório ao Vercel
-2. Configure as variáveis de ambiente
-3. Deploy automático
+Guia detalhado: `docs/deploy/GUIA_DEPLOY_RAILWAY.md`
 
-## 🔑 Variáveis de Ambiente (Obrigatórias)
-
-No ambiente de produção (Railway, Docker, Vercel, etc.) é obrigatório definir as variáveis abaixo. **NÃO** exponha estas chaves no front-end — use apenas variáveis server-side (sem `NEXT_PUBLIC_`) para chaves sensíveis.
-
-- `SUPABASE_SERVICE_ROLE_KEY` — Service Role Key do Supabase (Settings → API → Service Key). Apenas server-side.
-- `SUPABASE_URL` — URL do seu projeto Supabase.
-- `SUPABASE_ANON_KEY` — Chave anônima pública (pode ser exposta como `NEXT_PUBLIC_SUPABASE_ANON_KEY` para o client).
-- `DATABASE_URL` — Connection string do PostgreSQL (Supabase Database → Connection string).
-- `JWT_SECRET` — Chave secreta usada para assinar JWTs (string segura).
-
-Exemplo mínimo de `.env.local` (local development — NÃO comitar este arquivo):
-
-```env
-# Client (pode ser exposto ao navegador)
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=REPLACE_WITH_PUBLIC_ANON_KEY
-
-# Server (NUNCA usar NEXT_PUBLIC_ aqui)
-SUPABASE_SERVICE_ROLE_KEY=REPLACE_WITH_SERVICE_ROLE_KEY
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=REPLACE_WITH_ANON_KEY
-DATABASE_URL=postgres://user:password@host:5432/database
-JWT_SECRET=replace_with_a_secure_random_string
-```
-
-## 🚢 Deploy com Docker
-
-Buildar a imagem localmente e passar variáveis via `docker run` ou `--env-file`:
+### Docker
 
 ```bash
-# Build
 docker build -t rey-dos-paes:latest .
-
-# Run usando arquivo .env.local (recomendado para local testing)
 docker run --env-file .env.local -p 8080:8080 rey-dos-paes:latest
 ```
 
-Se usar `docker-compose`, adicione as variáveis no `.env.local` e o `docker-compose.yml` já carrega `env_file: .env.local`.
+### Vercel
 
-## 🚀 Deploy no Railway
+Compatível com Next.js. Configure as variáveis de ambiente no painel.
 
-1. No painel do Railway, conecte o repositório Git.
-2. Em Settings → Environment Variables, adicione as variáveis obrigatórias listadas acima (cole os valores reais).
-3. Defina a variável `PORT` (ex.: `8080`) se quiser sobrescrever a porta padrão.
-4. O Railway fará build automático a cada push.
+---
 
-## 🔁 Exemplo CI — GitHub Actions (build + push para registry)
+## Segurança
 
-Este é um exemplo genérico que constrói a imagem e publica num registry (ajuste para o seu provider):
+- **Row Level Security (RLS)** — Todas as tabelas com políticas de acesso
+- **Autenticação** — Supabase Auth com sessões seguras
+- **Roles** — admin, gerente, funcionario, caixa com permissões distintas
+- **RouteGuard** — Proteção de rotas no client
+- **Variáveis sensíveis** — Nunca usar `NEXT_PUBLIC_` para chaves secretas
 
-```yaml
-name: CI
+---
 
-on: [push]
+## Documentação
 
-jobs:
-	build:
-		runs-on: ubuntu-latest
-		steps:
-			- uses: actions/checkout@v4
-			- name: Set up Node
-				uses: actions/setup-node@v4
-				with:
-					node-version: '20'
-			- name: Build Docker image
-				uses: docker/build-push-action@v4
-				with:
-					push: true
-					tags: ${{ secrets.REGISTRY }}/${{ github.repository }}:latest
-					build-args: |
-						NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-			# Configure secrets in the repository settings (e.g., REGISTRY, SUPABASE keys, DATABASE_URL, JWT_SECRET)
-```
+| Documento | Conteúdo |
+|-----------|----------|
+| `docs/app-pages/` | Fluxos das páginas (caixa, caderneta, estoque, etc.) |
+| `docs/offline/` | Sistema offline, sincronização, IndexedDB |
+| `docs/deploy/` | Deploy Railway, Docker |
+| `docs/setup/` | Setup do banco de dados |
+| `servicos/impressao-local/README.md` | Serviço de impressão Elgin i9 |
 
-> Observação: em CI/CD nunca guarde chaves sensíveis em texto no repositório — use secrets do GitHub, variáveis do Railway ou do provedor de CI.
+---
 
-## 🤝 Contribuição
-
-1. Faça um fork do projeto
-2. Crie uma branch para sua feature
-3. Commit suas mudanças
-4. Push para a branch
-5. Abra um Pull Request
-
-## 📝 Licença
+## Licença
 
 Este projeto está sob a licença MIT.
 
-## 🆘 Suporte
-
-Para dúvidas ou problemas:
-1. Verifique a documentação
-2. Abra uma issue no GitHub
-3. Entre em contato com o desenvolvedor
-
-## 🔄 Atualizações
-
-Para manter o sistema atualizado:
-```bash
-git pull origin main
-npm install
-npm run dev
-```
-
 ---
 
-**Desenvolvido com ❤️ para a Padaria Rey dos Pães**
-
-# Atualização 1.0
-
-## Visão Geral da Refatoração
-Esta atualização reorganizou completamente o projeto para seguir padrões profissionais, garantindo escalabilidade, clareza e manutenção a longo prazo.
-
-## Estrutura Final do Projeto
-```
-/
-├── src/
-│   ├── app/                # UI e páginas (Next.js)
-│   ├── components/         # Componentes reutilizáveis
-│   ├── hooks/              # Custom hooks
-│   ├── services/           # Lógica de negócio
-│   ├── repositories/       # Acesso a dados
-│   ├── scripts/            # Scripts utilitários
-│   └── types/              # Tipos TypeScript
-├── public/                 # Arquivos estáticos
-├── scripts/
-│   ├── sql/                # Scripts SQL
-│   └── js/                 # Scripts JavaScript
-├── tests/                  # Testes unitários e de integração
-├── docs/                   # Documentação
-├── config/                 # Configurações
-└── README.md               # Documentação principal
-```
-
-## Alterações Realizadas
-
-### Limpeza Estrutural
-- Pastas unificadas:
-	- `src/lib/services/*` -> `src/services/*` (serviços de negócio centralizados)
-	- `scripts/scripts.js/*` -> `scripts/js/*` (scripts JS padronizados)
-- Pastas removidas/obsoletas:
-	- `src/lib/services/` (substituída por `src/services/`)
-	- `src/scripts/` (vazia)
-	- `src/repositories/supabase.repository.ts` e `src/repositories/offline-storage.repository.ts` (funcionalidades agora em `src/lib/supabase` e `src/lib/offlineStorage`)
-
-### Arquivos Movidos
-- Scripts SQL e JS foram reorganizados em `scripts/sql` e `scripts/js`.
-- Testes foram movidos para a pasta `tests`.
-
-### Arquivos Renomeados
-- Nenhum arquivo foi renomeado.
-
-### Justificativas Técnicas
-- **Separação de responsabilidades**: UI, lógica de negócio e acesso a dados foram organizados em camadas distintas.
-- **Aliases**: Adicionados no `tsconfig.json` para facilitar os imports.
-- **Testes**: Centralizados em uma pasta dedicada para melhor organização.
- - **Serviços**: `src/services` é a pasta canônica para serviços; `lib` permanece para utilitários, configuração e clientes (ex.: Supabase).
- - **Infra**: Cliente Supabase e armazenamento offline consolidado em `src/lib/supabase` e `src/lib/offlineStorage`.
-
-## Status Atual do Projeto
-- **Funcionalidade**: O projeto está funcional e pronto para produção.
-- **Erros**: Todos os erros foram corrigidos.
-- **Testes**: Configuração do Jest validada e funcional.
-
-## Observações Importantes
-- Certifique-se de atualizar as variáveis de ambiente para o Supabase.
-- Utilize os aliases configurados para novos imports.
-
----
-
-Para dúvidas ou melhorias, entre em contato com o responsável pelo projeto.
-att
+**Desenvolvido para a Padaria Rey dos Pães**

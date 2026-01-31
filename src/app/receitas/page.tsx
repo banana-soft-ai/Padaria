@@ -35,7 +35,7 @@ export default function ReceitasPage() {
     fetchInsumos,
     createReceita,
     updateReceita,
-    softDeleteReceita,
+    removerReceita,
     deleteByReceitaId,
     insertMany,
     refreshComposicoes
@@ -383,7 +383,7 @@ export default function ReceitasPage() {
 
     try {
       const dadosReceitaBase: any = {
-        nome: formData.nome,
+        nome: (formData.nome || '').trim(),
         rendimento: Math.round(parseFloat(formData.rendimento)) || 1,
         unidade_rendimento: formData.unidade_rendimento,
         instrucoes: formData.instrucoes || null,
@@ -397,6 +397,21 @@ export default function ReceitasPage() {
       let receitaId: number
 
       if (editingReceita) {
+        // Ao editar: verificar se outro receita (não a atual) já usa esse nome
+        const nomeTrim = (formData.nome || '').trim()
+        if (nomeTrim) {
+          const { data: duplicadas, error: dupErr } = await supabase
+            .from('receitas')
+            .select('id')
+            .eq('nome', nomeTrim)
+          if (dupErr) throw dupErr
+          const conflito = (duplicadas || []).find((r: { id: number }) => r.id !== editingReceita.id)
+          if (conflito) {
+            showToast('Já existe uma receita com esse nome. Escolha outro nome.', 'error')
+            return
+          }
+        }
+
         let updateResult: any
         try {
           updateResult = await updateReceita(editingReceita.id, dadosReceitaBase)
@@ -564,22 +579,22 @@ export default function ReceitasPage() {
   }
 
   const handleDelete = async (receita: Receita) => {
-    setConfirmTitle('Desativar Receita')
-    setConfirmMessage(`Tem certeza que deseja desativar a receita "${receita.nome}"? O histórico será preservado.`)
+    setConfirmTitle('Excluir Receita')
+    setConfirmMessage(`Tem certeza que deseja excluir permanentemente a receita "${receita.nome}"? Esta ação não pode ser desfeita.`)
     setConfirmAction(() => async () => {
       try {
-        const result = await softDeleteReceita(receita.id)
-        if (result.error) throw result.error
+        const result = await removerReceita(receita.id)
+        if (!result.success) throw new Error(result.message)
         await carregarDados()
-        showToast('Receita desativada com sucesso! O histórico foi preservado.', 'success')
+        showToast('Receita excluída com sucesso!', 'success')
       } catch (error) {
-        let message = 'Erro desconhecido ao desativar'
+        let message = 'Erro desconhecido ao excluir'
         if (error instanceof Error) message = error.message
         else if (error && typeof error === 'object') {
           const err = error as any
           message = err.message || err.details || err.hint || JSON.stringify(error)
         }
-        showToast(`Erro ao desativar receita: ${message}`, 'error')
+        showToast(`Erro ao excluir receita: ${message}`, 'error')
       } finally {
         setShowConfirmModal(false)
       }

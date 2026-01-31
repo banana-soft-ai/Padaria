@@ -10,7 +10,7 @@ export async function getTurnoOperadorAtual(caixa_diario_id: number): Promise<Tu
     .eq('status', 'aberto')
     .order('data_inicio', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
   if (error) return null
   return data as TurnoOperador
 }

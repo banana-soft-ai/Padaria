@@ -44,6 +44,13 @@ CREATE TABLE IF NOT EXISTS insumos (
 
 );
 
+-- Colunas adicionais (migrations)
+ALTER TABLE insumos ADD COLUMN IF NOT EXISTS unidade_medida_base TEXT;
+ALTER TABLE insumos ADD COLUMN IF NOT EXISTS quantidade_pacote NUMERIC;
+ALTER TABLE insumos ADD COLUMN IF NOT EXISTS preco_unitario NUMERIC;
+ALTER TABLE insumos ADD COLUMN IF NOT EXISTS quantidade_minima NUMERIC;
+CREATE INDEX IF NOT EXISTS idx_insumos_quantidade_minima ON insumos(quantidade_minima);
+
 -- =====================================================
 -- Tabela de receitas dos produtos
 -- 3. TABELA DE RECEITAS
@@ -75,6 +82,9 @@ SET unidade_rendimento = 'un'
 WHERE unidade_rendimento IS NULL;
 
 COMMENT ON COLUMN receitas.unidade_rendimento IS 'Unidade de medida do rendimento da receita (un, kg, g, l, ml, xícara, colher)';
+
+-- Coluna preco_venda em receitas (preço sugerido da receita, usado pela gestão de preços)
+ALTER TABLE receitas ADD COLUMN IF NOT EXISTS preco_venda DECIMAL(10,2);
 
 -- =====================================================
 -- 4. TABELA DE INGREDIENTES DAS RECEITAS
@@ -127,6 +137,18 @@ CREATE TABLE IF NOT EXISTS varejo (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Colunas adicionais (migrations)
+ALTER TABLE varejo ADD COLUMN IF NOT EXISTS preco_pacote NUMERIC(12,2);
+ALTER TABLE varejo ADD COLUMN IF NOT EXISTS peso_pacote NUMERIC(12,3);
+ALTER TABLE varejo ADD COLUMN IF NOT EXISTS marca TEXT;
+ALTER TABLE varejo ADD COLUMN IF NOT EXISTS fornecedor TEXT;
+ALTER TABLE varejo ADD COLUMN IF NOT EXISTS unidade_medida_base TEXT;
+ALTER TABLE varejo ADD COLUMN IF NOT EXISTS quantidade_pacote NUMERIC;
+ALTER TABLE varejo ADD COLUMN IF NOT EXISTS quantidade_minima NUMERIC;
+ALTER TABLE varejo ADD COLUMN IF NOT EXISTS preco_unitario NUMERIC;
+ALTER TABLE varejo ADD COLUMN IF NOT EXISTS codigo_balanca TEXT;
+CREATE INDEX IF NOT EXISTS idx_varejo_codigo_balanca ON varejo(codigo_balanca) WHERE codigo_balanca IS NOT NULL;
 
 -- =====================================================
 -- Tabela de clientes
@@ -184,6 +206,14 @@ CREATE TABLE IF NOT EXISTS vendas (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Colunas adicionais (migrations) - caixa_diario_id adicionado após criar caixa_diario
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS usuario TEXT;
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS operador_nome TEXT;
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS operador_id INTEGER;
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS valor_pago DECIMAL(10,2);
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS valor_debito DECIMAL(10,2);
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS valor_troco DECIMAL(10,2);
 
 -- =====================================================
 -- Tabela de itens de uma venda
@@ -244,7 +274,7 @@ CREATE TABLE IF NOT EXISTS estoque_movimentacoes (
 -- =====================================================
 CREATE TABLE IF NOT EXISTS custos_fixos (
     id SERIAL PRIMARY KEY,
-    nome TEXT NOT NULL,
+    nome TEXT NOT NULL UNIQUE,
     categoria TEXT NOT NULL CHECK (categoria IN ('aluguel', 'energia', 'agua', 'telefone', 'salarios', 'impostos', 'outros')),
     valor_mensal DECIMAL(10,2) NOT NULL,
     data_vencimento INTEGER NOT NULL CHECK (data_vencimento >= 1 AND data_vencimento <= 31),
@@ -253,6 +283,18 @@ CREATE TABLE IF NOT EXISTS custos_fixos (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Garantir UNIQUE em nome para ON CONFLICT (idempotente)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'custos_fixos_nome_key'
+    ) THEN
+        ALTER TABLE custos_fixos ADD CONSTRAINT custos_fixos_nome_key UNIQUE (nome);
+    END IF;
+EXCEPTION WHEN duplicate_object THEN
+    NULL;
+END $$;
 
 -- =====================================================
 -- Tabela para lançamentos fiscais (notas, etc.)
@@ -278,6 +320,17 @@ CREATE TABLE IF NOT EXISTS logs_sistema (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Tabela funcionario (2026-01-25-create-funcionario)
+CREATE TABLE IF NOT EXISTS funcionario (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(120) NOT NULL,
+    idade INTEGER NOT NULL CHECK (idade >= 16 AND idade <= 120),
+    endereco VARCHAR(255) NOT NULL,
+    telefone VARCHAR(32) NOT NULL,
+    criado_em TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_funcionario_nome ON funcionario(nome);
+
 -- Tabela de clientes com caderneta (similar a 'clientes', pode ser unificada no futuro)
 CREATE TABLE IF NOT EXISTS clientes_caderneta (
     id SERIAL PRIMARY KEY,
@@ -293,6 +346,16 @@ CREATE TABLE IF NOT EXISTS clientes_caderneta (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Garantir que saldo credor seja permitido (allow-saldo-credor-caderneta)
+ALTER TABLE clientes_caderneta DROP CONSTRAINT IF EXISTS chk_saldo_devedor_nonnegative;
+
+-- Coluna tipo em clientes_caderneta (cliente vs colaborador/funcionário)
+ALTER TABLE clientes_caderneta ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'cliente';
+UPDATE clientes_caderneta SET tipo = 'cliente' WHERE tipo IS NULL;
+
+-- Coluna cliente_caderneta_id em vendas (referência ao cliente da caderneta quando forma_pagamento = caderneta)
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS cliente_caderneta_id INTEGER REFERENCES clientes_caderneta(id);
 
 -- 2. TABELA DE MOVIMENTAÇÕES DA CADERNETA
 CREATE TABLE IF NOT EXISTS movimentacoes_caderneta (
@@ -332,6 +395,66 @@ CREATE TABLE IF NOT EXISTS caixa_diario (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Colunas adicionais para caixa_diario (total_* usadas pelo trigger e frontend)
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS total_vendas DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS total_entradas DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS total_dinheiro DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS total_pix DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS total_debito DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS total_credito DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS total_caderneta DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS total_saidas DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS diferenca DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS diferenca_dinheiro DECIMAL(10,2);
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS diferenca_pix DECIMAL(10,2);
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS diferenca_debito DECIMAL(10,2);
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS diferenca_credito DECIMAL(10,2);
+ALTER TABLE caixa_diario ADD COLUMN IF NOT EXISTS tipo_abertura VARCHAR(20);
+
+-- Tabela caixa_movimentacoes (0001_create_caixa_movimentacoes_and_cols)
+CREATE TABLE IF NOT EXISTS caixa_movimentacoes (
+    id SERIAL PRIMARY KEY,
+    caixa_diario_id INTEGER REFERENCES caixa_diario(id),
+    tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'saida')),
+    valor DECIMAL(10,2) NOT NULL,
+    motivo TEXT,
+    observacoes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Coluna caixa_diario_id em vendas (após caixa_diario existir)
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS caixa_diario_id INTEGER REFERENCES caixa_diario(id);
+
+-- Tabela turno_operador (2026-01-25 + 2026-01-28)
+CREATE TABLE IF NOT EXISTS turno_operador (
+    id SERIAL PRIMARY KEY,
+    caixa_diario_id INTEGER REFERENCES caixa_diario(id) ON DELETE CASCADE,
+    operador_id INTEGER REFERENCES clientes_caderneta(id),
+    operador_nome TEXT NOT NULL,
+    data_inicio TIMESTAMP NOT NULL DEFAULT NOW(),
+    data_fim TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'aberto',
+    observacoes TEXT,
+    valor_abertura NUMERIC DEFAULT 0,
+    valor_fechamento NUMERIC DEFAULT 0,
+    total_vendas NUMERIC DEFAULT 0,
+    total_dinheiro NUMERIC DEFAULT 0,
+    total_pix NUMERIC DEFAULT 0,
+    total_debito NUMERIC DEFAULT 0,
+    total_credito NUMERIC DEFAULT 0,
+    total_caderneta NUMERIC DEFAULT 0,
+    valor_saidas NUMERIC DEFAULT 0,
+    diferenca NUMERIC DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_turno_operador_caixa ON turno_operador(caixa_diario_id);
+CREATE INDEX IF NOT EXISTS idx_turno_operador_operador ON turno_operador(operador_id);
+CREATE INDEX IF NOT EXISTS idx_turno_operador_status ON turno_operador(status);
+
+ALTER TABLE movimentacoes_caderneta ADD COLUMN IF NOT EXISTS saldo_devedor DECIMAL(10,2);
+ALTER TABLE movimentacoes_caderneta ADD COLUMN IF NOT EXISTS observacoes TEXT;
+
 -- 4. TABELA DE FLUXO DE CAIXA
 CREATE TABLE IF NOT EXISTS fluxo_caixa (
     id SERIAL PRIMARY KEY,
@@ -357,6 +480,14 @@ CREATE TABLE IF NOT EXISTS precos_venda (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Colunas adicionais precos_venda (2026-01-26, 2026-01-27)
+ALTER TABLE precos_venda ADD COLUMN IF NOT EXISTS preco_custo_unitario DECIMAL(12,4) DEFAULT 0;
+ALTER TABLE precos_venda ADD COLUMN IF NOT EXISTS margem_lucro DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE precos_venda ADD COLUMN IF NOT EXISTS item_nome TEXT;
+ALTER TABLE precos_venda ADD COLUMN IF NOT EXISTS categoria TEXT;
+ALTER TABLE precos_venda ADD COLUMN IF NOT EXISTS unidade TEXT;
+ALTER TABLE precos_venda ADD COLUMN IF NOT EXISTS estoque DECIMAL(12,3) DEFAULT 0;
+
 -- =====================================================
 -- . TABELA DE COMPOSIÇÃO DAS RECEITAS
 -- =====================================================
@@ -380,6 +511,8 @@ CREATE INDEX IF NOT EXISTS idx_vendas_data ON vendas(data);
 CREATE INDEX IF NOT EXISTS idx_vendas_usuario ON vendas(usuario_id);
 CREATE INDEX IF NOT EXISTS idx_vendas_caixa ON vendas(caixa_id);
 CREATE INDEX IF NOT EXISTS idx_vendas_cliente ON vendas(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_vendas_caixa_diario_id ON vendas(caixa_diario_id);
+CREATE INDEX IF NOT EXISTS idx_vendas_operador_nome ON vendas(operador_nome);
 
 -- Índices para produtos
 CREATE INDEX IF NOT EXISTS idx_produtos_categoria ON produtos(categoria);
@@ -458,46 +591,56 @@ END;
 $$ LANGUAGE 'plpgsql';
 
 -- =====================================================
--- TRIGGERS PARA UPDATED_AT NAS TABELAS
+-- TRIGGERS PARA UPDATED_AT NAS TABELAS (idempotente)
 -- =====================================================
+DROP TRIGGER IF EXISTS update_usuarios_updated_at ON usuarios;
 CREATE TRIGGER update_usuarios_updated_at
 BEFORE UPDATE ON usuarios
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_insumos_updated_at ON insumos;
 CREATE TRIGGER update_insumos_updated_at
 BEFORE UPDATE ON insumos
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_receitas_updated_at ON receitas;
 CREATE TRIGGER update_receitas_updated_at
 BEFORE UPDATE ON receitas
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_produtos_updated_at ON produtos;
 CREATE TRIGGER update_produtos_updated_at
 BEFORE UPDATE ON produtos
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_varejo_updated_at ON varejo;
 CREATE TRIGGER update_varejo_updated_at
 BEFORE UPDATE ON varejo
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_clientes_updated_at ON clientes;
 CREATE TRIGGER update_clientes_updated_at
 BEFORE UPDATE ON clientes
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_caixas_updated_at ON caixas;
 CREATE TRIGGER update_caixas_updated_at
 BEFORE UPDATE ON caixas
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_vendas_updated_at ON vendas;
 CREATE TRIGGER update_vendas_updated_at
 BEFORE UPDATE ON vendas
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_custos_fixos_updated_at ON custos_fixos;
 CREATE TRIGGER update_custos_fixos_updated_at
 BEFORE UPDATE ON custos_fixos
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Trigger update_lancamentos_fiscais removed (módulo fiscal eliminado)
 
+DROP TRIGGER IF EXISTS update_composicao_receitas_updated_at ON composicao_receitas;
 CREATE TRIGGER update_composicao_receitas_updated_at
 BEFORE UPDATE ON composicao_receitas
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -558,9 +701,64 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger para atualizar estoque automaticamente após inserção de itens de venda
+DROP TRIGGER IF EXISTS trigger_atualizar_estoque_venda ON venda_itens;
 CREATE TRIGGER trigger_atualizar_estoque_venda
 AFTER INSERT ON venda_itens
 FOR EACH ROW EXECUTE FUNCTION atualizar_estoque_venda();
+
+-- =====================================================
+-- TRIGGER ON_VENDA_INSERT - Atualiza caixa_diario e fluxo após venda
+-- =====================================================
+DROP TRIGGER IF EXISTS trg_on_venda_insert ON vendas;
+CREATE OR REPLACE FUNCTION public.on_venda_insert()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  v_caixa_id INTEGER;
+  v_valor NUMERIC := COALESCE(NEW.valor_total, 0);
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='caixa_diario') THEN
+    SELECT id INTO v_caixa_id FROM caixa_diario WHERE data = NEW.data AND status = 'aberto' ORDER BY created_at DESC LIMIT 1;
+    IF v_caixa_id IS NULL THEN
+      SELECT id INTO v_caixa_id FROM caixa_diario WHERE status = 'aberto' ORDER BY created_at DESC LIMIT 1;
+    END IF;
+  ELSE
+    v_caixa_id := NULL;
+  END IF;
+
+  IF v_caixa_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  UPDATE caixa_diario SET
+    total_vendas = COALESCE(total_vendas,0) + v_valor,
+    total_entradas = COALESCE(total_entradas,0) + v_valor,
+    total_dinheiro = COALESCE(total_dinheiro,0) + CASE WHEN NEW.forma_pagamento = 'dinheiro' THEN v_valor ELSE 0 END,
+    total_pix = COALESCE(total_pix,0) + CASE WHEN NEW.forma_pagamento = 'pix' THEN v_valor ELSE 0 END,
+    total_debito = COALESCE(total_debito,0) + CASE WHEN NEW.forma_pagamento = 'cartao_debito' THEN v_valor ELSE 0 END,
+    total_credito = COALESCE(total_credito,0) + CASE WHEN NEW.forma_pagamento = 'cartao_credito' THEN v_valor ELSE 0 END,
+    total_caderneta = COALESCE(total_caderneta,0) + CASE WHEN NEW.forma_pagamento = 'caderneta' THEN v_valor ELSE 0 END
+  WHERE id = v_caixa_id;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='caixa_movimentacoes') THEN
+    INSERT INTO caixa_movimentacoes (caixa_diario_id, tipo, valor, motivo, observacoes, created_at)
+    VALUES (v_caixa_id, 'entrada', v_valor, CONCAT('Venda PDV (', NEW.id::text, ')'), NULL, now());
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='fluxo_caixa') THEN
+    INSERT INTO fluxo_caixa (data, tipo, categoria, descricao, valor, caixa_diario_id, created_at)
+    VALUES (NEW.data, 'entrada', 'caixa', CONCAT('Venda PDV (', NEW.id::text, ')'), v_valor, v_caixa_id, now());
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='vendas' AND column_name='caixa_diario_id') THEN
+    UPDATE vendas SET caixa_diario_id = v_caixa_id WHERE id = NEW.id;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_on_venda_insert
+AFTER INSERT ON vendas
+FOR EACH ROW EXECUTE FUNCTION public.on_venda_insert();
 
 -- =====================================================
 -- OUTRAS TRIGGERS PERSONALIZADAS (adicione aqui se houver)
@@ -584,7 +782,6 @@ ALTER TABLE venda_itens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE caderneta ENABLE ROW LEVEL SECURITY;
 ALTER TABLE estoque_movimentacoes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custos_fixos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lancamentos_fiscais ENABLE ROW LEVEL SECURITY;
 ALTER TABLE logs_sistema ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clientes_caderneta ENABLE ROW LEVEL SECURITY;
 ALTER TABLE movimentacoes_caderneta ENABLE ROW LEVEL SECURITY;
@@ -592,6 +789,9 @@ ALTER TABLE caixa_diario ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fluxo_caixa ENABLE ROW LEVEL SECURITY;
 ALTER TABLE precos_venda ENABLE ROW LEVEL SECURITY;
 ALTER TABLE composicao_receitas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE caixa_movimentacoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE funcionario ENABLE ROW LEVEL SECURITY;
+ALTER TABLE turno_operador ENABLE ROW LEVEL SECURITY;
 
 -- =====================================================
 -- POLÍTICAS GERAIS PARA USUÁRIOS AUTENTICADOS
@@ -603,66 +803,79 @@ ALTER TABLE composicao_receitas ENABLE ROW LEVEL SECURITY;
 
 -- Usuarios
 ALTER TABLE usuarios ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON usuarios;
 CREATE POLICY "Usuários autenticados podem tudo" ON usuarios FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Insumos
 ALTER TABLE insumos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON insumos;
 CREATE POLICY "Usuários autenticados podem tudo" ON insumos FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Receitas
 ALTER TABLE receitas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON receitas;
 CREATE POLICY "Usuários autenticados podem tudo" ON receitas FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Receita Ingredientes
 ALTER TABLE receita_ingredientes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON receita_ingredientes;
 CREATE POLICY "Usuários autenticados podem tudo" ON receita_ingredientes FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Produtos
 ALTER TABLE produtos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON produtos;
 CREATE POLICY "Usuários autenticados podem tudo" ON produtos FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Varejo
 ALTER TABLE varejo ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON varejo;
 CREATE POLICY "Usuários autenticados podem tudo" ON varejo FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Clientes
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON clientes;
 CREATE POLICY "Usuários autenticados podem tudo" ON clientes FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Caixas
 ALTER TABLE caixas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON caixas;
 CREATE POLICY "Usuários autenticados podem tudo" ON caixas FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Vendas
 ALTER TABLE vendas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON vendas;
 CREATE POLICY "Usuários autenticados podem tudo" ON vendas FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Venda Itens
 ALTER TABLE venda_itens ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON venda_itens;
 CREATE POLICY "Usuários autenticados podem tudo" ON venda_itens FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Caderneta
 ALTER TABLE caderneta ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON caderneta;
 CREATE POLICY "Usuários autenticados podem tudo" ON caderneta FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Estoque Movimentações
 ALTER TABLE estoque_movimentacoes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON estoque_movimentacoes;
 CREATE POLICY "Usuários autenticados podem tudo" ON estoque_movimentacoes FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Custos Fixos
 ALTER TABLE custos_fixos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON custos_fixos;
 CREATE POLICY "Usuários autenticados podem tudo" ON custos_fixos FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
@@ -670,39 +883,60 @@ USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated')
 
 -- Logs Sistema
 ALTER TABLE logs_sistema ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON logs_sistema;
 CREATE POLICY "Usuários autenticados podem tudo" ON logs_sistema FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Clientes Caderneta
 ALTER TABLE clientes_caderneta ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON clientes_caderneta;
 CREATE POLICY "Usuários autenticados podem tudo" ON clientes_caderneta FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Movimentações Caderneta
 ALTER TABLE movimentacoes_caderneta ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON movimentacoes_caderneta;
 CREATE POLICY "Usuários autenticados podem tudo" ON movimentacoes_caderneta FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Caixa Diário
 ALTER TABLE caixa_diario ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON caixa_diario;
 CREATE POLICY "Usuários autenticados podem tudo" ON caixa_diario FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Fluxo de Caixa
 ALTER TABLE fluxo_caixa ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON fluxo_caixa;
 CREATE POLICY "Usuários autenticados podem tudo" ON fluxo_caixa FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Preços Venda
 ALTER TABLE precos_venda ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON precos_venda;
 CREATE POLICY "Usuários autenticados podem tudo" ON precos_venda FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- Composição Receitas
 ALTER TABLE composicao_receitas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON composicao_receitas;
 CREATE POLICY "Usuários autenticados podem tudo" ON composicao_receitas FOR ALL 
 USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
+-- Caixa Movimentações
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON caixa_movimentacoes;
+CREATE POLICY "Usuários autenticados podem tudo" ON caixa_movimentacoes FOR ALL 
+USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+
+-- Funcionário
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON funcionario;
+CREATE POLICY "Usuários autenticados podem tudo" ON funcionario FOR ALL 
+USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+
+-- Turno Operador
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON turno_operador;
+CREATE POLICY "Usuários autenticados podem tudo" ON turno_operador FOR ALL 
+USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- =====================================================
 -- DADOS INICIAIS
@@ -870,46 +1104,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Função para atualizar estoque após venda
-CREATE OR REPLACE FUNCTION atualizar_estoque_venda()
-RETURNS TRIGGER AS $$
-DECLARE
-    insumo_record RECORD;
-    quantidade_necessaria DECIMAL(10,3);
-BEGIN
-    -- Para cada item da venda, calcular ingredientes necessários
-    FOR insumo_record IN 
-        SELECT ri.insumo_id, ri.quantidade * NEW.quantidade as qtd_total
-        FROM receita_ingredientes ri
-        JOIN produtos p ON p.receita_id = ri.receita_id
-        WHERE p.id = NEW.produto_id
-    LOOP
-        -- Atualizar estoque
-        UPDATE insumos 
-        SET estoque_atual = estoque_atual - insumo_record.qtd_total
-        WHERE id = insumo_record.insumo_id;
-        
-        -- Registrar movimentação
-        INSERT INTO estoque_movimentacoes (
-            insumo_id, tipo_movimentacao, quantidade, quantidade_anterior, 
-            quantidade_atual, motivo, referencia_id, referencia_tipo
-        ) VALUES (
-            insumo_record.insumo_id, 'saida', insumo_record.qtd_total,
-            (SELECT estoque_atual + insumo_record.qtd_total FROM insumos WHERE id = insumo_record.insumo_id),
-            (SELECT estoque_atual FROM insumos WHERE id = insumo_record.insumo_id),
-            'Venda de produto', NEW.venda_id, 'venda'
-        );
-    END LOOP;
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger para atualizar estoque automaticamente
-CREATE TRIGGER trigger_atualizar_estoque_venda
-    AFTER INSERT ON venda_itens
-    FOR EACH ROW EXECUTE FUNCTION atualizar_estoque_venda();
-
 -- =====================================================
 -- VIEWS ÚTEIS
 -- =====================================================
@@ -1028,6 +1222,12 @@ SELECT
     'Rua das Flores','123','Centro','Belo Horizonte','MG','30000-000',
     '(31) 3333-4444','contato@reydospaes.com.br'
 WHERE NOT EXISTS (SELECT 1 FROM nfce_config);
+
+-- RLS para nfce_config (após tabela criada)
+ALTER TABLE nfce_config ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuários autenticados podem tudo" ON nfce_config;
+CREATE POLICY "Usuários autenticados podem tudo" ON nfce_config FOR ALL 
+USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
 -- 3) Alterações em vendas para suportar NFC-e (idempotente)
 ALTER TABLE vendas

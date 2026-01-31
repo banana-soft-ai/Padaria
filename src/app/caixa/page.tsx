@@ -2879,8 +2879,9 @@ export default function PDVPage() {
                 .eq('status', 'aberto') // Segurança extra: só atualiza se ainda estiver aberto
 
             if (upErr) {
-                showToast('Erro ao fechar o caixa no banco.', 'error')
-                console.error('Erro ao fechar caixa:', upErr)
+                const msg = (upErr as { message?: string })?.message || String(upErr)
+                showToast(`Erro ao fechar o caixa: ${msg}`, 'error')
+                console.error('Erro ao fechar caixa:', msg, upErr)
                 return
             }
 

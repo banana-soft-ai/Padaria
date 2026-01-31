@@ -1194,6 +1194,7 @@ export default function PDVPage() {
         w.document.write(html)
         w.document.close()
         w.focus()
+        w.onafterprint = () => w.close()
         setTimeout(() => w.print(), 300)
         showToast('Cupom de teste aberto para impressão.', 'success')
     }
@@ -1671,6 +1672,7 @@ export default function PDVPage() {
             w.document.close()
             w.focus()
             await new Promise((res) => setTimeout(res, 300))
+            w.onafterprint = () => w.close()
             w.print()
             return true
         } catch (err) {
@@ -1899,6 +1901,7 @@ export default function PDVPage() {
             w.document.close()
             w.focus()
             await new Promise((res) => setTimeout(res, 300))
+            w.onafterprint = () => w.close()
             w.print()
             return true
         } catch (err) {

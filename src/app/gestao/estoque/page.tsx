@@ -775,16 +775,18 @@ export default function EstoquePage() {
 
                 {isVarejoModal && (
                   <div>
-                    <label className="text-sm">PLU (5 dígitos)</label>
+                    <label className="text-sm">PLU / Código Balança (5 dígitos)</label>
                     <input
                       type="text"
                       maxLength={5}
                       value={formData.codigo_balanca}
                       onChange={(e) => setFormData({ ...formData, codigo_balanca: e.target.value.replace(/\D/g, '').slice(0, 5) })}
-                      placeholder="00001"
+                      placeholder="00200"
                       className="w-full px-3 py-2 border rounded-md"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Código da balança para produtos por peso/preço (etiqueta CCCCC-VVVVV-D)</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Código do produto na balança. Ex: código 20<strong>00200</strong>21872 → PLU = 00200
+                    </p>
                   </div>
                 )}
 
@@ -815,7 +817,11 @@ export default function EstoquePage() {
                 </div>
 
                 <div>
-                  <label className="text-sm">Preço do Pacote</label>
+                  <label className="text-sm">
+                    {isVarejoModal && (formData.unidade === 'kg' || formData.unidade === 'g')
+                      ? 'Preço por Kg (R$/kg)'
+                      : 'Preço de Venda'}
+                  </label>
                   <input
                     type="number"
                     step="0.01"
@@ -823,8 +829,12 @@ export default function EstoquePage() {
                     onChange={(e) => setFormData({ ...formData, preco_pacote: e.target.value })}
                     onFocus={handleNumberFocus}
                     onBlur={handleNumberBlur}
+                    placeholder={isVarejoModal && (formData.unidade === 'kg' || formData.unidade === 'g') ? 'Ex: 16.90' : ''}
                     className="w-full px-3 py-2 border rounded-md"
                   />
+                  {isVarejoModal && (formData.unidade === 'kg' || formData.unidade === 'g') && (
+                    <p className="text-xs text-gray-500 mt-1">Para balança: preço que aparece na etiqueta (R$/kg)</p>
+                  )}
                 </div>
 
                 <div>

@@ -3931,28 +3931,22 @@ export default function PDVPage() {
                                                     <div className="w-32 flex items-center justify-center gap-2">
                                                         {(() => {
                                                             const isPeso = item.unidade === 'kg' || item.unidade === 'g'
-                                                            if (isPeso) {
-                                                                // Produtos de peso: apenas exibe o peso (sem botões +/-)
-                                                                return (
-                                                                    <span className="font-black text-sm text-gray-700 text-center">
-                                                                        {Number(item.qtdCarrinho).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg
-                                                                    </span>
-                                                                )
-                                                            }
-                                                            // Produtos unitários: botões +/-
+                                                            const delta = isPeso ? 0.1 : 1
                                                             return (
                                                                 <>
                                                                     <button
-                                                                        onClick={() => alterarQtd(item.id, -1)}
+                                                                        onClick={() => alterarQtd(item.id, -delta)}
                                                                         className="w-8 h-8 bg-blue-50 rounded-xl text-blue-600 flex items-center justify-center hover:bg-blue-100"
                                                                     >
                                                                         <Minus className="h-4 w-4" />
                                                                     </button>
                                                                     <span className="font-black text-sm text-gray-700 w-12 text-center">
-                                                                        {item.qtdCarrinho}
+                                                                        {isPeso
+                                                                            ? `${Number(item.qtdCarrinho).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`
+                                                                            : item.qtdCarrinho}
                                                                     </span>
                                                                     <button
-                                                                        onClick={() => alterarQtd(item.id, 1)}
+                                                                        onClick={() => alterarQtd(item.id, delta)}
                                                                         className="w-8 h-8 bg-blue-50 rounded-xl text-blue-600 flex items-center justify-center hover:bg-blue-100"
                                                                     >
                                                                         <Plus className="h-4 w-4" />

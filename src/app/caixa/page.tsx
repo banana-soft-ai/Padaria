@@ -735,7 +735,6 @@ export default function PDVPage() {
     }
 
     // --- Scanner (Câmera) ---
-    const [modalScanner, setModalScanner] = useState(false)
     const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
     const [cameraId, setCameraId] = useState<string | null>(null)
     const [scannerAtivo, setScannerAtivo] = useState(false)
@@ -765,6 +764,9 @@ export default function PDVPage() {
     const detectorRef = useRef<BarcodeDetector | null>(null)
     const scanningLockRef = useRef<number>(0)
     const audioCtxRef = useRef<AudioContext | null>(null)
+    const scannerPausadoRef = useRef(false)
+    const scannerAtivoRef = useRef(false)
+    const scannerControlsRef = useRef<{ stop: () => void } | null>(null)
 
     // refs para evitar re-subscription e ler valores atuais
     const carregarVendasHojeRef = useRef<any>(null)
@@ -2606,7 +2608,6 @@ export default function PDVPage() {
         if (modalCaderneta) { setCadernetaErroLimite(null); return setModalCaderneta(false) }
         if (modalDetalhes) return setModalDetalhes(false)
         if (modalFechamento) return setModalFechamento(false)
-        if (modalScanner) { fecharScanner(); return }
     }
 
     const confirmarPagamentoAtivo = () => {
@@ -3185,10 +3186,16 @@ export default function PDVPage() {
 
     const pararScanner = () => {
         try {
+            scannerAtivoRef.current = false
             setScannerAtivo(false)
+            if (scannerControlsRef.current) {
+                try { scannerControlsRef.current.stop() } catch { }
+                scannerControlsRef.current = null
+            }
             if (codeReaderRef.current) {
-                try { typeof codeReaderRef.current.stopContinuousDecode === 'function' && codeReaderRef.current.stopContinuousDecode() } catch { }
-                try { typeof codeReaderRef.current.reset === 'function' && codeReaderRef.current.reset() } catch { }
+                try { typeof (codeReaderRef.current as any).stopContinuousDecode === 'function' && (codeReaderRef.current as any).stopContinuousDecode() } catch { }
+                try { typeof (codeReaderRef.current as any).reset === 'function' && (codeReaderRef.current as any).reset() } catch { }
+                codeReaderRef.current = null
             }
             if (videoRef.current) {
                 try { videoRef.current.pause() } catch { }
@@ -3212,7 +3219,7 @@ export default function PDVPage() {
             })
             const video = videoRef.current!
             const loop = async () => {
-                if (!scannerAtivo) return
+                if (!scannerAtivoRef.current) return
                 try {
                     // @ts-ignore
                     const bitmap = await createImageBitmap(video)
@@ -3221,7 +3228,7 @@ export default function PDVPage() {
                     const res = await det.detect(bitmap)
                     if (res && res.length > 0) {
                         const raw = res[0].rawValue || ''
-                        if (raw && Date.now() - scanningLockRef.current > 800) {
+                        if (raw && Date.now() - scanningLockRef.current > 800 && !scannerPausadoRef.current) {
                             scanningLockRef.current = Date.now()
                             setUltimoCodigo(String(raw))
                             const ok = await adicionarPorCodigo(String(raw))
@@ -3247,21 +3254,21 @@ export default function PDVPage() {
             const mod = await import('@zxing/browser')
             const reader = new mod.BrowserMultiFormatReader()
             codeReaderRef.current = reader
-            await reader.decodeFromVideoDevice(deviceId || undefined, videoRef.current!, async (result: any) => {
+            const controls = await reader.decodeFromVideoDevice(deviceId || undefined, videoRef.current!, (result: any, _error: any) => {
+                if (!scannerAtivoRef.current) return
                 if (result) {
                     const text = result.getText()
-                    if (text && Date.now() - scanningLockRef.current > 800) {
+                    if (text && Date.now() - scanningLockRef.current > 800 && !scannerPausadoRef.current) {
                         scanningLockRef.current = Date.now()
                         setUltimoCodigo(text)
-                        const ok = await adicionarPorCodigo(text)
-                        if (ok) {
-                            await tocarBeep()
-                        } else {
-                            setScannerErro('Código não encontrado no estoque.')
-                        }
+                        adicionarPorCodigo(text).then(ok => {
+                            if (ok) tocarBeep()
+                            else setScannerErro('Código não encontrado no estoque.')
+                        })
                     }
                 }
             })
+            scannerControlsRef.current = controls
             return true
         } catch (e) {
             console.error('Falha ao iniciar ZXing:', e)
@@ -3272,6 +3279,7 @@ export default function PDVPage() {
     const iniciarScanner = async (device: string | null) => {
         setScannerErro('')
         setUltimoCodigo('')
+        scannerAtivoRef.current = true
         setScannerAtivo(true)
         try {
             const constraints: MediaStreamConstraints = {
@@ -3287,33 +3295,44 @@ export default function PDVPage() {
 
             const okNative = await iniciarScannerNativo(stream)
             if (!okNative) {
+                if (streamRef.current) {
+                    streamRef.current.getTracks().forEach(t => t.stop())
+                    streamRef.current = null
+                }
+                if (videoRef.current) (videoRef.current as HTMLVideoElement).srcObject = null
                 await iniciarScannerZXing(device)
             }
         } catch (e: any) {
             console.error('Erro ao iniciar scanner:', e)
-            setScannerErro('Não foi possível acessar a câmera. Verifique permissões e HTTPS.')
+            const isNotAllowed = e?.name === 'NotAllowedError' || e?.message?.includes('Permission denied')
+            setScannerErro(isNotAllowed
+                ? 'Permissão negada. Clique no botão Scanner para ativar a câmera.'
+                : 'Não foi possível acessar a câmera. Verifique permissões e HTTPS.')
             setScannerAtivo(false)
+            if (isNotAllowed) showToast('Clique no botão Scanner para ativar a câmera.', 'warning')
         }
     }
 
-    const abrirScanner = async () => {
-        setModalScanner(true)
-        await listarCameras()
-        setTimeout(() => iniciarScanner(cameraId), 100)
-    }
-
-    const fecharScanner = () => {
-        pararScanner()
-        setModalScanner(false)
-    }
-
-
-    // Fecha scanner ao desmontar (garantia extra)
+    // Atualiza ref para pausar detecção durante modais de pagamento
     useEffect(() => {
-        return () => {
-            pararScanner()
-        }
+        scannerPausadoRef.current = !!(modalPagamento || modalDebito || modalCredito || modalPix || modalCaderneta)
+    }, [modalPagamento, modalDebito, modalCredito, modalPix, modalCaderneta])
+
+    // useEffect: desliga scanner apenas ao desmontar (ex.: navegação via sidebar para outra página)
+    // O scanner permanece ligado ao navegar entre as abas do header (Vendas, Relatórios, etc.)
+    useEffect(() => {
+        return () => pararScanner()
     }, [])
+
+    const ativarScanner = () => {
+        iniciarScanner(cameraId)
+        listarCameras() // atualiza lista de câmeras em background
+    }
+
+    const desativarScanner = () => {
+        pararScanner()
+        setScannerErro('')
+    }
 
     return (
         <ProtectedLayout>
@@ -3433,6 +3452,16 @@ export default function PDVPage() {
                                 }}
                             />
                         </div>
+                    )}
+                    {/* Video oculto para scanner — montado quando caixa aberto para permanecer ativo ao navegar entre abas */}
+                    {caixaAberto && (
+                        <video
+                            ref={videoRef}
+                            className="absolute opacity-0 pointer-events-none"
+                            style={{ position: 'absolute', left: -9999, width: 320, height: 240 }}
+                            muted
+                            playsInline
+                        />
                     )}
                     {/* FAIXA DE ATALHOS */}
                     {caixaAberto && mostrarAtalhos && (
@@ -3751,7 +3780,7 @@ export default function PDVPage() {
 
                     {/* TELA DE VENDA */}
                     {caixaAberto && view === 'venda' && (
-                        <div className="flex-1 flex flex-col lg:flex-row gap-2 overflow-auto">
+                        <div className="flex-1 flex flex-col lg:flex-row gap-2 overflow-auto relative">
                             {/* Coluna Esquerda: Busca e Carrinho */}
                             <div className="flex-1 flex flex-col gap-2 overflow-hidden">
                                 {/* Busca */}
@@ -3798,14 +3827,22 @@ export default function PDVPage() {
                                             )}
                                         </div>
                                         <button
-                                            onClick={async () => abrirScanner()}
-                                            className="px-6 bg-blue-100 text-blue-700 rounded-2xl hover:bg-blue-200 transition font-black text-xs uppercase border border-blue-200 flex items-center gap-2"
-                                            title="Abrir Scanner da Câmera"
+                                            type="button"
+                                            onClick={scannerAtivo ? desativarScanner : ativarScanner}
+                                            className={`px-6 rounded-2xl transition font-black text-xs uppercase border flex items-center gap-2 ${
+                                                scannerAtivo
+                                                    ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200'
+                                                    : 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200'
+                                            }`}
+                                            title={scannerAtivo ? 'Clique para desativar o scanner' : 'Clique para ativar o scanner da câmera'}
                                         >
                                             <Camera className="h-4 w-4" />
-                                            Scanner
+                                            {scannerAtivo ? 'Desativar Scanner' : 'Ativar Scanner'}
                                         </button>
                                     </div>
+                                    {scannerErro && (
+                                        <div className="mt-2 text-red-600 text-xs font-bold">{scannerErro}</div>
+                                    )}
                                 </div>
 
                                 {/* Carrinho */}
@@ -4187,75 +4224,6 @@ export default function PDVPage() {
                 </main>
 
                 {/* --- MODAIS --- */}
-
-                {/* Modal Scanner */}
-                {modalScanner && (
-                    <div className="fixed inset-0 bg-blue-950/90 flex items-center justify-center z-50 backdrop-blur-sm p-4">
-                        <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border-4 border-blue-500 overflow-hidden">
-                            <div className="p-4 flex items-center justify-between bg-blue-50 border-b border-blue-100">
-                                <div>
-                                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Scanner</span>
-                                    <h3 className="text-xl font-black text-gray-800">Ler Código de Barras</h3>
-                                </div>
-                                <button onClick={fecharScanner} className="text-gray-400 hover:text-red-500" title="Fechar (Esc)">
-                                    <X className="h-6 w-6" />
-                                </button>
-                            </div>
-
-                            <div className="p-4 space-y-3">
-                                <div className="flex gap-2 items-center">
-                                    <select
-                                        className="flex-1 p-2 border-2 border-blue-100 rounded-xl text-sm"
-                                        value={cameraId || ''}
-                                        onChange={(e) => {
-                                            const id = e.target.value
-                                            setCameraId(id)
-                                            if (scannerAtivo) {
-                                                pararScanner()
-                                                setTimeout(() => iniciarScanner(id), 100)
-                                            }
-                                        }}
-                                    >
-                                        {cameras.length === 0 && <option>Sem câmeras</option>}
-                                        {cameras.map((c, i) => (
-                                            <option key={c.deviceId || i} value={c.deviceId}>
-                                                {c.label || `Câmera ${i + 1}`}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <button
-                                        onClick={() => { pararScanner(); iniciarScanner(cameraId) }}
-                                        className="px-3 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs"
-                                    >
-                                        Reiniciar
-                                    </button>
-                                </div>
-
-                                <div className="relative bg-black rounded-xl overflow-hidden aspect-video">
-                                    <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
-                                    {ultimoCodigo && (
-                                        <div className="absolute bottom-2 left-2 right-2 bg-white/80 rounded-lg px-3 py-1 text-xs font-bold text-gray-800">
-                                            Último código: {ultimoCodigo}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {scannerErro && (
-                                    <div className="text-red-600 text-xs font-bold">{scannerErro}</div>
-                                )}
-
-                                <div className="flex gap-2 justify-end pt-2">
-                                    <button
-                                        onClick={fecharScanner}
-                                        className="px-4 py-2 bg-gray-100 rounded-xl text-xs font-bold text-gray-600"
-                                    >
-                                        Fechar
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* Modal Pagamento Dinheiro */}
                 {modalPagamento && (

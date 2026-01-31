@@ -1464,11 +1464,10 @@ export default function PDVPage() {
             const { codigoProduto, valorEmbutido } = parsedEan13
             const prodBalança = await buscarPorPLU(codigoProduto)
             if (!prodBalança) return false
-            const un = (prodBalança.unidade || '').toLowerCase()
-            const isPeso = un === 'kg' || un === 'g'
-            const qtd = isPeso ? valorEmbutido / 1000 : 1
-            const precoUnit = isPeso ? prodBalança.preco : valorEmbutido / 100
-            adicionarAoCarrinhoComPesoOuPreco(prodBalança, qtd, precoUnit)
+            const precoTotal = valorEmbutido / 100 // R$ do código (VVVVV = centavos)
+            const precoPorKg = prodBalança.preco > 0 ? prodBalança.preco : 1
+            const qtdKg = precoTotal / precoPorKg // peso em kg
+            adicionarAoCarrinhoComPesoOuPreco(prodBalança, qtdKg, precoPorKg)
             return true
         }
 
@@ -3165,6 +3164,23 @@ export default function PDVPage() {
 
             // Enter fora de modais: adiciona 1º item sugerido ou abre dinheiro
             if (key === 'Enter' && !(modalPagamento || modalDebito || modalCredito || modalPix || modalCaderneta)) {
+                // Enter: se searchTerm parece código de balança, usar adicionarPorCodigo
+                const termo = (searchTerm || '').trim().replace(/\D/g, '')
+                if (termo.length === 13) {
+                    const prefix = parseInt(termo.slice(0, 2), 10)
+                    if (prefix >= 20 && prefix <= 29) {
+                        e.preventDefault()
+                        adicionarPorCodigo(searchTerm!.trim())
+                        setSearchTerm('')
+                        return
+                    }
+                }
+                if (termo.length === 11) {
+                    e.preventDefault()
+                    adicionarPorCodigo(searchTerm!.trim())
+                    setSearchTerm('')
+                    return
+                }
                 if (searchTerm && produtosFiltrados.length > 0) {
                     e.preventDefault()
                     adicionarAoCarrinho(produtosFiltrados[0])

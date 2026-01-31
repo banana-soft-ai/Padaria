@@ -1040,6 +1040,14 @@ export default function PDVPage() {
         }
     }, [caixaDiaISO])
 
+    // Ao abrir o modal de caderneta, atualizar lista de clientes (ex: limite alterado na caderneta)
+    useEffect(() => {
+        if (modalCaderneta) {
+            if (typeof refreshClientes === 'function') refreshClientes()
+            if (typeof refreshMovimentacoes === 'function') refreshMovimentacoes()
+        }
+    }, [modalCaderneta])
+
     // Suporte a query param view=caderneta (ex.: redirect de /caixa/caderneta)
     useEffect(() => {
         if (searchParams.get('view') === 'caderneta' && caixaAberto) {

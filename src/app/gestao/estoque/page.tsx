@@ -278,6 +278,20 @@ export default function EstoquePage() {
           showToast('PLU deve ter exatamente 5 dígitos', 'error')
           return
         }
+        // Validar PLU duplicado
+        if (codigoBalancaSan) {
+          const { data: pluExist, error: pluError } = await supabase!
+            .from('varejo')
+            .select('id, nome')
+            .eq('codigo_balanca', codigoBalancaSan)
+            .eq('ativo', true)
+            .maybeSingle()
+          if (pluError) throw pluError
+          if (pluExist && (!editingInsumo || pluExist.id !== editingInsumo.id)) {
+            showToast(`PLU ${codigoBalancaSan} já está cadastrado para "${pluExist.nome}"`, 'error')
+            return
+          }
+        }
 
         const produtoPayload = {
           nome: formData.nome,

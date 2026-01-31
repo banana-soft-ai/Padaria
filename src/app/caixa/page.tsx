@@ -1459,6 +1459,7 @@ export default function PDVPage() {
                 .from('varejo')
                 .select('*')
                 .eq('codigo_balanca', pluTrim)
+                .eq('ativo', true)
                 .limit(1)
             if (error) throw error
             const item = data?.[0]
@@ -1491,7 +1492,10 @@ export default function PDVPage() {
         if (parsedEan13) {
             const { codigoProduto, valorEmbutido } = parsedEan13
             const prodBalança = await buscarPorPLU(codigoProduto)
-            if (!prodBalança) return false
+            if (!prodBalança) {
+                showToast(`Produto não encontrado (PLU: ${codigoProduto})`, 'warning')
+                return false
+            }
             const precoTotal = valorEmbutido / 100 // R$ do código (VVVVV = centavos)
             const precoPorKg = prodBalança.preco > 0 ? prodBalança.preco : 1
             const qtdKg = precoTotal / precoPorKg // peso em kg
@@ -1504,7 +1508,10 @@ export default function PDVPage() {
         if (parsed11) {
             const { plu, valorCentavos } = parsed11
             const prod = await buscarPorPLU(plu)
-            if (!prod) return false
+            if (!prod) {
+                showToast(`Produto não encontrado (PLU: ${plu})`, 'warning')
+                return false
+            }
             const precoFinal = valorCentavos / 100
             adicionarAoCarrinhoComPesoOuPreco(prod, 1, precoFinal)
             return true
@@ -1523,6 +1530,7 @@ export default function PDVPage() {
             const { data, error } = await getSupabase()
                 .from('varejo')
                 .select('*')
+                .eq('ativo', true)
                 .or(`codigo_barras.eq.${code},codigo_barras.eq.${codeNum}`)
                 .limit(1)
             if (error) throw error
@@ -1555,6 +1563,7 @@ export default function PDVPage() {
             }
         }
 
+        showToast(`Produto não encontrado: ${code}`, 'warning')
         return false
     }
 

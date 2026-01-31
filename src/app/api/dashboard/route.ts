@@ -166,7 +166,9 @@ export async function GET(request: Request) {
                     .in('venda_id', vendaIds)
 
                 if (itensErr) console.error('Erro ao buscar itens vendidos hoje:', itensErr)
-                itensVendidosHoje = (itensData || []).reduce((sum, it) => sum + (Number(it.quantidade) || 0), 0)
+                const soma = (itensData || []).reduce((sum, it) => sum + (Number(it.quantidade) || 0), 0)
+                // Arredondar para 2 casas decimais para evitar erros de precisão de ponto flutuante
+                itensVendidosHoje = Math.round(soma * 100) / 100
             }
         }
 

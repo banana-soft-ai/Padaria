@@ -274,7 +274,10 @@ export default function DashboardPage() {
                     <div>
                       <p className="text-sm font-medium text-gray-600">Itens Vendidos (Hoje)</p>
                       <p className="text-2xl font-bold text-gray-900 mt-1">
-                        {data?.itensVendidosHoje || 0}
+                        {(data?.itensVendidosHoje ?? 0).toLocaleString('pt-BR', {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2
+                        })}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">Unidades totais</p>
                     </div>

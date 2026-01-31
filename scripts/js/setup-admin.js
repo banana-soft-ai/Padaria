@@ -20,13 +20,6 @@ async function setupUsers() {
 
         // Array de usuários a serem criados
         const users = [
-            // Usuário Operacional (Colaborador)
-            { 
-                email: 'liliannogue001@gmail.com', 
-                password: '@101222Tlc', 
-                nome: 'Lilian', 
-                role: 'funcionario'  // Role operacional - não pode desbloquear menu admin
-            },
             // Usuário Administrador
             { 
                 email: 'admin@gmail.com', 
@@ -87,10 +80,6 @@ async function setupUsers() {
 
         console.log('\n🎉 Configuração concluída com sucesso!')
         console.log('\n📝 Credenciais de acesso:')
-        console.log('\n👤 USUÁRIO OPERACIONAL (Colaborador):')
-        console.log(`   Email: liliannogue001@gmail.com`)
-        console.log(`   Senha: @101222Tlc`)
-        console.log(`   Role: funcionario (acesso apenas ao bloco Colaborador)`)
         console.log('\n👨‍💼 USUÁRIO ADMINISTRADOR:')
         console.log(`   Email: admin@gmail.com`)
         console.log(`   Senha: Adminrdp1234@`)

@@ -71,7 +71,7 @@ export default function AdminUnlockModal({ isOpen, onClose, onSuccess }: AdminUn
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4" autoComplete="off">
           <div className="text-sm text-gray-600 mb-4">
             <p>Para acessar o menu administrativo, confirme suas credenciais de administrador ou gerente.</p>
           </div>
@@ -88,6 +88,7 @@ export default function AdminUnlockModal({ isOpen, onClose, onSuccess }: AdminUn
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isUnlocking}
+              autoComplete="off"
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="seu@email.com"
             />
@@ -106,6 +107,7 @@ export default function AdminUnlockModal({ isOpen, onClose, onSuccess }: AdminUn
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={isUnlocking}
+                autoComplete="new-password"
                 className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 placeholder="••••••••"
               />

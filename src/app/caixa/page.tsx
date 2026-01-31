@@ -1492,7 +1492,10 @@ export default function PDVPage() {
         if (parsedEan13) {
             const { codigoProduto, valorEmbutido } = parsedEan13
             const prodBalança = await buscarPorPLU(codigoProduto)
-            if (!prodBalança) return false
+            if (!prodBalança) {
+                showToast(`Produto não encontrado (PLU: ${codigoProduto})`, 'warning')
+                return false
+            }
             const precoTotal = valorEmbutido / 100 // R$ do código (VVVVV = centavos)
             const precoPorKg = prodBalança.preco > 0 ? prodBalança.preco : 1
             const qtdKg = precoTotal / precoPorKg // peso em kg
@@ -1505,7 +1508,10 @@ export default function PDVPage() {
         if (parsed11) {
             const { plu, valorCentavos } = parsed11
             const prod = await buscarPorPLU(plu)
-            if (!prod) return false
+            if (!prod) {
+                showToast(`Produto não encontrado (PLU: ${plu})`, 'warning')
+                return false
+            }
             const precoFinal = valorCentavos / 100
             adicionarAoCarrinhoComPesoOuPreco(prod, 1, precoFinal)
             return true
@@ -1557,6 +1563,7 @@ export default function PDVPage() {
             }
         }
 
+        showToast(`Produto não encontrado: ${code}`, 'warning')
         return false
     }
 

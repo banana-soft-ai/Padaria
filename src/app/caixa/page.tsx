@@ -1856,6 +1856,11 @@ export default function PDVPage() {
                     </div>
                     ${cadernetaData ? `
                     <div class="divider"></div>
+                    <div class="center bold" style="font-size: 10px; margin-bottom: 4px;">COMPRA NA CADERNETA</div>
+                    <div class="divider"></div>
+                    <div style="font-size: 11px; font-weight: 700; color: #000; margin-bottom: 4px;">
+                        Cliente: ${esc(cadernetaData.clienteNome || '—')}
+                    </div>
                     <div class="center bold" style="font-size: 10px; margin-bottom: 4px;">ATUALIZAÇÃO DO CLIENTE</div>
                     <div class="divider"></div>
                     <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600;">
@@ -1869,6 +1874,11 @@ export default function PDVPage() {
                     <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600;">
                         <span>Saldo devedor atual.</span>
                         <span>R$ ${cadernetaData.saldoDevedorAtualizado.toFixed(2)}</span>
+                    </div>
+                    <div class="divider"></div>
+                    <div style="margin-top: 12px; margin-bottom: 8px;">
+                        <div style="font-size: 10px; font-weight: 600; margin-bottom: 4px;">Assinatura do cliente:</div>
+                        <div style="border-bottom: 1px dashed #000; height: 28px; margin-top: 2px;"></div>
                     </div>
                     <div class="divider"></div>
                     ` : ''}
@@ -1901,7 +1911,7 @@ export default function PDVPage() {
     // Gera linhas de texto do cupom para impressora térmica (serviço local Elgin i9)
     const getCupomFiscalLinhas = async (
         vendaId: number,
-        cadernetaData?: { saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number }
+        cadernetaData?: { clienteNome?: string; saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number }
     ): Promise<string[]> => {
         const [{ data: vendaRow }, { data: itens }] = await Promise.all([
             getSupabase().from('vendas').select('id, created_at, valor_total, forma_pagamento, operador_nome, valor_pago, valor_troco, desconto').eq('id', vendaId).single(),
@@ -1971,11 +1981,17 @@ export default function PDVPage() {
         linhas.push(`OPERADOR: ${operadorNome}`)
         if (cadernetaData) {
             linhas.push('--------------------------------')
+            linhas.push(center('COMPRA NA CADERNETA'))
+            linhas.push('--------------------------------')
+            linhas.push(`Cliente: ${(cadernetaData.clienteNome || '—').trim()}`)
             linhas.push(center('ATUALIZAÇÃO DO CLIENTE'))
             linhas.push('--------------------------------')
             linhas.push(`Saldo devedor anterior R$`.padEnd(L - 12) + cadernetaData.saldoDevedorAnterior.toFixed(2))
             linhas.push(`Valor da compra        R$`.padEnd(L - 12) + cadernetaData.valorCompra.toFixed(2))
             linhas.push(`Saldo devedor atual.   R$`.padEnd(L - 12) + cadernetaData.saldoDevedorAtualizado.toFixed(2))
+            linhas.push('--------------------------------')
+            linhas.push('Assinatura do cliente:')
+            linhas.push('_____________________________')
             linhas.push('--------------------------------')
         }
         linhas.push('')

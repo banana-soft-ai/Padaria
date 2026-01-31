@@ -1459,6 +1459,7 @@ export default function PDVPage() {
                 .from('varejo')
                 .select('*')
                 .eq('codigo_balanca', pluTrim)
+                .eq('ativo', true)
                 .limit(1)
             if (error) throw error
             const item = data?.[0]
@@ -1523,6 +1524,7 @@ export default function PDVPage() {
             const { data, error } = await getSupabase()
                 .from('varejo')
                 .select('*')
+                .eq('ativo', true)
                 .or(`codigo_barras.eq.${code},codigo_barras.eq.${codeNum}`)
                 .limit(1)
             if (error) throw error

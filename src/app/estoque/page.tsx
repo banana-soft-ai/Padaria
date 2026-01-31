@@ -62,7 +62,7 @@ export default function EstoqueDashboardPage() {
       if (isOnline) {
         const [insumosRes, varejoRes] = await Promise.all([
           supabase!.from('insumos').select('*').order('nome'),
-          supabase!.from('varejo').select('*').order('nome')
+          supabase!.from('varejo').select('*').eq('ativo', true).order('nome')
         ])
 
         if (insumosRes.error) throw insumosRes.error
@@ -77,11 +77,12 @@ export default function EstoqueDashboardPage() {
         if (insumosRes.data?.length) await offlineStorage.saveOfflineData('insumos', insumosRes.data)
         if (varejoRes.data?.length) await offlineStorage.saveOfflineData('varejo', varejoRes.data)
       } else {
-        // Offline: buscar do cache
-        const [insumosCache, varejoCache] = await Promise.all([
+        // Offline: buscar do cache (filtrar varejo por ativo para não exibir excluídos)
+        const [insumosCache, varejoCacheRaw] = await Promise.all([
           offlineStorage.getOfflineData('insumos'),
           offlineStorage.getOfflineData('varejo')
         ])
+        const varejoCache = Array.isArray(varejoCacheRaw) ? varejoCacheRaw.filter((v: any) => v?.ativo !== false) : []
 
         const insumos = normalizarInsumos(insumosCache)
         const varejo = normalizarVarejo(varejoCache)
@@ -92,10 +93,11 @@ export default function EstoqueDashboardPage() {
       console.error('Erro ao carregar estoque:', error)
       // Fallback: tentar cache mesmo em caso de erro (ex: timeout)
       try {
-        const [insumosCache, varejoCache] = await Promise.all([
+        const [insumosCache, varejoCacheRaw] = await Promise.all([
           offlineStorage.getOfflineData('insumos'),
           offlineStorage.getOfflineData('varejo')
         ])
+        const varejoCache = Array.isArray(varejoCacheRaw) ? varejoCacheRaw.filter((v: any) => v?.ativo !== false) : []
         const insumos = normalizarInsumos(insumosCache)
         const varejo = normalizarVarejo(varejoCache)
         setItens([...insumos, ...varejo])

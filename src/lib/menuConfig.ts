@@ -55,7 +55,7 @@ export function getMenuConfig(role: UserRole | null, adminUnlocked: boolean): Me
         items: [
           { name: 'Vendas (PDV)', href: '/caixa', icon: ShoppingCart },
           { name: 'Receitas', href: '/receitas', icon: ChefHat },
-          { name: 'Estoque', href: '/estoque', icon: Package }
+          { name: 'Estoque', href: '/gestao/estoque', icon: Package }
         ]
       },
       {
@@ -82,7 +82,6 @@ export function getMenuConfig(role: UserRole | null, adminUnlocked: boolean): Me
           { name: 'Vendas', href: '/gestao/vendas', icon: TrendingUp, requiresAdminUnlock: true },
           { name: 'Preços', href: '/gestao/precos', icon: DollarSign, requiresAdminUnlock: true },
           { name: 'Operadores', href: '/gestao/operadores', icon: User, requiresAdminUnlock: true },
-          { name: 'Estoque', href: '/gestao/estoque', icon: Package, requiresAdminUnlock: true },
           { name: 'Gestão Financeira', href: '/gestao/lucro', icon: Calculator, requiresAdminUnlock: true }
         ]
       },

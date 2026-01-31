@@ -82,11 +82,11 @@ export function calcularCustos({
   // Assegura que rendimento seja um número não-negativo
   const rendimentoNum = Number(rendimento) || 0
 
-  // unitario = total dividido pelo rendimento informado (sem alterar unidade)
+  // unitario = custoBase/rendimento + embalagem (embalagem é custo por unidade, somado diretamente)
   const unitarioBase = rendimentoNum > 0 ? custoBase / rendimentoNum : 0
-  const unitarioTotal = rendimentoNum > 0 ? unitarioBase + (totalEmbalagem / rendimentoNum) : 0
+  const unitarioTotal = rendimentoNum > 0 ? unitarioBase + totalEmbalagem : 0
 
-  const totalComEmbalagem = custoBase + totalEmbalagem
+  const totalComEmbalagem = custoBase + totalEmbalagem * (rendimentoNum > 0 ? rendimentoNum : 0)
 
   return {
     custoIngredientes,
@@ -100,43 +100,48 @@ export function calcularCustos({
 }
 
 // Calcula custo total e unitário de forma segura seguindo as regras:
-// - Se rendimento <= 0, usar 1
-// - Para categoria 'cobertura' ou 'embalagem', se quantidade inválida (<=0 ou undefined) usar 1
-// - Se preço do insumo não definido, usar 0
-// - Retornar valores com duas casas decimais e números válidos
+// - Usa unidade mínima (g, ml) para conversão correta
+// - Embalagem: custo por unidade, somado ao preço unitário (não divide por rendimento)
 export function calcularCustoSeguroFromComposicoes({ composicoes, rendimento }: { composicoes: any[]; rendimento?: number }) {
-  let total = 0
+  let custoIngredientes = 0
+  let totalEmbalagem = 0
 
   for (const comp of composicoes || []) {
     const insumo = comp && comp.insumo ? comp.insumo : {}
     const precoPacote = Number(insumo.preco_pacote ?? insumo.preco ?? 0) || 0
     const pesoPacote = Number(insumo.peso_pacote ?? insumo.peso ?? 1) || 1
-
-    const custoUnitario = pesoPacote === 0 ? 0 : precoPacote / pesoPacote
+    const unidade = insumo.unidade || 'un'
+    const packConv = convertToBaseQuantity(unidade, pesoPacote)
+    const custoUnitarioBase = packConv.quantityInBase === 0 ? 0 : precoPacote / packConv.quantityInBase
 
     let quantidade = Number(comp.quantidade)
     if (isNaN(quantidade)) quantidade = 0
-
     if ((comp.categoria === 'cobertura' || comp.categoria === 'embalagem') && quantidade <= 0) {
       quantidade = 1
     }
+    const qtdConv = convertToBaseQuantity(unidade, quantidade)
+    const custoItem = custoUnitarioBase * qtdConv.quantityInBase
 
-    total += custoUnitario * quantidade
+    if (comp.categoria === 'embalagem') {
+      totalEmbalagem += custoItem
+    } else {
+      custoIngredientes += custoItem
+    }
   }
 
   let rendimentoNum = Number(rendimento)
   if (isNaN(rendimentoNum) || rendimentoNum <= 0) rendimentoNum = 1
 
-  let unitario = total / rendimentoNum
+  const custoTotal = custoIngredientes + totalEmbalagem * rendimentoNum
+  const custoUnitario = custoIngredientes / rendimentoNum + totalEmbalagem
 
-  if (!isFinite(total)) total = 0
-  if (!isFinite(unitario)) unitario = 0
+  if (!isFinite(custoTotal)) return { custoTotal: 0, custoUnitario: 0 }
+  if (!isFinite(custoUnitario)) return { custoTotal: Number(custoTotal.toFixed(2)), custoUnitario: 0 }
 
-  // Garantir duas casas decimais retornando números (não strings)
-  const custoTotal = Number(total.toFixed(2))
-  const custoUnitario = Number(unitario.toFixed(2))
-
-  return { custoTotal, custoUnitario }
+  return {
+    custoTotal: Number(custoTotal.toFixed(2)),
+    custoUnitario: Number(custoUnitario.toFixed(2))
+  }
 }
 
 // Calcula todos os campos de custo conforme regras do gerente:
@@ -157,25 +162,23 @@ export function calcularCustosCompletos({ composicoes, rendimento, custosInvisiv
     const insumo = comp && comp.insumo ? comp.insumo : {}
     const precoPacote = Number(insumo.preco_pacote ?? insumo.preco ?? 0) || 0
     const pesoPacote = Number(insumo.peso_pacote ?? insumo.peso ?? 1) || 1
-
-    const custoUnitario = pesoPacote === 0 ? 0 : precoPacote / pesoPacote
+    const unidade = insumo.unidade || 'un'
+    const packConv = convertToBaseQuantity(unidade, pesoPacote)
+    const custoUnitarioBase = packConv.quantityInBase === 0 ? 0 : precoPacote / packConv.quantityInBase
 
     let quantidade = Number(comp.quantidade)
     if (isNaN(quantidade)) quantidade = 0
-
-    // Para cobertura e embalagem, quantidade inválida (<=0) conta como 1
     if ((comp.categoria === 'cobertura' || comp.categoria === 'embalagem') && quantidade <= 0) {
       quantidade = 1
     }
-
-    const custoItem = custoUnitario * quantidade
+    const qtdConv = convertToBaseQuantity(unidade, quantidade)
+    const custoItem = custoUnitarioBase * qtdConv.quantityInBase
 
     if (comp.categoria === 'embalagem') {
       totalEmbalagem += custoItem
     } else if (comp.categoria === 'massa' || comp.categoria === 'cobertura') {
       custoIngredientes += custoItem
     } else {
-      // Se categoria desconhecida, tratar como ingrediente (massa)
       custoIngredientes += custoItem
     }
   }
@@ -188,7 +191,7 @@ export function calcularCustosCompletos({ composicoes, rendimento, custosInvisiv
   if (isNaN(rendimentoNum) || rendimentoNum <= 0) rendimentoNum = 1
 
   let custoUnitarioBase = rendimentoNum > 0 ? custoBase / rendimentoNum : 0
-  let custoUnitarioTotal = rendimentoNum > 0 ? custoUnitarioBase + (totalEmbalagem / rendimentoNum) : 0
+  let custoUnitarioTotal = rendimentoNum > 0 ? custoUnitarioBase + totalEmbalagem : 0
 
   if (!isFinite(custoIngredientes)) custoIngredientes = 0
   if (!isFinite(custoInvisivel)) custoInvisivel = 0
@@ -197,7 +200,7 @@ export function calcularCustosCompletos({ composicoes, rendimento, custosInvisiv
   if (!isFinite(custoUnitarioBase)) custoUnitarioBase = 0
   if (!isFinite(custoUnitarioTotal)) custoUnitarioTotal = 0
 
-  const custoTotal = Number((custoBase + totalEmbalagem).toFixed(2))
+  const custoTotal = Number((custoBase + totalEmbalagem * rendimentoNum).toFixed(2))
 
   return {
     custoIngredientes: Number(custoIngredientes.toFixed(2)),

@@ -1,0 +1,13 @@
+---
+description: Convenções centrais do projeto Rey dos Pães
+alwaysApply: true
+---
+
+# Rey dos Pães – Regras Centrais
+
+- **Stack**: Next.js 15 + React 19 + TypeScript. Backend: Supabase (Postgres + RLS).
+- **Camadas**: `src/app/` (UI), `src/components/`, `src/services/` (lógica), `src/repositories/` (dados), `src/lib/` (utilitários).
+- **Lógica de negócio**: Use `services` e `repositories`. Evite em componentes UI.
+- **Migrations**: Em `scripts/migrations/`. Ao alterar schema, crie migration e atualize `docs/setup/`.
+- **Segredos**: Nunca `NEXT_PUBLIC_` para chaves sensíveis. Use apenas para `NEXT_PUBLIC_SUPABASE_...`.
+- **Comandos**: `npm run dev`, `npm run build`, `npm test`. Entrypoint: `server.js`.

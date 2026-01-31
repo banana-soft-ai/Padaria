@@ -1,0 +1,12 @@
+---
+description: Regras para domínio de estoque (insumos, varejo)
+globs: "src/app/estoque/**/*,src/app/gestao/estoque/**/*,src/hooks/use*Estoque*.ts,src/hooks/useInsumos.ts"
+alwaysApply: false
+---
+
+# Estoque
+
+- **Insumos** (tabela `insumos`) vs **Varejo** (tabela `varejo`, soft delete com `ativo: false`).
+- Status: sem estoque (`estoque_atual <= 0`), estoque baixo (`atual <= minimo`), em estoque.
+- Unidades: usar `convertToBaseQuantity` e `calculatePrecoUnitario` de `@/lib/units`.
+- Offline: `useEstoqueOffline`, `offlineStorage`, `syncService`. Verificar impacto em sync ao alterar schema.

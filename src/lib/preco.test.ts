@@ -43,15 +43,15 @@ describe('calcularCustos', () => {
     expect(resultado.totalComEmbalagem).toBeCloseTo(12)
   })
 
-  it('inclui embalagem no cálculo', () => {
+  it('inclui embalagem no cálculo (embalagem é custo por unidade, somado ao preço unitário)', () => {
     const ingredientes = [
       { insumo_id: 1, quantidade: 2, categoria: 'massa' },
       { insumo_id: 2, quantidade: 1, categoria: 'embalagem' }
     ]
     const resultado = calcularCustos({ ingredientes, insumos, rendimento: 4, custosInvisiveisDecimal: 0.2 })
     expect(resultado.totalEmbalagem).toBeCloseTo(5)
-    expect(resultado.unitarioTotal).toBeCloseTo(4.25)
-    expect(resultado.totalComEmbalagem).toBeCloseTo(17)
+    expect(resultado.unitarioTotal).toBeCloseTo(8) // unitarioBase 3 + embalagem 5 (somado, não dividido)
+    expect(resultado.totalComEmbalagem).toBeCloseTo(32) // custoBase 12 + embalagem*rendimento 5*4=20
   })
 
   it('retorna zero se rendimento for zero', () => {

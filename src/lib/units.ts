@@ -25,3 +25,12 @@ export function calculatePrecoUnitario(precoPacote: number | null, unit: string,
   if (quantidadePacote === 0) return null
   return precoPacote / quantidadePacote
 }
+
+/** Retorna a unidade mínima para exibição e cálculos (kg→g, l→ml) */
+export function getUnidadeMinima(unidade: string): BaseUnit | string {
+  const u = (unidade || '').toLowerCase()
+  if (u === 'kg') return 'g'
+  if (u === 'l') return 'ml'
+  if (u === 'g' || u === 'ml') return u
+  return u || 'un'
+}

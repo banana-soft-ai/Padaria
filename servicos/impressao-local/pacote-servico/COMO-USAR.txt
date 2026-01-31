@@ -29,6 +29,9 @@ Voce precisa colocar TRES arquivos dentro da pasta "bin":
    - `bin/mkcert.exe`
    - `server.js`
    - `instalar-servico.bat`
+   - `instalar-servico-usuario.bat`  <-- RECOMENDADO (acesso a impressora)
+   - `adicionar-inicializacao.bat`   <-- Alternativa sem servico
+   - `iniciar-servidor.vbs`
    - `remover-servico.bat`
 
 2. Compacte a pasta `pacote-servico` em um arquivo `.zip`.
@@ -39,15 +42,45 @@ Voce precisa colocar TRES arquivos dentro da pasta "bin":
 
 ## 3. O QUE O CLIENTE DEVE FAZER
 
-1. Extrair o arquivo `.zip` no computador dele (ex: em C:\SistemaImpressao).
-2. Clicar com o botao direito em **`instalar-servico.bat`** e escolher **"Executar como Administrador"**.
-3. O instalador vai gerar os certificados HTTPS automaticamente e instalar o servico.
-4. PRONTO. O servico estara rodando "invisivel" e iniciara sozinho com o Windows.
+### OPCAO A: Servico como usuario (RECOMENDADO - impressao funciona)
+
+O servico precisa rodar como o USUARIO do Windows para ter acesso a impressora.
+Se o `instalar-servico.bat` original nao imprimir, use este:
+
+1. Extrair o `.zip` no computador (ex: em C:\SistemaImpressao).
+2. Clicar com o botao direito em **`instalar-servico-usuario.bat`** e escolher **"Executar como Administrador"**.
+3. Quando pedir, digitar a SENHA do usuario do Windows (ou ENTER se nao tiver senha).
+4. PRONTO. O servico rodara com seu usuario e tera acesso a impressora.
+
+### OPCAO B: Inicializacao automatica (mais simples, sem servico)
+
+Se o servico continuar com problema, use esta alternativa:
+
+1. Extrair o `.zip` no computador.
+2. Executar **`adicionar-inicializacao.bat`** (nao precisa ser admin).
+3. O servidor sera iniciado automaticamente quando o usuario fizer login.
+4. Vantagem: sempre roda no contexto do usuario = sempre tem acesso a impressora.
+
+### OPCAO C: Servico padrao (pode NAO imprimir)
+
+O `instalar-servico.bat` original instala como LocalSystem. Em muitos PCs,
+o LocalSystem NAO tem acesso as impressoras do usuario. Use Opcao A ou B.
+
+---
+
+## 4. FUNCIONAMENTO COM RAILWAY
+
+O app no Railway funciona assim:
+- O navegador do cliente acessa o site (ex: https://seu-app.railway.app)
+- Quando imprime, o JavaScript no navegador envia o cupom para https://127.0.0.1:3333
+- O servico local (nesta pasta) recebe e envia para a impressora
+
+Nao precisa de WebSocket nem agente. O servico local basta.
 
 ---
 
 ## NOTAS TECNICAS:
 - O servico usa HTTPS na porta 3333 (https://127.0.0.1:3333) para funcionar com o site no Railway.
 - Os certificados sao gerados automaticamente pelo mkcert na primeira instalacao.
-- Se a impressora no Windows tiver outro nome alem de "Elgin i9", edite o `server.js` ou configure a impressora padrao no Windows.
+- Se a impressora no Windows tiver outro nome alem de "Elgin i9", configure a variavel PRINTER_NAME no NSSM ou edite server.js.
 - Logs de erro ficarao na pasta `logs/` criada apos a instalacao.

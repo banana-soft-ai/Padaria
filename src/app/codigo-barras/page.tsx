@@ -92,6 +92,7 @@ export default function CodigoBarrasPage() {
       const { data, error } = await supabase!
         .from('varejo')
         .select('*')
+        .eq('ativo', true)
 
       if (error) throw error
 

@@ -42,6 +42,7 @@ export function canAccessRoute(userRole: UserRole | null, route: string, adminUn
     '/caixa',
     '/receitas',
     '/estoque',
+    '/gestao/estoque',
     '/configuracoes'
   ]
 
@@ -94,6 +95,7 @@ export function isOperationalRoute(route: string): boolean {
     '/caixa',
     '/receitas',
     '/estoque',
+    '/gestao/estoque',
     '/configuracoes'
   ]
 

@@ -8,6 +8,7 @@ import ProtectedLayout from '@/components/ProtectedLayout'
 import Toast from '@/app/gestao/caderneta/Toast' // Componente de notificação
 import { Plus, ChefHat, Search, Edit, Trash2, Eye, Package, X, RefreshCw } from 'lucide-react'
 import { useReceitasOffline } from '@/hooks/useReceitasOffline'
+import { convertToBaseQuantity, getUnidadeMinima } from '@/lib/units'
 
 /*
   Alterações principais:
@@ -101,14 +102,18 @@ export default function ReceitasPage() {
     const rend = Number(rendimento) || 0
     const invis = Number(custosInvisiveis) || 0
 
-    // Função que calcula custo total de um item: quantidade * (preco_pacote / peso_pacote)
+    // Função que calcula custo total de um item usando unidade mínima (g, ml, un)
     const itemCost = (comp: { quantidade: number; categoria: string; insumo?: Insumo }) => {
       const ins = comp.insumo as Insumo | undefined
-      const precoPacote = Number(ins?.preco_pacote ?? ins?.preco ?? 0) || 0
-      const pesoPacote = Number(ins?.peso_pacote ?? 1) || 1
-      const custoUnitarioDoInsumo = pesoPacote === 0 ? 0 : precoPacote / pesoPacote
-      const qtd = Number(comp.quantidade) || 0
-      return custoUnitarioDoInsumo * qtd
+      if (!ins) return 0
+      const precoPacote = Number(ins.preco_pacote ?? ins.preco ?? 0) || 0
+      const pesoPacote = Number(ins.peso_pacote ?? 1) || 1
+      const unidade = ins.unidade || 'un'
+      const packConv = convertToBaseQuantity(unidade, pesoPacote)
+      const qtdConv = convertToBaseQuantity(unidade, Number(comp.quantidade) || 0)
+      if (packConv.quantityInBase === 0) return 0
+      const custoUnitarioBase = precoPacote / packConv.quantityInBase
+      return custoUnitarioBase * qtdConv.quantityInBase
     }
 
     // 1) Custo ingredientes = soma de itens com categoria massa + cobertura
@@ -125,19 +130,19 @@ export default function ReceitasPage() {
     // 4) Custo unitário base = custoBase / rendimento (tratamento)
     const custoUnitarioBase = rend > 0 ? custoBase / rend : NaN
 
-    // 5) Embalagem: soma dos itens categoria 'embalagem'
+    // 5) Embalagem: soma dos itens categoria 'embalagem' (qty=1 por unidade = custo por unidade)
     const totalEmbalagem = composicoes
       .filter(c => c.categoria === 'embalagem')
       .reduce((s, c) => s + itemCost(c), 0)
 
-    // custo unitário de embalagem por unidade = totalEmbalagem / rendimento
-    const embalagemUnitario = rend > 0 ? totalEmbalagem / rend : NaN
+    // Embalagem é custo POR UNIDADE - somado diretamente ao preço unitário (não divide por rendimento)
+    const embalagemUnitario = totalEmbalagem
 
-    // 6) Custo unitário total = custo unitário base + embalagem unitária
+    // 6) Custo unitário total = custo unitário base + embalagem (somado, não dividido)
     const custoUnitarioTotal = (isFiniteNumber(custoUnitarioBase) ? custoUnitarioBase : NaN) + (isFiniteNumber(embalagemUnitario) ? embalagemUnitario : 0)
 
-    // custo total da receita = custoBase + totalEmbalagem
-    const custoTotal = custoBase + totalEmbalagem
+    // custo total da receita = custoBase + (embalagem * rendimento) - embalagem é por unidade
+    const custoTotal = custoBase + totalEmbalagem * (rend > 0 ? rend : 0)
 
     return {
       custoIngredientes,
@@ -1060,11 +1065,15 @@ export default function ReceitasPage() {
                           const insumoObj = ingrediente.insumo || insumos?.find(i => i.id === ingrediente.insumo_id)
                           const precoPacoteItem = Number(insumoObj?.preco_pacote ?? insumoObj?.preco ?? 0) || 0
                           const pesoPacoteItem = Number(insumoObj?.peso_pacote ?? 1) || 1
-                          const custoUnitarioItem = pesoPacoteItem === 0 ? 0 : precoPacoteItem / pesoPacoteItem
+                          const unidadeItem = insumoObj?.unidade || 'un'
+                          const packConv = convertToBaseQuantity(unidadeItem, pesoPacoteItem)
+                          const custoUnitarioBase = packConv.quantityInBase === 0 ? 0 : precoPacoteItem / packConv.quantityInBase
                           let quantidadeItem = Number(ingrediente.quantidade)
                           if (isNaN(quantidadeItem)) quantidadeItem = 0
                           if ((ingrediente.categoria === 'cobertura' || ingrediente.categoria === 'embalagem') && quantidadeItem <= 0) quantidadeItem = 1
-                          const itemTotal = custoUnitarioItem * quantidadeItem
+                          const qtdConv = convertToBaseQuantity(unidadeItem, quantidadeItem)
+                          const itemTotal = custoUnitarioBase * qtdConv.quantityInBase
+                          const unidadeExibicao = getUnidadeMinima(unidadeItem)
 
                           return (
                           <div
@@ -1098,7 +1107,7 @@ export default function ReceitasPage() {
                                   <div className="flex items-center justify-between text-xs font-medium text-gray-900 bg-green-50 border border-green-200 rounded-md px-2 py-1.5 mt-1">
                                     <div>
                                       {insumoObj?.nome || 'Insumo não encontrado'}
-                                      <span className="text-gray-500 ml-2">({insumoObj?.unidade || 'N/A'})</span>
+                                      <span className="text-gray-500 ml-2">({unidadeExibicao})</span>
                                       <div className="text-xs text-gray-600 mt-1">Custo do item: <span className="font-bold">{formatCurrency(itemTotal)}</span></div>
                                     </div>
                                     <button
@@ -1329,11 +1338,15 @@ export default function ReceitasPage() {
                               const ins = comp.insumo || {}
                               const precoPacote = Number(ins.preco_pacote ?? ins.preco ?? 0) || 0
                               const pesoPacote = Number(ins.peso_pacote ?? 1) || 1
-                              const custoUnit = pesoPacote === 0 ? 0 : precoPacote / pesoPacote
+                              const unidade = ins.unidade || 'un'
+                              const packConv = convertToBaseQuantity(unidade, pesoPacote)
+                              const custoUnitBase = packConv.quantityInBase === 0 ? 0 : precoPacote / packConv.quantityInBase
                               let qtd = Number(comp.quantidade)
                               if (isNaN(qtd)) qtd = 0
                               if ((comp.categoria === 'cobertura' || comp.categoria === 'embalagem') && qtd <= 0) qtd = 1
-                              const custoItem = custoUnit * qtd
+                              const qtdConv = convertToBaseQuantity(unidade, qtd)
+                              const custoItem = custoUnitBase * qtdConv.quantityInBase
+                              const unidadeExibicao = getUnidadeMinima(unidade)
 
                               return (
                               <div key={index} className="px-4 py-3 flex justify-between items-center hover:bg-gray-50 transition-colors">
@@ -1342,7 +1355,7 @@ export default function ReceitasPage() {
                                   <div className="text-xs text-gray-500">Custo do item: <span className="font-semibold">{formatCurrency(custoItem)}</span></div>
                                 </div>
                                 <div className="font-mono text-sm font-semibold text-gray-900 bg-gray-100 px-2 py-1 rounded">
-                                  {comp.quantidade} {ins.unidade}
+                                  {qtdConv.quantityInBase} {unidadeExibicao}
                                 </div>
                               </div>
                               )

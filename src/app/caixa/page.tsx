@@ -1170,7 +1170,7 @@ export default function PDVPage() {
         `
         const html = `
             <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cupom Teste</title>
-            <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:11px;font-weight:600;width:280px;padding:6px;background:#fff;line-height:1.2;color:#000}.center{text-align:center}.divider{border-top:1px dashed #000;margin:4px 0}table{width:100%;border-collapse:collapse}</style></head>
+            <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:11px;font-weight:600;width:280px;padding:6px;background:#fff;line-height:1.2;color:#000}.center{text-align:center}.divider{border-top:1px dashed #000;margin:4px 0}table{width:100%;border-collapse:collapse}@media print{html,body{width:80mm!important;min-height:auto!important;margin:0!important;padding:2mm!important;padding-bottom:5mm!important;font-size:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:80mm auto!important;margin:0!important}}</style></head>
             <body>
                 <div class="center" style="margin-bottom:4px">
                     <div style="font-size:13px;font-weight:bold">${esc(cupomNomeLoja)}</div>
@@ -1627,6 +1627,21 @@ export default function PDVPage() {
                     <style>
                         body { font-family: Arial, Helvetica, sans-serif; font-size:12px; padding:12px }
                         table { width:100%; border-collapse: collapse }
+                        @media print {
+                            html, body {
+                                width: 80mm !important;
+                                min-height: auto !important;
+                                margin: 0 !important;
+                                padding: 2mm !important;
+                                font-size: 10px;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            @page {
+                                size: 80mm auto !important;
+                                margin: 0 !important;
+                            }
+                        }
                     </style>
                 </head>
                 <body>
@@ -1761,8 +1776,21 @@ export default function PDVPage() {
                         .col-valor { width: 30%; }
                         .total-line { font-size: 12px; font-weight: bold; }
                         @media print {
-                            body { width: 80mm; padding: 4px; padding-bottom: 12mm; font-size: 10px; font-weight: 600; }
-                            @page { margin: 0; margin-bottom: 10mm; size: 80mm auto; }
+                            html, body {
+                                width: 80mm !important;
+                                min-height: auto !important;
+                                margin: 0 !important;
+                                padding: 2mm !important;
+                                padding-bottom: 5mm !important;
+                                font-size: 10px;
+                                font-weight: 600;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            @page {
+                                size: 80mm auto !important;
+                                margin: 0 !important;
+                            }
                         }
                     </style>
                 </head>
@@ -1850,7 +1878,6 @@ export default function PDVPage() {
                     <div class="center" style="font-size: 10px; font-weight: 600; color: #000;">
                         ${esc(mensagemCupom)}
                     </div>
-                    <div style="height: 20px; min-height: 20px;"></div>
                 </body>
                 </html>
             `

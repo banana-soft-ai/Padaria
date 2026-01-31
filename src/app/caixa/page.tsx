@@ -714,6 +714,10 @@ export default function PDVPage() {
     const [valorRecebido, setValorRecebido] = useState('')
     const [modalDetalhes, setModalDetalhes] = useState(false)
     const [modalPosVenda, setModalPosVenda] = useState(false)
+    // Modal para digitar peso manualmente (produtos kg/g)
+    const [modalPeso, setModalPeso] = useState(false)
+    const [produtoPendentePeso, setProdutoPendentePeso] = useState<Produto | null>(null)
+    const [pesoDigitado, setPesoDigitado] = useState('')
     const [lastVendaId, setLastVendaId] = useState<number | null>(null)
     const [lastCadernetaPrintData, setLastCadernetaPrintData] = useState<{
         vendaId: number
@@ -1351,6 +1355,16 @@ export default function PDVPage() {
             return
         }
 
+        // Se for produto de peso (kg/g), abre modal para digitar o peso
+        const isPeso = produto.unidade === 'kg' || produto.unidade === 'g'
+        if (isPeso) {
+            setProdutoPendentePeso(produto)
+            setPesoDigitado('')
+            setModalPeso(true)
+            setSearchTerm('')
+            return
+        }
+
         setCarrinho(prev => {
             const existente = prev.find(p => p.id === produto.id)
             if (existente) {
@@ -1367,6 +1381,20 @@ export default function PDVPage() {
         })
         setSearchTerm('') // Limpa busca após adicionar
         searchInputRef.current?.blur()
+    }
+
+    // Confirma peso digitado e adiciona ao carrinho
+    const confirmarPesoManual = () => {
+        if (!produtoPendentePeso) return
+        const peso = parseFloat(pesoDigitado.replace(',', '.'))
+        if (isNaN(peso) || peso <= 0) {
+            showToast('Digite um peso válido', 'warning')
+            return
+        }
+        adicionarAoCarrinhoComPesoOuPreco(produtoPendentePeso, peso, produtoPendentePeso.preco)
+        setModalPeso(false)
+        setProdutoPendentePeso(null)
+        setPesoDigitado('')
     }
 
     const removerDoCarrinho = (id: number) => {
@@ -4943,6 +4971,63 @@ export default function PDVPage() {
                                     <span className="font-black text-green-700">R$ {(totalItensSelecionados - descontoVendaSelecionada).toFixed(2)}</span>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal Peso Manual (produtos kg/g) */}
+                {modalPeso && produtoPendentePeso && (
+                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                        <div className="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl border-4 border-blue-100">
+                            <div className="flex justify-between items-center mb-4">
+                                <div>
+                                    <span className="text-xs font-black text-blue-400 uppercase tracking-widest">Peso</span>
+                                    <h2 className="text-xl font-black text-gray-800">{produtoPendentePeso.nome}</h2>
+                                </div>
+                                <button onClick={() => { setModalPeso(false); setProdutoPendentePeso(null); }} className="text-gray-400 hover:text-red-500">
+                                    <X className="h-6 w-6" />
+                                </button>
+                            </div>
+
+                            <p className="text-gray-500 text-sm mb-2">R$/kg {produtoPendentePeso.preco.toFixed(2)}</p>
+
+                            <div className="mb-4">
+                                <label className="text-sm font-bold text-gray-600 block mb-1">Digite o peso (kg)</label>
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={pesoDigitado}
+                                    onChange={(e) => setPesoDigitado(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') confirmarPesoManual() }}
+                                    placeholder="Ex: 1,250"
+                                    autoFocus
+                                    className="w-full px-4 py-3 text-2xl font-black text-center border-2 border-blue-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                                />
+                            </div>
+
+                            {pesoDigitado && !isNaN(parseFloat(pesoDigitado.replace(',', '.'))) && (
+                                <div className="bg-blue-50 p-3 rounded-xl mb-4 text-center">
+                                    <span className="text-sm text-gray-500">Total: </span>
+                                    <span className="font-black text-blue-600 text-lg">
+                                        R$ {(parseFloat(pesoDigitado.replace(',', '.')) * produtoPendentePeso.preco).toFixed(2)}
+                                    </span>
+                                </div>
+                            )}
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => { setModalPeso(false); setProdutoPendentePeso(null); }}
+                                    className="flex-1 py-3 rounded-xl font-black text-gray-600 bg-gray-100 hover:bg-gray-200"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={confirmarPesoManual}
+                                    className="flex-1 py-3 rounded-xl font-black text-white bg-blue-600 hover:bg-blue-700"
+                                >
+                                    Adicionar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}

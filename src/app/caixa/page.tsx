@@ -71,6 +71,14 @@ function parseEan13Balanca(codeNum: string): { codigoProduto: string; valorEmbut
     return { codigoProduto, valorEmbutido }
 }
 
+/** Etiqueta 11 dígitos da balança: CCCCC VVVVV D (PLU + preço em centavos + dígito verificador) */
+function parseEtiqueta11Digitos(codeNum: string): { plu: string; valorCentavos: number } | null {
+    if (!codeNum || codeNum.length !== 11 || !/^\d+$/.test(codeNum)) return null
+    const plu = codeNum.substring(0, 5)
+    const valorCentavos = parseInt(codeNum.substring(5, 10), 10)
+    return { plu, valorCentavos }
+}
+
 // Interfaces baseadas na estrutura do seu banco de dados
 interface Produto {
     id: number
@@ -1413,58 +1421,69 @@ export default function PDVPage() {
         searchInputRef.current?.blur()
     }
 
-    // Adiciona via código de barras (busca local e, se faltar, no Supabase)
+    // Busca produto por PLU (codigo_balanca) - local e Supabase
+    const buscarPorPLU = async (plu: string): Promise<Produto | null> => {
+        const pluTrim = plu.trim()
+        let prod = produtos.find(p => (p.codigoBalanca || '').trim() === pluTrim)
+        if (prod) return prod
+        try {
+            const { data, error } = await getSupabase()
+                .from('varejo')
+                .select('*')
+                .eq('codigo_balanca', pluTrim)
+                .limit(1)
+            if (error) throw error
+            const item = data?.[0]
+            if (!item) return null
+            const p: Produto = {
+                id: item.id,
+                codigoBarras: item.codigo_barras || '',
+                codigoBalanca: item.codigo_balanca || undefined,
+                nome: item.nome,
+                preco: item.preco_venda || 0,
+                estoque: item.estoque_atual ?? 0,
+                unidade: item.unidade || 'un',
+            }
+            setProdutos(prev => (prev.some(x => x.id === p.id) ? prev : [...prev, p]))
+            return p
+        } catch (e) {
+            console.error('Erro buscando por PLU:', e)
+            return null
+        }
+    }
+
+    // Adiciona via código de barras (EAN normal, EAN balança 13 dígitos, etiqueta 11 dígitos, PLU 5 dígitos)
     const adicionarPorCodigo = async (codigoBruto: string) => {
         const normaliza = (s: string) => s.replace(/\D/g, '')
         const code = (codigoBruto || '').trim()
         const codeNum = normaliza(code)
 
-        const parsed = parseEan13Balanca(codeNum)
-        if (parsed) {
-            const { codigoProduto, valorEmbutido } = parsed
-            let prodBalança = produtos.find(p => (p.codigoBalanca || '').trim() === codigoProduto)
-            if (!prodBalança) {
-                try {
-                    const { data, error } = await getSupabase()
-                        .from('varejo')
-                        .select('*')
-                        .eq('codigo_balanca', codigoProduto)
-                        .limit(1)
-                    if (error) throw error
-                    const item = data?.[0]
-                    if (!item) return false
-                    const prod: Produto = {
-                        id: item.id,
-                        codigoBarras: item.codigo_barras || '',
-                        codigoBalanca: item.codigo_balanca || undefined,
-                        nome: item.nome,
-                        preco: item.preco_venda || 0,
-                        estoque: item.estoque_atual ?? 0,
-                        unidade: item.unidade || 'un'
-                    }
-                    setProdutos(prev => (prev.some(p => p.id === prod.id) ? prev : [...prev, prod]))
-                    prodBalança = prod
-                } catch (e) {
-                    console.error('Erro buscando por codigo_balanca:', e)
-                    return false
-                }
-            }
+        // 1) EAN-13 balança (13 dígitos, prefixo 20-29)
+        const parsedEan13 = parseEan13Balanca(codeNum)
+        if (parsedEan13) {
+            const { codigoProduto, valorEmbutido } = parsedEan13
+            const prodBalança = await buscarPorPLU(codigoProduto)
+            if (!prodBalança) return false
             const un = (prodBalança.unidade || '').toLowerCase()
             const isPeso = un === 'kg' || un === 'g'
-            let qtd: number
-            let precoUnit: number
-            if (isPeso) {
-                qtd = valorEmbutido / 1000
-                precoUnit = prodBalança.preco
-            } else {
-                qtd = 1
-                precoUnit = valorEmbutido / 100
-            }
+            const qtd = isPeso ? valorEmbutido / 1000 : 1
+            const precoUnit = isPeso ? prodBalança.preco : valorEmbutido / 100
             adicionarAoCarrinhoComPesoOuPreco(prodBalança, qtd, precoUnit)
             return true
         }
 
-        // 1) Busca nos itens já carregados
+        // 2) Etiqueta 11 dígitos (CCCCC-VVVVV-D): PLU + preço em centavos
+        const parsed11 = parseEtiqueta11Digitos(codeNum)
+        if (parsed11) {
+            const { plu, valorCentavos } = parsed11
+            const prod = await buscarPorPLU(plu)
+            if (!prod) return false
+            const precoFinal = valorCentavos / 100
+            adicionarAoCarrinhoComPesoOuPreco(prod, 1, precoFinal)
+            return true
+        }
+
+        // 3) Busca por codigo_barras (EAN normal)
         let encontrado = produtos.find(p => {
             const a = (p.codigoBarras || '').trim()
             return a === code || normaliza(a) === codeNum
@@ -1473,36 +1492,43 @@ export default function PDVPage() {
             adicionarAoCarrinho(encontrado)
             return true
         }
-
-        // 2) Consulta Supabase para produção (dados sempre atualizados)
         try {
             const { data, error } = await getSupabase()
                 .from('varejo')
                 .select('*')
                 .or(`codigo_barras.eq.${code},codigo_barras.eq.${codeNum}`)
                 .limit(1)
-
             if (error) throw error
             const item = data?.[0]
-            if (!item) return false
-
-            const prod: Produto = {
-                id: item.id,
-                codigoBarras: item.codigo_barras || '',
-                codigoBalanca: item.codigo_balanca || undefined,
-                nome: item.nome,
-                preco: item.preco_venda || 0,
-                estoque: item.estoque_atual || 0,
-                unidade: item.unidade || 'un',
+            if (item) {
+                const prod: Produto = {
+                    id: item.id,
+                    codigoBarras: item.codigo_barras || '',
+                    codigoBalanca: item.codigo_balanca || undefined,
+                    nome: item.nome,
+                    preco: item.preco_venda || 0,
+                    estoque: item.estoque_atual || 0,
+                    unidade: item.unidade || 'un',
+                }
+                setProdutos(prev => (prev.some(p => p.id === prod.id) ? prev : [...prev, prod]))
+                adicionarAoCarrinho(prod)
+                return true
             }
-            // Cache local
-            setProdutos(prev => (prev.some(p => p.id === prod.id) ? prev : [...prev, prod]))
-            adicionarAoCarrinho(prod)
-            return true
         } catch (e) {
             console.error('Erro buscando por código no Supabase:', e)
             return false
         }
+
+        // 4) Fallback: PLU digitado manual (5 dígitos)
+        if (/^\d{5}$/.test(codeNum)) {
+            const prod = await buscarPorPLU(codeNum)
+            if (prod) {
+                adicionarAoCarrinho(prod)
+                return true
+            }
+        }
+
+        return false
     }
 
     const totalVenda = useMemo(() => {

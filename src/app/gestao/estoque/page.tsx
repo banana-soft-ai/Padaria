@@ -275,7 +275,7 @@ export default function EstoquePage() {
         }
         const codigoBalancaSan = (formData.codigo_balanca || '').replace(/\D/g, '').trim()
         if (codigoBalancaSan && codigoBalancaSan.length !== 5) {
-          showToast('Código balança deve ter exatamente 5 dígitos', 'error')
+          showToast('PLU deve ter exatamente 5 dígitos', 'error')
           return
         }
 
@@ -760,27 +760,31 @@ export default function EstoquePage() {
                 </div>
 
                 <div>
-                  <label className="text-sm">Código de Barras</label>
+                  <label className="text-sm">Código de Barras (opcional)</label>
                   <input
                     type="text"
                     value={formData.codigo_barras}
                     onChange={(e) => setFormData({ ...formData, codigo_barras: e.target.value })}
-                    required={isVarejoModal}
+                    placeholder="EAN ou código fixo"
                     className="w-full px-3 py-2 border rounded-md"
                   />
+                  {isVarejoModal && (
+                    <p className="text-xs text-gray-500 mt-1">Para produtos com código fixo (não peso variável)</p>
+                  )}
                 </div>
 
-                {isVarejoModal && (formData.unidade === 'kg' || formData.unidade === 'g') && (
+                {isVarejoModal && (
                   <div>
-                    <label className="text-sm">Código Balança (5 dígitos MGV7)</label>
+                    <label className="text-sm">PLU (5 dígitos)</label>
                     <input
                       type="text"
                       maxLength={5}
                       value={formData.codigo_balanca}
                       onChange={(e) => setFormData({ ...formData, codigo_balanca: e.target.value.replace(/\D/g, '').slice(0, 5) })}
-                      placeholder="00123"
+                      placeholder="00001"
                       className="w-full px-3 py-2 border rounded-md"
                     />
+                    <p className="text-xs text-gray-500 mt-1">Código da balança para produtos por peso/preço (etiqueta CCCCC-VVVVV-D)</p>
                   </div>
                 )}
 
@@ -834,21 +838,6 @@ export default function EstoquePage() {
                     onBlur={handleNumberBlur}
                     className="w-full px-3 py-2 border rounded-md"
                   />
-                </div>
-
-                <div>
-                  <label className="text-sm">Unidade (base)</label>
-                  <select
-                    value={formData.unidade_medida_base}
-                    onChange={(e) => setFormData({ ...formData, unidade_medida_base: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md"
-                  >
-                    <option value="g">g</option>
-                    <option value="ml">ml</option>
-                    <option value="un">un</option>
-                    <option value="kg">kg</option>
-                    <option value="l">l</option>
-                  </select>
                 </div>
 
                 <div>

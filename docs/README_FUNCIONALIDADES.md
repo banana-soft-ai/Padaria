@@ -43,6 +43,7 @@ Rotas administrativas exigem desbloqueio (ícone cadeado) ou role `admin`/`geren
   - **Scanner de câmera:** Modal com BarcodeDetector nativo ou ZXing.
   - **Integração balança Toledo Prix:** EAN-13 com prefixos 20–29.
 - **Caderneta:** Vendas fiado vinculadas a clientes; saldo devedor atualizado.
+- **Cupom fiscal:** Na view Relatórios, ao clicar em Imprimir para uma venda, abre-se um modal: é possível **imprimir direto** (sem dados do consumidor) ou **imprimir com dados do cliente** (Nome e CPF opcionais, exibidos no bloco CONSUMIDOR do cupom).
 - **Turno operador:** Troca de operador via `TurnoOperadorModal`.
 - **Offline:** `useCaixaOffline`, `useVendasOffline`, `useCadernetaOffline`.
 - **Docs detalhados:** `docs/app-pages/page-caixa-fluxo-codigo-barras.md`

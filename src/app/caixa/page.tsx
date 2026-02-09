@@ -47,6 +47,7 @@ import AbrirCaixaModal from '@/components/AbrirCaixaModal'
 import TurnoOperadorModal from '@/components/TurnoOperadorModal'
 import { trocarOperador } from '@/services/turnoOperadorService'
 import { getTurnoOperadorAtual, finalizarTurnoOperador } from '@/repositories/turnoOperadorRepository'
+import { formatCpfDisplay } from '@/lib/formatCpf'
 
 // Se true, o banco (trigger) fará a atualização de caixa automaticamente.
 // Quando habilitado, o cliente NÃO fará updates em `caixa_diario`, `caixa_movimentacoes` ou `fluxo_caixa`.
@@ -101,6 +102,12 @@ interface VendaRegistrada {
     forma_pagamento: string
     created_at?: string | Date
     operador_nome?: string // Adicionado para refletir o uso no fechamento do caixa
+}
+
+/** Dados opcionais do consumidor para cupom fiscal (reimpressão em relatórios) */
+interface DadosFiscaisCupom {
+    clienteNome?: string
+    clienteCpf?: string
 }
 
 export default function PDVPage() {
@@ -713,22 +720,16 @@ export default function PDVPage() {
     const [cupomImprimidos, setCupomImprimidos] = useState(0)
     const [valorRecebido, setValorRecebido] = useState('')
     const [modalDetalhes, setModalDetalhes] = useState(false)
-    const [modalPosVenda, setModalPosVenda] = useState(false)
     // Modal para digitar peso manualmente (produtos kg/g)
     const [modalPeso, setModalPeso] = useState(false)
     const [produtoPendentePeso, setProdutoPendentePeso] = useState<Produto | null>(null)
     const [pesoDigitado, setPesoDigitado] = useState('')
-    const [lastVendaId, setLastVendaId] = useState<number | null>(null)
-    const [lastCadernetaPrintData, setLastCadernetaPrintData] = useState<{
-        vendaId: number
-        clienteNome: string
-        saldoDevedorAnterior: number
-        valorCompra: number
-        saldoDevedorAtualizado: number
-    } | null>(null)
     const [itensVendaSelecionada, setItensVendaSelecionada] = useState<any[]>([])
     const [vendaSelecionadaId, setVendaSelecionadaId] = useState<number | null>(null)
     const [vendaClienteNome, setVendaClienteNome] = useState<string | null>(null)
+    const [modalImpressaoVendaId, setModalImpressaoVendaId] = useState<number | null>(null)
+    const [impressaoModalNome, setImpressaoModalNome] = useState('')
+    const [impressaoModalCpf, setImpressaoModalCpf] = useState('')
     const [descontoVendaSelecionada, setDescontoVendaSelecionada] = useState<number>(0)
     // Controle de emissão fiscal por venda (removido/obsoleto)
     // Exibição da faixa de atalhos
@@ -739,8 +740,6 @@ export default function PDVPage() {
     const confDinheiroRef = useRef<HTMLInputElement>(null)
     const [showSuggestions, setShowSuggestions] = useState(false)
     const [lastAddedItem, setLastAddedItem] = useState<ItemCarrinho | null>(null)
-    // Timer ref para abrir modal pós-venda após delay
-    const postVendaTimerRef = useRef<number | null>(null)
 
     const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info') => {
         setToast({ message, type })
@@ -751,23 +750,6 @@ export default function PDVPage() {
     const [cameraId, setCameraId] = useState<string | null>(null)
     const [scannerAtivo, setScannerAtivo] = useState(false)
 
-    // Limpa timer pós-venda ao desmontar
-    useEffect(() => {
-        return () => {
-            if (postVendaTimerRef.current) {
-                try { window.clearTimeout(postVendaTimerRef.current) } catch (e) {}
-            }
-        }
-    }, [])
-
-    // Abre o modal pós-venda com um delay curto (300ms) para não bloquear a UI
-    const abrirModalPosVendaComDelay = (delay = 300) => {
-        try { if (postVendaTimerRef.current) window.clearTimeout(postVendaTimerRef.current) } catch (e) {}
-        postVendaTimerRef.current = window.setTimeout(() => {
-            setModalPosVenda(true)
-        }, delay)
-    }
-    // Estado do modal pós-venda (impressão de recibo)
     const [ultimoCodigo, setUltimoCodigo] = useState<string>('')
     const [scannerErro, setScannerErro] = useState<string>('')
     const videoRef = useRef<HTMLVideoElement>(null)
@@ -1102,11 +1084,12 @@ export default function PDVPage() {
 
     const imprimirVendaPorId = async (
         vendaId: number,
-        cadernetaData?: { clienteNome?: string; saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number }
+        cadernetaData?: { clienteNome?: string; saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number },
+        dadosFiscais?: DadosFiscaisCupom
     ) => {
         const urlBase = (typeof window !== 'undefined' ? localStorage.getItem('impressao-local-url') : null) || 'https://127.0.0.1:3333'
         try {
-            const linhas = await getCupomFiscalLinhas(vendaId, cadernetaData)
+            const linhas = await getCupomFiscalLinhas(vendaId, cadernetaData, dadosFiscais)
             const res = await fetch(`${urlBase}/imprimir-cupom`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1118,14 +1101,19 @@ export default function PDVPage() {
                 return
             }
             throw new Error(await res.text())
-        } catch (_) {
+        } catch (e) {
+            const isRede = e instanceof TypeError && String((e as Error).message).toLowerCase().includes('fetch')
+            const msg = isRede
+                ? `Serviço de impressão indisponível. Inicie o serviço em ${urlBase}`
+                : 'Falha ao imprimir. Verifique se o serviço de impressão está rodando.'
+            console.error('Erro ao imprimir cupom:', e)
+            showToast(msg, 'error')
             try {
-                await printCupomFiscalNFCe(vendaId, cadernetaData)
+                await printCupomFiscalNFCe(vendaId, cadernetaData, dadosFiscais)
                 incrementarCupomImprimido()
                 showToast('Cupom aberto para impressão no navegador.', 'success')
-            } catch (e) {
-                console.error('Erro ao imprimir cupom:', e)
-                showToast('Falha ao imprimir cupom.', 'error')
+            } catch (_) {
+                // já mostrou toast de erro acima
             }
         }
     }
@@ -1684,7 +1672,8 @@ export default function PDVPage() {
     // Função para imprimir cupom fiscal (com bloco opcional de atualização do cliente para caderneta)
     const printCupomFiscalNFCe = async (
         vendaId: number,
-        cadernetaData?: { clienteNome?: string; saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number }
+        cadernetaData?: { clienteNome?: string; saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number },
+        dadosFiscais?: DadosFiscaisCupom
     ) => {
         try {
             const [{ data: vendaRow }, { data: itens }] = await Promise.all([
@@ -1856,6 +1845,14 @@ export default function PDVPage() {
                     <div style="font-size: 10px; font-weight: 600; color: #000; margin-bottom: 6px;">
                         OPERADOR: ${esc(operadorNome)}
                     </div>
+                    ${(dadosFiscais?.clienteNome || dadosFiscais?.clienteCpf) ? `
+                    <div class="divider"></div>
+                    <div class="center bold" style="font-size: 10px; margin-bottom: 4px;">CONSUMIDOR</div>
+                    <div class="divider"></div>
+                    ${dadosFiscais.clienteNome ? `<div style="font-size: 11px; font-weight: 600; color: #000; margin-bottom: 2px;">Nome: ${esc(dadosFiscais.clienteNome)}</div>` : ''}
+                    ${dadosFiscais.clienteCpf ? `<div style="font-size: 11px; font-weight: 600; color: #000;">CPF: ${esc(formatCpfDisplay(dadosFiscais.clienteCpf))}</div>` : ''}
+                    <div class="divider"></div>
+                    ` : ''}
                     ${cadernetaData ? `
                     <div class="divider"></div>
                     <div class="center bold" style="font-size: 10px; margin-bottom: 4px;">COMPRA NA CADERNETA</div>
@@ -1914,7 +1911,8 @@ export default function PDVPage() {
     // Gera linhas de texto do cupom para impressora térmica (serviço local Elgin i9)
     const getCupomFiscalLinhas = async (
         vendaId: number,
-        cadernetaData?: { clienteNome?: string; saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number }
+        cadernetaData?: { clienteNome?: string; saldoDevedorAnterior: number; valorCompra: number; saldoDevedorAtualizado: number },
+        dadosFiscais?: DadosFiscaisCupom
     ): Promise<string[]> => {
         const [{ data: vendaRow }, { data: itens }] = await Promise.all([
             getSupabase().from('vendas').select('id, created_at, valor_total, forma_pagamento, operador_nome, valor_pago, valor_troco, desconto').eq('id', vendaId).single(),
@@ -1982,6 +1980,14 @@ export default function PDVPage() {
         linhas.push(`TOTAL R$`.padEnd(L - 12) + valorTotal.toFixed(2))
         linhas.push('--------------------------------')
         linhas.push(`OPERADOR: ${operadorNome}`)
+        if (dadosFiscais?.clienteNome || dadosFiscais?.clienteCpf) {
+            linhas.push('--------------------------------')
+            linhas.push(center('CONSUMIDOR'))
+            linhas.push('--------------------------------')
+            if (dadosFiscais.clienteNome) linhas.push(`Nome: ${(dadosFiscais.clienteNome || '').trim()}`)
+            if (dadosFiscais.clienteCpf) linhas.push(`CPF: ${formatCpfDisplay(dadosFiscais.clienteCpf)}`)
+            linhas.push('--------------------------------')
+        }
         if (cadernetaData) {
             linhas.push('--------------------------------')
             linhas.push(center('COMPRA NA CADERNETA'))
@@ -2114,7 +2120,6 @@ export default function PDVPage() {
                 }
                 await offlineStorage.saveOfflineData('vendas', [novaVendaLocal, ...(vendasCached || [])])
                 showToast('Venda salva offline. Será sincronizada quando online.', 'success')
-                setLastVendaId(tempVendaId)
                 setVendasHoje(prev => [{
                     id: tempVendaId,
                     data: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
@@ -2131,8 +2136,6 @@ export default function PDVPage() {
                 setModalCredito(false)
                 setModalPix(false)
                 setModalCaderneta(false)
-                setLastCadernetaPrintData(null)
-                abrirModalPosVendaComDelay(300)
                 setLoading(false)
                 return
             }
@@ -2191,7 +2194,6 @@ export default function PDVPage() {
             // Sucesso: notificar. Agendaremos o modal de impressão APENAS se todas as
             // etapas de pós-processamento (caderneta, caixa, fluxo) ocorrerem sem erros.
             showToast('Venda realizada com sucesso!', 'success')
-            setLastVendaId(vendaData.id)
 
             // Flag que indica se houve algum problema no pós-processamento
             let postSaleIssue = false
@@ -2248,7 +2250,6 @@ export default function PDVPage() {
                                     valorCompra,
                                     saldoDevedorAtualizado: res.novoSaldo ?? 0
                                 }
-                                setLastCadernetaPrintData(dados)
                                 cadernetaDataParaPrimeiraVia = dados
                             }
                         }
@@ -2464,10 +2465,7 @@ export default function PDVPage() {
                             showToast('Falha ao imprimir 1ª via.', 'warning')
                         }
                     }
-                } else {
-                    setLastCadernetaPrintData(null)
                 }
-                abrirModalPosVendaComDelay(300)
             } else {
                 showToast('Venda registrada, mas ocorreram problemas no pós-processamento. Impressão desabilitada.', 'warning')
             }
@@ -3857,7 +3855,7 @@ export default function PDVPage() {
                                                                 <span className="font-bold text-amber-600 ml-1">R$ {Number(v.total).toFixed(2)}</span>
                                                             </div>
                                                             <button
-                                                                onClick={() => imprimirVendaPorId(v.id)}
+                                                                onClick={() => setModalImpressaoVendaId(v.id)}
                                                                 className="shrink-0 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold uppercase flex items-center gap-1"
                                                             >
                                                                 <Printer className="h-3 w-3" /> Imprimir
@@ -3902,6 +3900,72 @@ export default function PDVPage() {
                                     </div>
                                 </div>
                             )}
+
+                    {/* Modal Imprimir cupom (Relatórios): Nome/CPF opcionais ou imprimir direto */}
+                    {modalImpressaoVendaId !== null && (
+                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
+                            <div className="bg-white p-4 rounded-lg w-full max-w-sm shadow-lg">
+                                <h3 className="text-base font-black text-gray-800 mb-3">Imprimir cupom</h3>
+                                <p className="text-sm text-gray-600 mb-4">Preencha Nome e/ou CPF se quiser incluir no cupom; deixe em branco para imprimir sem dados do consumidor.</p>
+                                <div className="space-y-3 mb-4">
+                                    <label className="block text-sm font-medium text-gray-700">Nome</label>
+                                    <input
+                                        type="text"
+                                        value={impressaoModalNome}
+                                        onChange={(e) => setImpressaoModalNome(e.target.value)}
+                                        placeholder="Nome do cliente"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                    <label className="block text-sm font-medium text-gray-700">CPF</label>
+                                    <input
+                                        type="text"
+                                        value={formatCpfDisplay(impressaoModalCpf)}
+                                        onChange={(e) => {
+                                            const digits = e.target.value.replace(/\D/g, '').slice(0, 11)
+                                            setImpressaoModalCpf(digits)
+                                        }}
+                                        placeholder="000.000.000-00"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => {
+                                            const vendaId = modalImpressaoVendaId
+                                            const nome = impressaoModalNome.trim()
+                                            const cpfDigits = impressaoModalCpf.replace(/\D/g, '')
+                                            if (cpfDigits.length > 0 && cpfDigits.length !== 11) {
+                                                showToast('CPF deve ter 11 dígitos.', 'warning')
+                                                return
+                                            }
+                                            setModalImpressaoVendaId(null)
+                                            setImpressaoModalNome('')
+                                            setImpressaoModalCpf('')
+                                            if (vendaId != null) {
+                                                const dadosFiscais: DadosFiscaisCupom = {}
+                                                if (nome) dadosFiscais.clienteNome = nome
+                                                if (cpfDigits.length === 11) dadosFiscais.clienteCpf = cpfDigits
+                                                imprimirVendaPorId(vendaId, undefined, Object.keys(dadosFiscais).length > 0 ? dadosFiscais : undefined)
+                                            }
+                                        }}
+                                        className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold"
+                                    >
+                                        Imprimir
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setModalImpressaoVendaId(null)
+                                            setImpressaoModalNome('')
+                                            setImpressaoModalCpf('')
+                                        }}
+                                        className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-bold"
+                                    >
+                                        Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* TELA DE VENDA */}
                     {caixaAberto && view === 'venda' && (
@@ -4171,14 +4235,22 @@ export default function PDVPage() {
                                                 R$ {venda.total.toFixed(2)}
                                             </td>
                                             <td className="p-4 text-center">
-                                                <button
-                                                    onClick={() => verDetalhesVenda(venda.id)}
-                                                    className="p-2 bg-blue-100 text-blue-600 rounded-xl hover:bg-blue-200 transition"
-                                                    title="Ver Itens Comprados"
-                                                >
-                                                    <Eye className="h-5 w-5" />
-                                                </button>
-
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={() => verDetalhesVenda(venda.id)}
+                                                        className="p-2 bg-blue-100 text-blue-600 rounded-xl hover:bg-blue-200 transition"
+                                                        title="Ver Itens Comprados"
+                                                    >
+                                                        <Eye className="h-5 w-5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setModalImpressaoVendaId(venda.id)}
+                                                        className="p-2 bg-blue-100 text-blue-600 rounded-xl hover:bg-blue-200 transition"
+                                                        title="Imprimir cupom"
+                                                    >
+                                                        <Printer className="h-5 w-5" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -5081,57 +5153,6 @@ export default function PDVPage() {
                                     className="flex-1 py-3 rounded-xl font-black text-white bg-blue-600 hover:bg-blue-700"
                                 >
                                     Adicionar
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Modal Pós-Venda (Imprimir recibo) */}
-                {modalPosVenda && (
-                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-                        <div className="bg-white p-6 rounded-3xl w-full max-w-md shadow-2xl border-4 border-blue-100 max-h-[90vh] overflow-y-auto">
-                            <div className="flex justify-between items-center mb-4">
-                                <div>
-                                    <span className="text-xs font-black text-blue-400 uppercase tracking-widest">Venda</span>
-                                    <h2 className="text-xl font-black text-gray-800 uppercase italic">
-                                        {lastCadernetaPrintData
-                                            ? `Venda lançada para o Cliente ${lastCadernetaPrintData.clienteNome} com sucesso!`
-                                            : 'Venda realizada com sucesso!'}
-                                    </h2>
-                                </div>
-                                <button onClick={() => { setModalPosVenda(false); setLastCadernetaPrintData(null); }} className="text-gray-400 hover:text-red-500">
-                                    <X className="h-6 w-6" />
-                                </button>
-                            </div>
-
-                            <p className="text-gray-600 mb-6">
-                                {lastCadernetaPrintData ? 'Imprimir segunda via?' : 'Deseja imprimir o cupom fiscal?'}
-                            </p>
-
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={async () => {
-                                        if (!lastVendaId) {
-                                            showToast('Venda não encontrada para impressão.', 'error')
-                                            return
-                                        }
-                                        await imprimirVendaPorId(lastVendaId, lastCadernetaPrintData ?? undefined)
-                                        setModalPosVenda(false)
-                                        setLastCadernetaPrintData(null)
-                                    }}
-                                    className="flex-1 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase"
-                                >
-                                    Sim
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setModalPosVenda(false)
-                                        setLastCadernetaPrintData(null)
-                                    }}
-                                    className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-2xl font-bold uppercase"
-                                >
-                                    Não
                                 </button>
                             </div>
                         </div>

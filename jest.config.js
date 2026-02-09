@@ -2,7 +2,7 @@
 const config = {
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
-  // Mapear alias @/ para src/
+  preset: 'ts-jest',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
@@ -12,7 +12,11 @@ const config = {
     '!src/**/*.d.ts',
     '!src/**/*.stories.{js,jsx,ts,tsx}',
   ],
-  roots: ['<rootDir>/tests'],
+  roots: ['<rootDir>/tests', '<rootDir>/src'],
+  transform: {
+    '^.+\\.(ts|tsx)$': ['ts-jest', { useESM: false }],
+  },
+  transformIgnorePatterns: ['/node_modules/'],
 }
 
 module.exports = config;

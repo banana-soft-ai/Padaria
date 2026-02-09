@@ -1,5 +1,26 @@
 require('@testing-library/jest-dom')
 
+// Polyfill Response para testes de API routes (Node/jest jsdom não tem global Response)
+if (typeof global.Response === 'undefined') {
+  global.Response = class Response {
+    constructor(body, init = {}) {
+      this._body = body
+      this.status = init.status ?? 200
+      this._headers = init.headers && typeof init.headers === 'object' ? { ...init.headers } : {}
+    }
+    get headers() {
+      return {
+        get: (name) => this._headers[name] ?? null
+      }
+    }
+    async text() {
+      if (this._body == null) return ''
+      if (typeof this._body === 'string') return this._body
+      return String(this._body)
+    }
+  }
+}
+
 // Mock do Supabase será feito individualmente nos testes
 
 // Mock do Next.js router

@@ -10,6 +10,7 @@ import { ClienteCaderneta, MovimentacaoCaderneta, Venda } from '@/lib/supabase'
 interface ClienteFormData {
   nome: string
   telefone?: string
+  cpf_cnpj?: string
   endereco?: string
   limite_credito: number
   observacoes?: string
@@ -78,6 +79,7 @@ export function useCadernetaOffline() {
       const novoCliente: Omit<ClienteCaderneta, 'id'> = {
         nome: formData.nome,
         telefone: formData.telefone || '',
+        cpf_cnpj: formData.cpf_cnpj || undefined,
         endereco: formData.endereco || '',
         limite_credito: formData.limite_credito,
         saldo_devedor: 0,
@@ -231,7 +233,8 @@ export function useCadernetaOffline() {
   }
 
   // Registrar pagamento (atualiza caderneta e, quando online, registra entrada no caixa)
-  const registrarPagamento = async (clienteId: number, valor: number, observacoes?: string, opts?: { data_pagamento?: string, forma_pagamento?: string }) => {
+  // valor = valor abatido na caderneta; opts.valor_caixa = valor a lançar no caixa (ex.: total com taxa no cartão)
+  const registrarPagamento = async (clienteId: number, valor: number, observacoes?: string, opts?: { data_pagamento?: string, forma_pagamento?: string; valor_caixa?: number }) => {
     const result = await adicionarMovimentacao({
       cliente_id: clienteId,
       tipo: 'pagamento',
@@ -242,6 +245,7 @@ export function useCadernetaOffline() {
     const hoje = opts?.data_pagamento || new Date().toISOString().split('T')[0];
     const forma = String(opts?.forma_pagamento || 'dinheiro').toLowerCase();
     const formasValidas = ['dinheiro', 'pix', 'debito', 'débito', 'cartao_debito', 'cartao-debito', 'credito', 'crédito', 'cartao_credito', 'cartao-credito'];
+    const valorParaCaixa = opts?.valor_caixa ?? valor;
 
     if (result.success) {
       if (!isOffline) {
@@ -269,16 +273,16 @@ export function useCadernetaOffline() {
           // Não há caixa aberto, não registra no caixa
           return result;
         }
-        // Atualizar totais do caixa_diario no banco
+        // Atualizar totais do caixa_diario no banco (usa valorParaCaixa = total cobrado, ex. com taxa no cartão)
         let atualizar: any = {
           updated_at: new Date().toISOString()
         };
         if (formasValidas.includes(forma)) {
-          atualizar.total_entradas = Number((Number(caixaRow.total_entradas || 0) + valor).toFixed(2));
-          if (forma === 'dinheiro') atualizar.total_dinheiro = Number((Number(caixaRow.total_dinheiro || 0) + valor).toFixed(2));
-          if (forma === 'pix') atualizar.total_pix = Number((Number(caixaRow.total_pix || 0) + valor).toFixed(2));
-          if (['debito', 'débito', 'cartao_debito', 'cartao-debito'].includes(forma)) atualizar.total_debito = Number((Number(caixaRow.total_debito || 0) + valor).toFixed(2));
-          if (['credito', 'crédito', 'cartao_credito', 'cartao-credito'].includes(forma)) atualizar.total_credito = Number((Number(caixaRow.total_credito || 0) + valor).toFixed(2));
+          atualizar.total_entradas = Number((Number(caixaRow.total_entradas || 0) + valorParaCaixa).toFixed(2));
+          if (forma === 'dinheiro') atualizar.total_dinheiro = Number((Number(caixaRow.total_dinheiro || 0) + valorParaCaixa).toFixed(2));
+          if (forma === 'pix') atualizar.total_pix = Number((Number(caixaRow.total_pix || 0) + valorParaCaixa).toFixed(2));
+          if (['debito', 'débito', 'cartao_debito', 'cartao-debito'].includes(forma)) atualizar.total_debito = Number((Number(caixaRow.total_debito || 0) + valorParaCaixa).toFixed(2));
+          if (['credito', 'crédito', 'cartao_credito', 'cartao-credito'].includes(forma)) atualizar.total_credito = Number((Number(caixaRow.total_credito || 0) + valorParaCaixa).toFixed(2));
         }
         await supabase
           .from('caixa_diario')
@@ -290,7 +294,7 @@ export function useCadernetaOffline() {
           .insert({
             caixa_diario_id: caixaRow.id,
             tipo: 'entrada',
-            valor: valor,
+            valor: valorParaCaixa,
             motivo: `Pagamento caderneta (cliente ${clienteId})`,
             observacoes: observacoes || null,
             created_at: new Date().toISOString()
@@ -303,7 +307,7 @@ export function useCadernetaOffline() {
             tipo: 'entrada',
             categoria: 'caderneta',
             descricao: `Pagamento caderneta (cliente ${clienteId})`,
-            valor: valor,
+            valor: valorParaCaixa,
             caixa_diario_id: caixaRow.id,
             observacoes: observacoes || null,
             created_at: new Date().toISOString()
@@ -316,11 +320,11 @@ export function useCadernetaOffline() {
           if (!caixaAberto) return result;
           let atualizar: any = { ...caixaAberto };
           if (formasValidas.includes(forma)) {
-            atualizar.total_entradas = Number((Number(atualizar.total_entradas || 0) + valor).toFixed(2));
-            if (forma === 'dinheiro') atualizar.total_dinheiro = Number((Number(atualizar.total_dinheiro || 0) + valor).toFixed(2));
-            if (forma === 'pix') atualizar.total_pix = Number((Number(atualizar.total_pix || 0) + valor).toFixed(2));
-            if (['debito', 'débito', 'cartao_debito', 'cartao-debito'].includes(forma)) atualizar.total_debito = Number((Number(atualizar.total_debito || 0) + valor).toFixed(2));
-            if (['credito', 'crédito', 'cartao_credito', 'cartao-credito'].includes(forma)) atualizar.total_credito = Number((Number(atualizar.total_credito || 0) + valor).toFixed(2));
+            atualizar.total_entradas = Number((Number(atualizar.total_entradas || 0) + valorParaCaixa).toFixed(2));
+            if (forma === 'dinheiro') atualizar.total_dinheiro = Number((Number(atualizar.total_dinheiro || 0) + valorParaCaixa).toFixed(2));
+            if (forma === 'pix') atualizar.total_pix = Number((Number(atualizar.total_pix || 0) + valorParaCaixa).toFixed(2));
+            if (['debito', 'débito', 'cartao_debito', 'cartao-debito'].includes(forma)) atualizar.total_debito = Number((Number(atualizar.total_debito || 0) + valorParaCaixa).toFixed(2));
+            if (['credito', 'crédito', 'cartao_credito', 'cartao-credito'].includes(forma)) atualizar.total_credito = Number((Number(atualizar.total_credito || 0) + valorParaCaixa).toFixed(2));
           }
           atualizar.updated_at = new Date().toISOString();
           const { updateItem: updateCaixa } = useOfflineData<any>({ table: 'caixa_diario', autoSync: false });
@@ -329,7 +333,7 @@ export function useCadernetaOffline() {
           await addMovCaixa({
             caixa_diario_id: caixaAberto.id,
             tipo: 'entrada',
-            valor: valor,
+            valor: valorParaCaixa,
             motivo: `Pagamento caderneta (cliente ${clienteId})`,
             observacoes: observacoes || null,
             created_at: new Date().toISOString()
@@ -340,7 +344,7 @@ export function useCadernetaOffline() {
             tipo: 'entrada',
             categoria: 'caderneta',
             descricao: `Pagamento caderneta (cliente ${clienteId})`,
-            valor: valor,
+            valor: valorParaCaixa,
             caixa_diario_id: caixaAberto.id,
             observacoes: observacoes || null,
             created_at: new Date().toISOString()

@@ -145,6 +145,7 @@ export interface ClienteCaderneta {
   id: number
   nome: string
   telefone?: string
+  cpf_cnpj?: string
   endereco?: string
   limite_credito?: number
   saldo_devedor?: number

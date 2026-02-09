@@ -47,6 +47,7 @@ function toClienteCaderneta(obj) {
     id: toNumber(obj && obj.id, 0),
     nome: toString(obj && obj.nome, ''),
     telefone: obj && obj.telefone || undefined,
+    cpf_cnpj: obj && obj.cpf_cnpj || undefined,
     endereco: obj && obj.endereco || undefined,
     limite_credito: toNumber(obj && obj.limite_credito, 0),
     saldo_devedor: toNumber(obj && obj.saldo_devedor, 0),

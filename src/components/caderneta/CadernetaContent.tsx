@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { ClienteCaderneta, MovimentacaoCaderneta } from '@/lib/supabase'
 import Toast from '@/app/gestao/caderneta/Toast'
-import { Plus, Users, DollarSign, CreditCard, Search, Edit, Trash2, Calculator, WifiOff, RefreshCw, X, Download, FileText, MessageCircle, FileSpreadsheet, Printer } from 'lucide-react'
+import { Plus, Users, DollarSign, CreditCard, Search, Edit, Trash2, Calculator, Eye, WifiOff, RefreshCw, X, Download, FileText, MessageCircle, FileSpreadsheet, Printer } from 'lucide-react'
 import { useCadernetaOffline } from '@/hooks/useCadernetaOffline'
 
 /**
@@ -92,6 +92,8 @@ export function CadernetaContent() {
   const [showModalCliente, setShowModalCliente] = useState(false)
   const [showModalPagamento, setShowModalPagamento] = useState(false)
   const [showModalSaldo, setShowModalSaldo] = useState(false)
+  const [showModalVisualizar, setShowModalVisualizar] = useState(false)
+  const [clienteParaVisualizar, setClienteParaVisualizar] = useState<ClienteCaderneta | null>(null)
 
   // Estado para armazenar o cliente que está sendo manipulado (ex: em um modal).
   const [clienteSelecionado, setClienteSelecionado] = useState<ClienteCaderneta | null>(null)
@@ -129,6 +131,7 @@ export function CadernetaContent() {
     id: '',
     nome: '',
     telefone: '',
+    cpf_cnpj: '',
     endereco: '',
     limite_credito: '',
     saldo_devedor: '0',
@@ -141,7 +144,8 @@ export function CadernetaContent() {
     valor: '',
     data_pagamento: new Date().toISOString().split('T')[0], // Data atual por padrão
     forma_pagamento: 'dinheiro', // Forma de pagamento padrão
-    observacoes: ''
+    observacoes: '',
+    taxa_percentual: '0'
   })
 
   // Permite pagamento acima do devido (saldo credor/haver) quando marcado
@@ -236,6 +240,7 @@ export function CadernetaContent() {
       const dadosCliente = {
         nome: formCliente.nome,
         telefone: formCliente.telefone || undefined,
+        cpf_cnpj: formCliente.cpf_cnpj || undefined,
         endereco: formCliente.endereco || undefined,
         limite_credito: parseFloat(formCliente.limite_credito) || 0,
         saldo_devedor: formCliente.saldo_devedor
@@ -313,6 +318,13 @@ export function CadernetaContent() {
         valorEfetivo = valorDigitado
       }
 
+      const isCartao = formPagamento.forma_pagamento === 'debito' || formPagamento.forma_pagamento === 'credito'
+      const taxaNum = parseFloat(formPagamento.taxa_percentual) || 0
+      if (isCartao && (taxaNum < 0 || taxaNum > 100)) {
+        showToast('A taxa deve estar entre 0 e 100%.', 'warning')
+        return
+      }
+
       // VALIDAÇÃO ANTES: Verificar se o caixa está aberto para a data
       const { data: caixa, error: caixaError } = await getSupabase()
         .from('caixa_diario')
@@ -350,13 +362,23 @@ export function CadernetaContent() {
         }
       }
 
+      let observacoesFinal = formPagamento.observacoes || 'Pagamento registrado'
+      const valorTotalCartao = isCartao && taxaNum > 0 ? valorDigitado * (1 + taxaNum / 100) : null
+      if (isCartao && taxaNum > 0 && valorTotalCartao != null) {
+        observacoesFinal += ` (Taxa cartão: ${taxaNum}% | Total cobrado: R$ ${valorTotalCartao.toFixed(2)})`
+      }
+
       // Usar o hook offline para registrar o pagamento.
-      // Isso atualiza o saldo do cliente e cria a movimentação de forma atômica e offline-first.
+      // valorEfetivo = valor abatido na caderneta; valor_caixa = valor a lançar no caixa do dia (total com taxa quando cartão).
       const result = await registrarPagamento(
         cliente.id,
         valorEfetivo,
-        formPagamento.observacoes || 'Pagamento registrado',
-        { data_pagamento: formPagamento.data_pagamento, forma_pagamento: formPagamento.forma_pagamento }
+        observacoesFinal,
+        {
+          data_pagamento: formPagamento.data_pagamento,
+          forma_pagamento: formPagamento.forma_pagamento,
+          ...(valorTotalCartao != null ? { valor_caixa: valorTotalCartao } : {})
+        }
       )
 
       if (!result.success) {
@@ -389,6 +411,7 @@ export function CadernetaContent() {
       id: cliente.id.toString(),
       nome: cliente.nome,
       telefone: cliente.telefone || '',
+      cpf_cnpj: cliente.cpf_cnpj || '',
       endereco: cliente.endereco || '',
       limite_credito: cliente.limite_credito.toString(),
       saldo_devedor: cliente.saldo_devedor.toString(),
@@ -396,6 +419,15 @@ export function CadernetaContent() {
     })
     setTipoFormAtual(cliente.tipo)
     setShowModalCliente(true)
+  }
+
+  /**
+   * Abre o modal de visualização com todos os dados cadastrados do cliente.
+   * @param cliente O cliente cujos dados serão exibidos.
+   */
+  const handleVisualizarCliente = (cliente: ClienteCaderneta) => {
+    setClienteParaVisualizar(cliente)
+    setShowModalVisualizar(true)
   }
 
   /**
@@ -456,7 +488,8 @@ export function CadernetaContent() {
         valor: '',
         data_pagamento: new Date().toISOString().split('T')[0],
         forma_pagamento: 'dinheiro',
-        observacoes: ''
+        observacoes: '',
+        taxa_percentual: '0'
       })
       setPermitirSaldoCredor(false)
       setShowModalPagamento(true)
@@ -541,6 +574,7 @@ export function CadernetaContent() {
       id: '',
       nome: '',
       telefone: '',
+      cpf_cnpj: '',
       endereco: '',
       limite_credito: '',
       saldo_devedor: '0',
@@ -557,7 +591,8 @@ export function CadernetaContent() {
       valor: '',
       data_pagamento: new Date().toISOString().split('T')[0],
       forma_pagamento: 'dinheiro',
-      observacoes: ''
+      observacoes: '',
+      taxa_percentual: '0'
     })
     setPermitirSaldoCredor(false)
     setClienteSelecionado(null)
@@ -828,12 +863,16 @@ export function CadernetaContent() {
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1">
                         <h3 className="text-xs font-semibold text-gray-900">{cliente.nome}</h3>
-                        {cliente.telefone && (
-                          <p className="text-xs text-gray-600">{cliente.telefone}</p>
-                        )}
                       </div>
                       {/* Botões de Ação Rápida */}
                       <div className="flex space-x-1">
+                        <button
+                          onClick={() => handleVisualizarCliente(cliente)}
+                          className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                          title="Ver detalhes"
+                        >
+                          <Eye className="h-3 w-3" />
+                        </button>
                         <button
                           onClick={() => handleEditCliente(cliente)}
                           className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
@@ -870,11 +909,6 @@ export function CadernetaContent() {
                         <span className="text-gray-600">Limite disponível:</span>
                         <span className="font-medium text-gray-900">R$ {(Math.max(0, cliente.limite_credito - cliente.saldo_devedor)).toFixed(2)}</span>
                       </div>
-                      {cliente.endereco && (
-                        <div className="text-gray-600 text-xs">
-                          {cliente.endereco}
-                        </div>
-                      )}
                     </div>
 
                     {/* Botão de Pagamento */}
@@ -1117,6 +1151,16 @@ export function CadernetaContent() {
                         className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       />
                     </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900">CPF/CNPJ</label>
+                      <input
+                        type="text"
+                        value={formCliente.cpf_cnpj}
+                        onChange={(e) => setFormCliente({ ...formCliente, cpf_cnpj: e.target.value })}
+                        placeholder="000.000.000-00"
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-900">Endereço</label>
@@ -1168,6 +1212,113 @@ export function CadernetaContent() {
           </div>
         )}
 
+        {/* Modal para Visualizar Dados do Cliente */}
+        {showModalVisualizar && clienteParaVisualizar && (
+          <div className="modal-container">
+            <div className="modal-content modal-md bg-white rounded-lg shadow-xl w-full">
+              <div className="p-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                  Dados do {clienteParaVisualizar.tipo === 'colaborador' ? 'Funcionário' : 'Cliente'}
+                </h2>
+                <div className="space-y-4">
+                  {/* Identificação */}
+                  <div className="border-b border-gray-200 pb-4">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Identificação</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-gray-600">Nome:</span>
+                        <span className="ml-2 font-medium text-gray-900">{clienteParaVisualizar.nome}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Tipo:</span>
+                        <span className="ml-2 text-gray-900">{clienteParaVisualizar.tipo === 'colaborador' ? 'Funcionário' : 'Cliente'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Ativo:</span>
+                        <span className="ml-2 text-gray-900">{clienteParaVisualizar.ativo ? 'Sim' : 'Não'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Contato */}
+                  <div className="border-b border-gray-200 pb-4">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Contato</h3>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <span className="text-gray-600">Telefone:</span>
+                        <span className="ml-2 text-gray-900">{clienteParaVisualizar.telefone || '-'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">CPF/CNPJ:</span>
+                        <span className="ml-2 text-gray-900">{clienteParaVisualizar.cpf_cnpj || '-'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Endereço:</span>
+                        <span className="ml-2 text-gray-900">{clienteParaVisualizar.endereco || '-'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Financeiro */}
+                  <div className="border-b border-gray-200 pb-4">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Financeiro</h3>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <span className="text-gray-600">Limite de crédito:</span>
+                        <span className="ml-2 font-medium text-gray-900">R$ {clienteParaVisualizar.limite_credito.toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Saldo devedor:</span>
+                        <span className={`ml-2 font-medium ${clienteParaVisualizar.saldo_devedor > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          R$ {clienteParaVisualizar.saldo_devedor.toFixed(2)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Limite disponível:</span>
+                        <span className="ml-2 font-medium text-gray-900">
+                          R$ {(Math.max(0, clienteParaVisualizar.limite_credito - clienteParaVisualizar.saldo_devedor)).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Observações */}
+                  {(clienteParaVisualizar.observacoes != null && clienteParaVisualizar.observacoes !== '') && (
+                    <div className="border-b border-gray-200 pb-4">
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Observações</h3>
+                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{clienteParaVisualizar.observacoes}</p>
+                    </div>
+                  )}
+                  {/* Auditoria */}
+                  <div className="border-b border-gray-200 pb-4">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Auditoria</h3>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <span className="text-gray-600">Criado em:</span>
+                        <span className="ml-2 text-gray-900">
+                          {clienteParaVisualizar.created_at ? `${obterDataLocal(clienteParaVisualizar.created_at)} às ${obterHoraLocal(clienteParaVisualizar.created_at)}` : '-'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Atualizado em:</span>
+                        <span className="ml-2 text-gray-900">
+                          {clienteParaVisualizar.updated_at ? `${obterDataLocal(clienteParaVisualizar.updated_at)} às ${obterHoraLocal(clienteParaVisualizar.updated_at)}` : '-'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end pt-4">
+                  <button
+                    type="button"
+                    onClick={() => { setShowModalVisualizar(false); setClienteParaVisualizar(null) }}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Modal para Registrar Pagamento */}
         {showModalPagamento && (
           <div className="modal-container">
@@ -1183,11 +1334,14 @@ export function CadernetaContent() {
                     {(() => {
                       const valorDigitado = parseFloat(formPagamento.valor.replace(',', '.')) || 0
                       const isDinheiro = formPagamento.forma_pagamento === 'dinheiro'
+                      const isCartao = formPagamento.forma_pagamento === 'debito' || formPagamento.forma_pagamento === 'credito'
                       const saldoApos = clienteSelecionado.saldo_devedor - valorDigitado
                       const limiteDispApos = Math.max(0, clienteSelecionado.limite_credito - saldoApos)
                       const troco = isDinheiro && !permitirSaldoCredor && valorDigitado > clienteSelecionado.saldo_devedor
                         ? valorDigitado - clienteSelecionado.saldo_devedor
                         : 0
+                      const taxaNum = parseFloat(formPagamento.taxa_percentual) || 0
+                      const valorTotalCartao = valorDigitado * (1 + taxaNum / 100)
                       if (valorDigitado > 0) {
                         return (
                           <div className="mt-2 text-xs text-blue-800">
@@ -1197,10 +1351,24 @@ export function CadernetaContent() {
                                 <div>Limite disponível após pagamento: R$ {limiteDispApos.toFixed(2)}</div>
                               </>
                             ) : (
-                              <div className="font-medium text-green-700">Saldo credor (haver): R$ {Math.abs(saldoApos).toFixed(2)}</div>
+                              <>
+                                <div className="font-medium text-green-700">Saldo credor (haver): R$ {Math.abs(saldoApos).toFixed(2)}</div>
+                                {!isDinheiro && !permitirSaldoCredor && (
+                                  <div className="mt-1 text-amber-700 font-medium">
+                                    Para registrar, marque &quot;Permitir saldo credor (haver)&quot;.
+                                  </div>
+                                )}
+                              </>
                             )}
                             {troco > 0 && (
                               <div className="mt-1 font-medium text-gray-900">Troco: R$ {troco.toFixed(2)}</div>
+                            )}
+                            {isCartao && (
+                              <div className="mt-2 pt-2 border-t border-blue-200">
+                                <div>Valor a abater na caderneta: R$ {valorDigitado.toFixed(2)}</div>
+                                <div>Taxa: {taxaNum}%</div>
+                                <div className="font-medium">Valor total a cobrar no cartão: R$ {valorTotalCartao.toFixed(2)}</div>
+                              </div>
                             )}
                           </div>
                         )
@@ -1250,7 +1418,15 @@ export function CadernetaContent() {
                     <select
                       required
                       value={formPagamento.forma_pagamento}
-                      onChange={(e) => setFormPagamento({ ...formPagamento, forma_pagamento: e.target.value })}
+                      onChange={(e) => {
+                        const forma = e.target.value
+                        const isCartao = forma === 'debito' || forma === 'credito'
+                        setFormPagamento({
+                          ...formPagamento,
+                          forma_pagamento: forma,
+                          taxa_percentual: isCartao ? '3' : '0'
+                        })
+                      }}
                       className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                     >
                       <option value="dinheiro">Dinheiro</option>
@@ -1259,6 +1435,21 @@ export function CadernetaContent() {
                       <option value="credito">Cartão Crédito</option>
                     </select>
                   </div>
+                  {(formPagamento.forma_pagamento === 'debito' || formPagamento.forma_pagamento === 'credito') && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900">Taxa (%)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        placeholder="Ex: 3"
+                        value={formPagamento.taxa_percentual}
+                        onChange={(e) => setFormPagamento({ ...formPagamento, taxa_percentual: e.target.value })}
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      />
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"

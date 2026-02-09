@@ -65,6 +65,7 @@ export interface ClienteCaderneta {
   tipo: 'cliente' | 'colaborador'
   nome: string
   telefone?: string
+  cpf_cnpj?: string
   endereco?: string
   limite_credito: number
   saldo_devedor: number

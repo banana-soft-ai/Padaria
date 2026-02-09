@@ -84,6 +84,7 @@ export function toClienteCaderneta(obj: any): ClienteCadernetaSupabase {
     tipo: (obj?.tipo as ClienteCadernetaSupabase['tipo']) || 'cliente',
     nome: toString(obj?.nome, ''),
     telefone: obj?.telefone ?? undefined,
+    cpf_cnpj: obj?.cpf_cnpj ?? undefined,
     endereco: obj?.endereco ?? undefined,
     limite_credito: toNumber(obj?.limite_credito, 0),
     saldo_devedor: toNumber(obj?.saldo_devedor, 0),

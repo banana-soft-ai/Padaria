@@ -61,6 +61,15 @@ O arquivo deve ter:
 - **Este agente** é quem atualiza o `docs/TASKS.md` conforme as tasks são executadas (mover entre seções, marcar concluído, bloquear, arquivar).
 - Ao sugerir mudanças no TASKS, leia o arquivo atual, faça as edições necessárias e salve.
 
+## ID e formato de task
+
+- **ID estável:** usar formato consistente para ligar ao plano do Master (ex.: `T1`, `T2` ou `Sprint-12-T3`). O Master gera a linha para colar; este agente atualiza estado.
+- **Transições permitidas:** Pendente ↔ Em Andamento; Em Andamento → Concluído; Em Andamento → Bloqueado; Bloqueado → Pendente. Não pular direto de Pendente para Concluído.
+
+## Integração com briefing do Master
+
+Quando o Master criar um briefing, ele pode gerar uma linha no formato do TASKS.md (ex.: `- [ ] T1: Nome da tarefa — @agente-frontend`). O usuário cola em `docs/TASKS.md`; este agente só move entre seções e marca concluído.
+
 ## O que não fazer
 
 - Não alterar código do projeto (services, components, etc.); apenas o conteúdo de `docs/TASKS.md`.

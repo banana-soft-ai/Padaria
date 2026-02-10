@@ -10,6 +10,21 @@ description: Fornece o contexto completo do projeto Rey dos Pães (stack, conven
 
 ---
 
+## Glossário (termos do domínio)
+
+| Termo | Significado |
+|------|-------------|
+| **Caderneta** | Crédito/fiado do cliente: compra a prazo, limite de crédito, saldo devedor, pagamentos |
+| **Centavos** | Valores monetários no código são sempre inteiros em centavos (ex.: R$ 10,50 = 1050) |
+| **EAN-13 peso variável** | Código de barras da balança Toledo Prix: prefixo 2 + código produto (5) + peso (5 dígitos em gramas) + dígito verificador |
+| **Fiado** | Sinônimo de caderneta (dívida do cliente) |
+| **obterDataLocal()** | Função em `@/lib/dateUtils` para data operacional em America/Sao_Paulo; usar em vendas, caixa, caderneta |
+| **PLU** | Price Look-Up; código numérico de produto (balança/varejo) |
+| **RLS** | Row Level Security (Supabase/PostgreSQL); políticas por linha |
+| **Sync** | Sincronização de dados locais (IndexedDB) com Supabase ao reconectar |
+
+---
+
 ## Projeto
 
 - **Nome**: Rey dos Pães
@@ -51,13 +66,21 @@ description: Fornece o contexto completo do projeto Rey dos Pães (stack, conven
 
 ## Módulos e Status
 
-| Módulo | Status | Offline |
-|--------|--------|--------|
-| PDV (Caixa) | ✅ Ativo | ✅ Sim |
-| Estoque | ✅ Ativo | ✅ Sim |
-| Receitas | ✅ Ativo | ✅ Sim |
-| Caderneta | ✅ Ativo | ✅ Sim |
-| Dashboard | ✅ Ativo | ❌ Não |
-| Gestão Financeira | ✅ Ativo | ❌ Não |
-| Usuários | ✅ Ativo | ❌ Não |
-| Fiscal / Pagamentos | 🔜 Em breve | — |
+| Módulo | Status | Offline | Agente principal (skill) |
+|--------|--------|--------|---------------------------|
+| PDV (Caixa) | ✅ Ativo | ✅ Sim | agente-pdv |
+| Estoque | ✅ Ativo | ✅ Sim | agente-backend + regras .cursor/rules/estoque.mdc |
+| Receitas | ✅ Ativo | ✅ Sim | agente-backend |
+| Caderneta | ✅ Ativo | ✅ Sim | agente-pdv |
+| Dashboard | ✅ Ativo | ❌ Não | agente-frontend |
+| Gestão Financeira | ✅ Ativo | ❌ Não | agente-frontend / agente-backend |
+| Usuários | ✅ Ativo | ❌ Não | agente-backend |
+| Fiscal / Pagamentos | 🔜 Em breve | — | — |
+
+## Referências por domínio (skills com reference.md)
+
+- **Orquestração, planos, briefing:** [master-agent/reference.md](.cursor/skills/master-agent/reference.md)
+- **Testes, mocks, cenários, cobertura:** [agente-testes/reference.md](.cursor/skills/agente-testes/reference.md)
+- **Offline, IndexedDB, sync, conflitos:** [offline-sync/reference.md](.cursor/skills/offline-sync/reference.md)
+
+Índice completo de agentes (quando usar, quando não usar): ver `docs/agents-index.md` ou `.cursor/plans/` para planos.

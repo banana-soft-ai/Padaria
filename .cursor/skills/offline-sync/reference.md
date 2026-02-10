@@ -1,5 +1,7 @@
 # Referência — Agente Offline & Sincronização
 
+> Atualizado em: 2026-02-09. **Schema como contrato:** qualquer alteração em stores, índices ou estratégias de conflito deve ser refletida aqui e, se existir, em `docs/offline/schema.md`.
+
 ## Stores do IndexedDB
 
 Cada módulo offline possui um store. Nomes e direção de sync:

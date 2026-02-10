@@ -1,5 +1,41 @@
 # Referência — Agente de Testes Rey dos Pães
 
+> Atualizado em: 2026-02-09
+
+## Cenários obrigatórios por módulo (mapeamento)
+
+Ao testar um arquivo ou funcionalidade, usar os cenários da checklist abaixo conforme o módulo. Módulos novos: alinhar com Master/Docs e adicionar aqui.
+
+| Módulo / Código | Cenários obrigatórios (ver checklist abaixo) |
+|-----------------|---------------------------------------------|
+| `vendaService`, `vendaRepository`, fluxo venda | PDV/Vendas (todos) + Cálculos (decodificação EAN-13, centavos) |
+| `caixa*`, sessão caixa | Caixa (todos) |
+| `caderneta*`, cliente fiado | Caderneta (todos) |
+| `estoque*`, movimentações | Estoque (todos) + PDV (dedução após venda) |
+| `offlineStorage`, `syncService`, hooks `useOffline*` | Offline/Sync (todos) |
+| `preco.ts`, custo receita, margem | Cálculos (todos) |
+| `ean13.ts`, balança | Cálculos (decodificação EAN-13, arredondamento) |
+| Componentes caixa/caderneta | PDV/Vendas + Caixa/Caderneta (happy path + erro) |
+
+## Fixtures (dados reutilizáveis)
+
+- **Pasta:** `tests/fixtures/`
+- **Convenção:** um arquivo por entidade ou fluxo; exportar objetos/arrays tipados. Ex.: `vendaValida.ts`, `clienteCaderneta.ts`, `produtoBalanca.ts`
+- **Uso:** importar nos testes para Arrange; evita repetição e garante dados consistentes.
+
+## Cobertura por camada (metas)
+
+| Camada | Meta mínima | Observação |
+|--------|-------------|------------|
+| Services | 80% | Regras de negócio; crítico para bugs |
+| Repositories | 70% | Acesso a dados; mocks Supabase |
+| lib (utils, preco, ean13) | 80% | Cálculos e decodificação |
+| Hooks | 70% | Incluir useOffline* quando aplicável |
+| Components (UI) | 50% | Happy path + estados de erro/empty |
+| Global | 60% | Threshold no jest.config.js |
+
+Ajustar thresholds em `jest.config.js` conforme acordo do time. CI pode falhar ou só reportar (ver skill ci-cd-qualidade).
+
 ## Mocks Comuns
 
 ### Supabase Mock
@@ -99,6 +135,15 @@ Object.defineProperty(navigator, 'onLine', {
 - [ ] Decodificação EAN-13 balança
 - [ ] Arredondamento de centavos
 
+## Testes que este agente NÃO escreve
+
+- **E2E** (Playwright, Cypress, browser real)
+- **Testes de carga** (k6, Artillery, etc.)
+- **Testes que exigem hardware** (impressora, leitor USB) — apenas mocks
+- **Snapshot de UI** sem critério de comportamento — preferir testes de comportamento (Testing Library)
+
+Se a tarefa pedir um desses, informar ao usuário que está fora do escopo atual e sugerir ferramenta ou agente.
+
 ## Paths de Import no Projeto
 
 - Supabase client: `@/lib/supabase/client` ou `@/lib/supabase`
@@ -107,3 +152,4 @@ Object.defineProperty(navigator, 'onLine', {
 - Services: `@/services/*`
 - Repositories: `@/repositories/*`
 - Hooks: `@/hooks/*`
+- Fixtures: `tests/fixtures/*`

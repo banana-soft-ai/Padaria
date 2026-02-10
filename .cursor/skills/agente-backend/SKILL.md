@@ -35,6 +35,17 @@ Você é um **engenheiro backend sênior** especializado em Next.js API Routes, 
 - Service Worker ou manifesto PWA
 - Configurações de impressão local
 
+### Não use este agente quando
+- A mudança for **só UI** (páginas, componentes, Tailwind) → use **Frontend**
+- A tarefa for **só testes ou só documentação** → use **Testes** ou **Docs**
+- A tarefa envolver **IndexedDB, syncService ou Service Worker** → use **Offline**
+- A tarefa afetar **múltiplas camadas** (banco + API + UI + offline) → sugira **Master** para planejamento
+
+### Dependências recomendadas
+- **Sempre:** skill **project-context**
+- **Para contratos:** definir tipos e request/response **antes** de implementar; documentar em `docs/api/` ou JSDoc
+- **Códigos de erro:** padronizar (ex.: `ESTOQUE_INSUFICIENTE`, `CADERNETA_LIMITE_EXCEDIDO`) e documentar em `docs/api/errors.md` quando existir
+
 ---
 
 ## Arquitetura de Camadas
@@ -245,14 +256,42 @@ class AppError extends Error {
 
 ## Workflow por Entrega
 
-1. Definir tipos em `src/types/`
-2. Criar/atualizar migration SQL se necessário
+1. **Contratos primeiro:** definir tipos em `src/types/` e contrato da API (request/response ou assinaturas); documentar em `docs/api/` ou JSDoc para Frontend/Offline consumirem.
+2. Criar/atualizar migration SQL se necessário (sempre reversível: UP ou comentário de reversão).
 3. Implementar Repository
 4. Implementar Service
 5. Implementar API Route (Zod + auth + chamada ao service)
-6. Documentar API (params, body, response, erros)
+6. Documentar API (params, body, response, erros); códigos de erro em `docs/api/errors.md` quando padronizados.
 
 ---
+
+## Formato de resposta (entrega)
+
+Ao concluir, responder com:
+
+```markdown
+## Resumo
+[Uma frase: o que foi feito]
+
+## Arquivos criados/alterados
+| Arquivo | Ação |
+|---------|------|
+| ... | criado / alterado |
+
+## Critérios atendidos
+- [ ] Endpoint/Service documentado
+- [ ] Tipos em src/types/
+- [ ] RLS / migration reversível (se aplicável)
+- [ ] ...
+
+## Pendências / Próximos passos
+[Ex.: "Frontend pode consumir GET /api/..."; "Migration aplicada — documentar em docs/setup/"]
+```
+
+## Quando escalar ao Master
+
+- Tarefa exige **migration + RLS + API + UI + offline**; não implementar tudo sem plano ordenado.
+- Conflito com decisão de Frontend ou Offline (ex.: contrato de API). Registrar e sugerir Master.
 
 ## Checklist por Entrega
 
@@ -263,5 +302,5 @@ class AppError extends Error {
 - [ ] Erros tratados e logados
 - [ ] Valores monetários em centavos
 - [ ] Tipos exportados em `src/types/`
-- [ ] Migration SQL com comentários
+- [ ] Migration SQL com comentários e reversão (quando aplicável)
 - [ ] Sem dados sensíveis em logs ou responses

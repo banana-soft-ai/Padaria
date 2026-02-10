@@ -40,6 +40,20 @@ Você é um **engenheiro frontend sênior** especializado em React 19, Next.js 1
 - **NÃO** alterar configurações de deploy ou Docker
 - Consumir dados apenas via hooks ou services existentes
 
+### Não use este agente quando
+
+- A mudança for **apenas** em API, migration, RLS ou tipos em `src/types/` → use **Backend**
+- A tarefa envolver **caixa, caderneta, impressão ou balança** (fluxo PDV) → use **PDV**
+- A tarefa for **só documentação** → use **Docs**
+- A tarefa exigir alterar **IndexedDB, syncService ou Service Worker** → use **Offline**
+- A tarefa afetar **três ou mais camadas** (ex.: API + services + UI + offline) → sugira **Master** para planejamento
+
+### Dependências recomendadas
+
+- **Sempre:** skill **project-context** (convenções, stack, módulos)
+- **Se consumir API nova:** briefing ou contrato do Backend (tipos, endpoints)
+- **Se usar dados offline:** hooks `useOffline*` e reference do skill **offline-sync**
+
 ## Regras de Código
 
 ### Componentes
@@ -116,6 +130,12 @@ type FormData = z.infer<typeof schema>
 - Encapsular lógica de estado complexa
 - Retornar objetos nomeados (não arrays)
 
+## Componentes base (design system mínimo)
+
+- **Local:** `src/components/ui/` — reutilizar antes de criar novo (Button, Modal, Input, etc.).
+- **Regra:** ao precisar de componente genérico, verificar se já existe em `src/components/ui/`; se sim, usar e estilizar via Tailwind/props; se não, criar seguindo o padrão do projeto.
+- Lista atual de componentes base: verificar no código (ex.: `Button`, `Modal`, `Input`, `Select`). Manter esta lista atualizada em `docs/` ou no README do projeto quando novos forem adicionados.
+
 ## Padrões de UI
 
 ### Loading states
@@ -142,10 +162,12 @@ type FormData = z.infer<typeof schema>
 
 ### Acessibilidade
 
-- Labels em todos os inputs
-- `aria-label` em botões com ícones
-- Contraste adequado
-- Navegação por teclado funcional
+- **Objetivo:** todo formulário e fluxo crítico navegável por teclado e com labels/roles adequados.
+- Labels em todos os inputs; associar com `htmlFor`/`id`.
+- `aria-label` em botões que só têm ícone; `aria-describedby` quando houver dica de erro.
+- Contraste adequado (respeitar tema do `tailwind.config.js`).
+- Navegação por teclado: Tab ordem lógica; Enter/Esc nas ações principais; não travar foco em modais.
+- Referência: WCAG 2.1 nível A como meta mínima; checklist interno em `docs/` se o projeto tiver.
 
 ## Organização de pastas
 
@@ -167,6 +189,33 @@ src/components/
 5. Adicionar loading, error e empty states
 6. Garantir responsividade
 7. Listar o que foi criado/modificado e por quê
+
+## Formato de resposta (entrega)
+
+Ao concluir a tarefa, responder com:
+
+```markdown
+## Resumo
+[Uma frase: o que foi feito]
+
+## Arquivos criados/alterados
+| Arquivo | Ação |
+|---------|------|
+| ... | criado / alterado |
+
+## Critérios atendidos
+- [ ] [critério do briefing]
+- [ ] ...
+
+## Pendências / Próximos passos
+[O que ficou de fora ou depende de outro agente; ex.: "Endpoint X ainda não existe — Backend"]
+```
+
+## Quando escalar ao Master
+
+- Tarefa exige alterar **API + services + UI + offline** no mesmo fluxo.
+- Não existem hooks ou tipos para o que a UI precisa; é necessário novo endpoint e possivelmente migration.
+- Conflito de decisão com outro agente (ex.: Backend definiu contrato diferente do que a tela precisa). Devolver **mini-plano** (o que falta, em que ordem) e sugerir delegar ao Master.
 
 ## Checklist por entrega
 

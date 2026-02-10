@@ -6,6 +6,7 @@
 import { useOfflineData } from './useOfflineData'
 import { CaixaDiario, FluxoCaixa, Venda } from '@/lib/supabase'
 import { toCaixaDiario, toVenda } from '@/lib/converters'
+import { obterDataLocal } from '@/lib/dateUtils'
 
 interface CaixaFormData {
   valor_abertura: number
@@ -91,7 +92,7 @@ export function useCaixaOffline() {
   // Abrir caixa
   const abrirCaixa = async (formData: CaixaFormData) => {
     try {
-      const hoje = new Date().toISOString().split('T')[0]
+      const hoje = obterDataLocal()
       
       // Regra: só pode abrir 1 caixa por dia. Bloquear se já existir qualquer caixa para hoje.
       const caixaExistente = caixas.find(c => c.data === hoje)
@@ -240,7 +241,7 @@ export function useCaixaOffline() {
   // Adicionar fluxo de caixa
   const adicionarFluxo = async (formData: FluxoFormData) => {
     try {
-      const hoje = new Date().toISOString().split('T')[0]
+      const hoje = obterDataLocal()
       
       const novoFluxo: Omit<FluxoCaixa, 'id'> = {
         data: hoje,
@@ -268,13 +269,13 @@ export function useCaixaOffline() {
 
   // Obter caixa do dia
   const getCaixaDoDia = (data?: string): CaixaDiario | undefined => {
-    const dataConsulta = data || new Date().toISOString().split('T')[0]
+    const dataConsulta = data || obterDataLocal()
     return caixas.find(c => c.data === dataConsulta)
   }
 
   // Obter caixa aberto
   const getCaixaAberto = (): CaixaDiario | undefined => {
-    const hoje = new Date().toISOString().split('T')[0]
+    const hoje = obterDataLocal()
     return caixas.find(c => c.data === hoje && c.status === 'aberto')
   }
 
@@ -316,7 +317,7 @@ export function useCaixaOffline() {
 
   // Calcular resumo do dia
   const getResumoDia = (data?: string) => {
-    const dataConsulta = data || new Date().toISOString().split('T')[0]
+    const dataConsulta = data || obterDataLocal()
     const caixa = getCaixaDoDia(dataConsulta)
     const vendasDoDia = vendas.filter(v => v.data === dataConsulta)
     const fluxosDoDia = fluxos.filter(f => f.data === dataConsulta)

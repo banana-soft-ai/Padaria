@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Unlock } from 'lucide-react'
+import { obterDataLocal } from '@/lib/dateUtils'
 
 interface ModalAberturaProps {
   onSubmit: (formData: {
@@ -14,7 +15,7 @@ interface ModalAberturaProps {
 
 export default function ModalAbertura({ onSubmit, onClose }: ModalAberturaProps) {
   const [formData, setFormData] = useState({
-    data_selecionada: new Date().toISOString().split('T')[0],
+    data_selecionada: obterDataLocal(),
     valor_inicial: '',
     observacoes: ''
   })

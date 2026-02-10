@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Venda, Receita, Insumo, ClienteCaderneta } from '@/lib/supabase'
 import { toReceita, toInsumo, toClienteCaderneta, toVenda, toItemVenda } from '@/lib/converters'
+import { obterDataLocal } from '@/lib/dateUtils'
 import { useOnlineStatus } from './useOnlineStatus'
 import { offlineStorage } from '@/lib/offlineStorage'
 
@@ -172,7 +173,7 @@ export function useVendas() {
 
   const carregarVendasHoje = useCallback(async () => {
     try {
-      const hoje = new Date().toISOString().split('T')[0]
+      const hoje = obterDataLocal()
 
       if (isOnline) {
         // Online: buscar do Supabase
@@ -377,7 +378,7 @@ export function useVendas() {
       const valorDebito = dadosVenda.forma_pagamento === 'caderneta' ? valorTotal : 0
 
       const dadosVendaInsert = {
-        data: new Date().toISOString().split('T')[0],
+        data: obterDataLocal(),
         forma_pagamento: dadosVenda.forma_pagamento,
         cliente_caderneta_id: dadosVenda.cliente_caderneta_id || null,
         valor_total: valorTotal,

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import { TrendingUp, DollarSign, Calculator, AlertTriangle, CheckCircle, Trash2, Search } from 'lucide-react'
-import { obterInicioMes } from '@/lib/dateUtils'
+import { obterDataLocal, obterInicioMes } from '@/lib/dateUtils'
 import { fetchItensPorVendaIds, fetchVendasPorPeriodo } from '@/repositories/vendas.repository'
 import toast from 'react-hot-toast'
 
@@ -230,11 +230,11 @@ export default function LucratividadePage() {
   }
 
   const obterDataInicioPeriodo = (periodo: string): string => {
-    const hoje = new Date()
+    const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
     let dataInicio: Date
     switch (periodo) {
       case 'mes':
-        return new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0]
+        return obterInicioMes()
       case 'trimestre':
         const trimestre = Math.floor(hoje.getMonth() / 3)
         dataInicio = new Date(hoje.getFullYear(), trimestre * 3, 1)
@@ -247,14 +247,16 @@ export default function LucratividadePage() {
         dataInicio = new Date(hoje.getFullYear(), 0, 1)
         break
       default:
-        return new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0]
+        return obterInicioMes()
     }
-    return dataInicio.toISOString().split('T')[0]
+    const ano = dataInicio.getFullYear()
+    const mes = String(dataInicio.getMonth() + 1).padStart(2, '0')
+    const dia = String(dataInicio.getDate()).padStart(2, '0')
+    return `${ano}-${mes}-${dia}`
   }
 
-  const obterDataFimPeriodo = (periodo: string): string => {
-    const hoje = new Date()
-    return hoje.toISOString().split('T')[0]
+  const obterDataFimPeriodo = (periodo?: string): string => {
+    return obterDataLocal()
   }
 
   const obterDescricaoPeriodo = (periodo: string): string => {

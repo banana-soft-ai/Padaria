@@ -1,4 +1,4 @@
-import { obterDataLocal, obterInicioMes, obterInicioSemana } from '@/lib/dateUtils'
+import { obterDataLocal, obterDataNDiasAtras, obterInicioMes, obterInicioSemana } from '@/lib/dateUtils'
 
 describe('lib/dateUtils', () => {
   beforeAll(() => {
@@ -20,6 +20,22 @@ describe('lib/dateUtils', () => {
     it('formata mês e dia com zero à esquerda', () => {
       jest.setSystemTime(new Date('2025-01-05T12:00:00.000Z'))
       expect(obterDataLocal('UTC')).toBe('2025-01-05')
+    })
+
+    it('retorna dia em São Paulo, não UTC, em venda à noite (22h BRT = 01h UTC dia seguinte)', () => {
+      // 2025-02-09 01:00 UTC = 2025-02-08 22:00 BRT (São Paulo UTC-3)
+      jest.setSystemTime(new Date('2025-02-09T01:00:00.000Z'))
+      const data = obterDataLocal('America/Sao_Paulo')
+      expect(data).toBe('2025-02-08')
+    })
+  })
+
+  describe('obterDataNDiasAtras', () => {
+    it('retorna data N dias atrás no fuso São Paulo', () => {
+      jest.setSystemTime(new Date('2025-02-09T12:00:00.000Z'))
+      expect(obterDataNDiasAtras(0)).toBe('2025-02-09')
+      expect(obterDataNDiasAtras(1)).toBe('2025-02-08')
+      expect(obterDataNDiasAtras(30)).toBe('2025-01-10')
     })
   })
 

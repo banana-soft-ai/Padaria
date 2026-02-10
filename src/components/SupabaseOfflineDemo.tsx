@@ -5,6 +5,7 @@ import { useOfflineData } from '@/hooks/useOfflineData'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { syncService } from '@/lib/syncService'
 import { supabase } from '@/lib/supabase/client'
+import { obterDataLocal } from '@/lib/dateUtils'
 import { CheckCircle, XCircle, Wifi, WifiOff, RefreshCw, Database } from 'lucide-react'
 
 /**
@@ -36,7 +37,7 @@ export function SupabaseOfflineDemo() {
 
     try {
       const vendaTeste = {
-        data: new Date().toISOString().split('T')[0],
+        data: obterDataLocal(),
         hora: new Date().toTimeString().split(' ')[0],
         forma_pagamento: 'pix',
         valor_total: 15.50,
@@ -65,7 +66,7 @@ export function SupabaseOfflineDemo() {
     try {
       // Simular modo offline
       const vendaOffline = {
-        data: new Date().toISOString().split('T')[0],
+        data: obterDataLocal(),
         hora: new Date().toTimeString().split(' ')[0],
         forma_pagamento: 'dinheiro',
         valor_total: 8.75,

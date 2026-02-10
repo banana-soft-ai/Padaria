@@ -9,7 +9,7 @@ import RouteGuard from '@/components/RouteGuard'
 import CaixasTab from '@/components/gestao/CaixasTab'
 import { CaixaDiario } from '@/types/gestao'
 import { TrendingUp, TrendingDown, DollarSign, Calculator, CreditCard } from 'lucide-react'
-import { obterInicioMes, obterInicioSemana, calcularTotaisPeriodo } from '@/lib/dateUtils'
+import { obterDataLocal, obterInicioMes, obterInicioSemana, calcularTotaisPeriodo } from '@/lib/dateUtils'
 
 export default function CaixasPage() {
   const { isOnline } = useOnlineStatus()
@@ -26,8 +26,7 @@ export default function CaixasPage() {
 
   // Função para aplicar filtros rápidos usando funções centralizadas
   const aplicarFiltroRapido = (filtro: string) => {
-    const hoje = new Date()
-    const hojeStr = hoje.toISOString().split('T')[0]
+    const hojeStr = obterDataLocal()
 
     switch (filtro) {
       case 'ultima-semana':

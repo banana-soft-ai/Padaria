@@ -1,4 +1,12 @@
 // Versão CommonJS dos conversores para testes sem transpiler
+function obterDataLocal(timeZone = 'America/Sao_Paulo') {
+  const agora = new Date(new Date().toLocaleString('en-US', { timeZone }))
+  const ano = agora.getFullYear()
+  const mes = String(agora.getMonth() + 1).padStart(2, '0')
+  const dia = String(agora.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
 function toNumber(v, fallback = 0) {
   const n = Number(v)
   return Number.isFinite(n) ? n : fallback
@@ -75,7 +83,7 @@ function toItemVenda(obj) {
 function toVenda(obj) {
   return {
     id: toNumber(obj && obj.id, 0),
-    data: (obj && obj.data ? String(obj.data) : new Date().toISOString()).split('T')[0],
+    data: (obj && obj.data ? String(obj.data) : obterDataLocal()),
     hora: obj && obj.hora || undefined,
     forma_pagamento: (obj && obj.forma_pagamento) || 'dinheiro',
     cliente_caderneta_id: obj && obj.cliente_caderneta_id || undefined,
@@ -94,7 +102,7 @@ function toVenda(obj) {
 function toCaixaDiario(obj) {
   return {
     id: toNumber(obj && obj.id, 0),
-    data: (obj && obj.data ? String(obj.data) : new Date().toISOString()).split('T')[0],
+    data: (obj && obj.data ? String(obj.data) : obterDataLocal()),
     status: (obj && obj.status) || 'aberto',
     valor_abertura: toNumber(obj && obj.valor_abertura, 0),
     valor_fechamento: (obj && obj.valor_fechamento) || undefined,

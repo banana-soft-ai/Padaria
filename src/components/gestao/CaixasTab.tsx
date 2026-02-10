@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase/client'
 import { CaixaDiario } from '@/types/gestao'
 import { RefreshCw, AlertTriangle } from 'lucide-react'
@@ -99,7 +100,7 @@ export default function CaixasTab({ caixasDiarios, onCaixaReaberto }: CaixasTabP
         .single()
 
       if (caixaAberto) {
-        alert('Já existe um caixa aberto. Feche o caixa atual antes de reabrir outro.')
+        toast.error('Já existe um caixa aberto. Feche o caixa atual antes de reabrir outro.')
         return
       }
 
@@ -117,11 +118,11 @@ export default function CaixasTab({ caixasDiarios, onCaixaReaberto }: CaixasTabP
 
       if (error) throw error
 
-      alert('Caixa reaberto com sucesso!')
+      toast.success('Caixa reaberto com sucesso!')
       if (onCaixaReaberto) await Promise.resolve(onCaixaReaberto()) // Recarregar dados
     } catch (error) {
       console.error('Erro ao reabrir caixa:', error)
-      alert('Erro ao reabrir caixa. Tente novamente.')
+      toast.error('Erro ao reabrir caixa. Tente novamente.')
     } finally {
       setReabrindoCaixa(null)
       setShowConfirmacao(null)

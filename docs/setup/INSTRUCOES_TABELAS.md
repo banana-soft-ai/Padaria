@@ -100,6 +100,7 @@ ALTER TABLE insumos ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'insumo' CHE
 -- 8. ATUALIZAR TABELA DE RECEITAS
 ALTER TABLE receitas ADD COLUMN IF NOT EXISTS preco_venda DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE receitas ADD COLUMN IF NOT EXISTS unidade_rendimento TEXT DEFAULT 'un' CHECK (unidade_rendimento IN ('un', 'kg', 'g', 'l', 'ml', 'xícara', 'colher'));
+ALTER TABLE receitas ADD COLUMN IF NOT EXISTS custos_invisiveis NUMERIC(5,4) DEFAULT 0;
 
 -- 9. CRIAR ÍNDICES
 CREATE INDEX IF NOT EXISTS idx_clientes_caderneta_ativo ON clientes_caderneta(ativo);

@@ -397,7 +397,8 @@ export default function ReceitasPage() {
       }
 
       const custosInvisiveisDecimalToSave = Number(String(formData.custosInvisiveis).replace(',', '.')) / 100 || 0
-      const dadosReceitaComCustos = { ...dadosReceitaBase, custosInvisiveis: custosInvisiveisDecimalToSave }
+      // PostgREST usa snake_case: enviar custos_invisiveis para a coluna no banco ser atualizada
+      const dadosReceitaComCustos = { ...dadosReceitaBase, custos_invisiveis: custosInvisiveisDecimalToSave }
 
       let receitaId: number
 
@@ -419,7 +420,7 @@ export default function ReceitasPage() {
 
         let updateResult: any
         try {
-          updateResult = await updateReceita(editingReceita.id, dadosReceitaBase)
+          updateResult = await updateReceita(editingReceita.id, dadosReceitaComCustos)
         } catch (err) {
           updateResult = { error: err }
         }
@@ -432,7 +433,7 @@ export default function ReceitasPage() {
             showToast('Já existe uma receita com esse nome. Escolha outro nome.', 'error')
             return
           }
-          if (errStr && (errStr.includes('PGRST204') || errStr.includes("Could not find the 'custosInvisiveis'"))) {
+          if (errStr && (errStr.includes('PGRST204') || errStr.includes("Could not find the 'custosInvisiveis'") || errStr.includes("Could not find the 'custos_invisiveis'"))) {
             const retry = await updateReceita(editingReceita.id, dadosReceitaBase)
             if (retry.error) throw retry.error
             updateResult = retry
@@ -445,14 +446,14 @@ export default function ReceitasPage() {
       } else {
         let insertResult: any
         try {
-          insertResult = await createReceita(dadosReceitaBase)
+          insertResult = await createReceita(dadosReceitaComCustos)
         } catch (err) {
           insertResult = { error: err }
         }
 
         if (insertResult && insertResult.error) {
           const errStr = JSON.stringify(insertResult.error)
-          if (errStr && errStr.includes('PGRST204') || errStr.includes("Could not find the 'custosInvisiveis'")) {
+          if (errStr && (errStr.includes('PGRST204') || errStr.includes("Could not find the 'custosInvisiveis'") || errStr.includes("Could not find the 'custos_invisiveis'"))) {
             const retry = await createReceita(dadosReceitaBase)
             if (retry.error) throw retry.error
             insertResult = retry
@@ -538,7 +539,7 @@ export default function ReceitasPage() {
 
       setShowModal(false)
       resetForm()
-      carregarDados()
+      await carregarDados()
       showToast(editingReceita ? 'Receita atualizada com sucesso!' : 'Receita cadastrada com sucesso!', 'success')
     } catch (error) {
       console.error('Erro ao salvar receita:', error)
@@ -562,13 +563,17 @@ export default function ReceitasPage() {
 
   const handleEdit = (receita: Receita) => {
     setEditingReceita(receita)
+    const custosInvisiveisRaw = receita.custosInvisiveis ?? (receita as { custos_invisiveis?: number }).custos_invisiveis
+    const custosInvisiveisPct = custosInvisiveisRaw != null && custosInvisiveisRaw !== ''
+      ? (Number(custosInvisiveisRaw) * 100).toString()
+      : '0'
     setFormData({
       nome: receita.nome,
       rendimento: receita.rendimento.toString(),
       unidade_rendimento: receita.unidade_rendimento || 'un',
       categoria: receita.categoria || 'outro',
       instrucoes: receita.instrucoes || '',
-      custosInvisiveis: receita.custosInvisiveis != null ? (Number(receita.custosInvisiveis) * 100).toString() : '0'
+      custosInvisiveis: custosInvisiveisPct
     })
 
     const ingredientesReceita = composicoes

@@ -8,6 +8,7 @@ import { Package, AlertTriangle, X, Eye, Search, FileSpreadsheet, Printer, Messa
 import Toast from '@/app/gestao/caderneta/Toast'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { offlineStorage } from '@/lib/offlineStorage'
+import { obterDataLocal } from '@/lib/dateUtils'
 
 // Desabilitar static generation - página dinâmica que precisa de auth
 export const dynamic = 'force-dynamic'
@@ -182,7 +183,7 @@ export default function EstoqueDashboardPage() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `estoque_${new Date().toISOString().split('T')[0]}.csv`
+    link.download = `estoque_${obterDataLocal()}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

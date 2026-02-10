@@ -5,6 +5,7 @@
 
 import { useOfflineData } from './useOfflineData'
 import { supabase } from '@/lib/supabase/client'
+import { obterDataLocal } from '@/lib/dateUtils'
 import { ClienteCaderneta, MovimentacaoCaderneta, Venda } from '@/lib/supabase'
 
 interface ClienteFormData {
@@ -242,7 +243,7 @@ export function useCadernetaOffline() {
       observacoes
     })
 
-    const hoje = opts?.data_pagamento || new Date().toISOString().split('T')[0];
+    const hoje = opts?.data_pagamento || obterDataLocal();
     const forma = String(opts?.forma_pagamento || 'dinheiro').toLowerCase();
     const formasValidas = ['dinheiro', 'pix', 'debito', 'débito', 'cartao_debito', 'cartao-debito', 'credito', 'crédito', 'cartao_credito', 'cartao-credito'];
     const valorParaCaixa = opts?.valor_caixa ?? valor;

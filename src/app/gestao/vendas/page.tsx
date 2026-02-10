@@ -368,52 +368,25 @@ export default function VendasPage() {
         return
       }
 
-      // Sempre buscar apenas o dia atual para o resumo financeiro
-      const hoje = obterDataLocal()
-      // dataInicio e hoje são iguais para o dia atual
-      const dataInicio = hoje
+      const dataInicio = obterDataInicioPeriodo(periodoVendas)
+      const dataFim = obterDataLocal()
 
-      const { data: caixaData, error: caixaError } = await supabase!
-        .from('caixa_diario')
-        .select('total_dinheiro, total_pix, total_debito, total_credito, total_caderneta, data')
-        .eq('data', hoje)
-
-      let totalPix = 0
-      let totalDinheiro = 0
-      let totalDebito = 0
-      let totalCredito = 0
-      let totalCaderneta = 0
-
-      if (caixaError) {
-        console.error('Erro ao buscar caixa_diario:', caixaError)
-      }
-
-      if (caixaData && caixaData.length > 0) {
-        caixaData.forEach((caixa: any) => {
-          totalPix += caixa.total_pix || 0
-          totalDinheiro += caixa.total_dinheiro || 0
-          totalDebito += caixa.total_debito || 0
-          totalCredito += caixa.total_credito || 0
-        })
-      }
-
-      // Buscar unidades vendidas (itens)
-      let unidadesVendidas = 0
-      // Buscar vendas do período
-      let todasVendas: Record<string, unknown>[] = []
+      let todasVendas: Array<{ id: string; valor_total?: number; forma_pagamento?: string; valor_debito?: number }> = []
       let offset = 0
       const limit = 1000
       let hasMore = true
+
       while (hasMore) {
         const { data: vendasBatch, error: vendasError } = await supabase!
           .from('vendas')
-          .select('id')
+          .select('id, valor_total, forma_pagamento, valor_debito')
           .gte('data', dataInicio)
-          .lte('data', hoje)
+          .lte('data', dataFim)
           .order('data', { ascending: false })
           .range(offset, offset + limit - 1)
+
         if (vendasError) {
-          console.error('Erro ao carregar vendas:', vendasError)
+          console.error('Erro ao carregar vendas para métricas:', vendasError)
           break
         }
         if (vendasBatch && vendasBatch.length > 0) {
@@ -424,8 +397,10 @@ export default function VendasPage() {
           hasMore = false
         }
       }
+
+      let unidadesVendidas = 0
       if (todasVendas.length > 0) {
-        const vendaIds = todasVendas.map(venda => venda.id)
+        const vendaIds = todasVendas.map(v => v.id)
         const { data: itensData } = await supabase!
           .from('venda_itens')
           .select('quantidade')
@@ -435,22 +410,14 @@ export default function VendasPage() {
         }
       }
 
-      // Buscar valor a receber (caderneta)
-      let valorReceber = 0
-      const { data: clientesData } = await supabase!
-        .from('clientes_caderneta')
-        .select('saldo_devedor')
-        .eq('ativo', true)
-      if (clientesData) {
-        valorReceber = clientesData.reduce((sum, cliente) => sum + (cliente.saldo_devedor || 0), 0)
-      }
-      // O valor da caderneta deve ser igual ao valor a receber
-      totalCaderneta = valorReceber
-
-      // Receita total = soma dos totais do caixa
-      const receitaTotal = totalPix + totalDinheiro + totalDebito + totalCredito + totalCaderneta
-      // Ticket médio = receita total / número de vendas (dias de caixa)
-      const vendasCount = todasVendas?.length || 0
+      const receitaTotal = todasVendas.reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
+      const totalPix = todasVendas.filter(v => v.forma_pagamento === 'pix').reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
+      const totalDinheiro = todasVendas.filter(v => v.forma_pagamento === 'dinheiro').reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
+      const totalDebito = todasVendas.filter(v => v.forma_pagamento === 'cartao_debito').reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
+      const totalCredito = todasVendas.filter(v => v.forma_pagamento === 'cartao_credito').reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
+      const totalCaderneta = todasVendas.filter(v => v.forma_pagamento === 'caderneta').reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
+      const valorReceber = todasVendas.reduce((s, v) => s + (Number(v.valor_debito) || 0), 0)
+      const vendasCount = todasVendas.length
 
       setMetricasResumo({
         unidadesVendidas,

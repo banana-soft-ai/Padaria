@@ -99,6 +99,17 @@ export const obterInicioMes = () => {
   return `${ano}-${mes}-${dia}`
 }
 
+// Função para obter data N dias atrás no formato YYYY-MM-DD (usando fuso de São Paulo)
+export const obterDataNDiasAtras = (dias: number, timeZone = 'America/Sao_Paulo') => {
+  const agora = new Date(new Date().toLocaleString('en-US', { timeZone }))
+  const data = new Date(agora)
+  data.setDate(agora.getDate() - dias)
+  const ano = data.getFullYear()
+  const mes = String(data.getMonth() + 1).padStart(2, '0')
+  const dia = String(data.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
 // Função para obter início da semana atual (última segunda até hoje) usando fuso de São Paulo
 export const obterInicioSemana = () => {
   const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))

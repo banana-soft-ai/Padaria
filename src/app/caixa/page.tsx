@@ -51,9 +51,8 @@ import { formatCpfDisplay } from '@/lib/formatCpf'
 
 // Se true, o banco (trigger) fará a atualização de caixa automaticamente.
 // Quando habilitado, o cliente NÃO fará updates em `caixa_diario`, `caixa_movimentacoes` ou `fluxo_caixa`.
-// Temporariamente definimos como `false` para forçar o cliente a escrever os registros
-// e assim isolar se o problema está no trigger/DB ou na inserção da venda.
-const USE_DB_TRIGGER = false
+// Manter true evita duplicação: o trigger já atualiza os totais no INSERT; o cliente não deve somar de novo.
+const USE_DB_TRIGGER = true
 
 /** EAN-13 de balança (prefixos 20-29): PP CCCCC VVVVV D */
 function parseEan13Balanca(codeNum: string): { codigoProduto: string; valorEmbutido: number } | null {

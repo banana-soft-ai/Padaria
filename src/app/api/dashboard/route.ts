@@ -9,6 +9,17 @@ import { serverEnv } from '@/env/server-env'
 import { obterDataLocal, obterInicioMes } from '@/lib/dateUtils'
 
 export async function GET(request: Request) {
+    const { searchParams } = new URL(request.url)
+    const dataInicioParam = searchParams.get('dataInicio')
+    const dataFimParam = searchParams.get('dataFim')
+
+    const hoje = obterDataLocal()
+    const inicioMes = obterInicioMes()
+    const dataInicio = dataInicioParam || inicioMes
+    const dataFim = dataFimParam || hoje
+    const chartInicio = dataInicio
+    const chartFim = dataFim
+
     // Next.js 15: obter cookie store com await e passar para createServerClient
     const cookieStore = await nextCookies();
     const supabaseUrl = serverEnv.SUPABASE_URL || clientEnv.NEXT_PUBLIC_SUPABASE_URL || ''
@@ -19,58 +30,47 @@ export async function GET(request: Request) {
         { cookies: createSupabaseCookies(cookieStore) }
     )
     try {
-        const hoje = obterDataLocal()
-        const inicioMes = obterInicioMes()
-        
-        // Calcular 30 dias atrás em fuso local
-        const dataHoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
-        const trintaDiasAtras = new Date(dataHoje)
-        trintaDiasAtras.setDate(dataHoje.getDate() - 30)
-        const trintaDiasAtrasStr = `${trintaDiasAtras.getFullYear()}-${String(trintaDiasAtras.getMonth() + 1).padStart(2, '0')}-${String(trintaDiasAtras.getDate()).padStart(2, '0')}`
-
-        // 1) Vendas do dia
-        const { data: vendasHojeArr, error: vendasHojeErr } = await supabase
-            .from('vendas')
-            .select('id, valor_total, forma_pagamento')
-            .eq('data', hoje)
-
-        if (vendasHojeErr) console.error('Erro ao carregar vendas hoje:', vendasHojeErr)
-        
-        const vendasHojeTotal = (vendasHojeArr || []).reduce((s, v) => s + Number(v.valor_total || 0), 0)
-        const vendasHojeCount = (vendasHojeArr || []).length
-
-        // 2) Vendas do mês
-        const { data: vendasMesArr, error: vendasMesErr } = await supabase
+        // 1) Vendas no período
+        const { data: vendasPeriodoArr, error: vendasPeriodoErr } = await supabase
             .from('vendas')
             .select('id, valor_total, forma_pagamento, data')
-            .gte('data', inicioMes)
-            .lte('data', hoje)
+            .gte('data', dataInicio)
+            .lte('data', dataFim)
 
-        if (vendasMesErr) console.error('Erro ao carregar vendas do mês:', vendasMesErr)
+        if (vendasPeriodoErr) console.error('Erro ao carregar vendas período:', vendasPeriodoErr)
+
+        const vendasHojeTotal = (vendasPeriodoArr || []).reduce((s, v) => s + Number(v.valor_total || 0), 0)
+        const vendasHojeCount = (vendasPeriodoArr || []).length
+
+        // 2) Vendas do mês (mesmo que período quando filtro aplicado)
+        const vendasMesArr = vendasPeriodoArr
 
         const totalMesGestao = (vendasMesArr || []).reduce((s, v) => s + Number(v.valor_total || 0), 0)
         const vendasMesCount = (vendasMesArr || []).length
 
-        // 3) Vendas por dia (últimos 30 dias)
-        const { data: vendasTrintaDias, error: v30Err } = await supabase
+        // 3) Vendas por dia no range do filtro
+        const { data: vendasChartArr, error: v30Err } = await supabase
             .from('vendas')
             .select('data, valor_total')
-            .gte('data', trintaDiasAtrasStr)
-            .lte('data', hoje)
+            .gte('data', chartInicio)
+            .lte('data', chartFim)
             .order('data', { ascending: true })
 
-        if (v30Err) console.error('Erro ao carregar vendas 30 dias:', v30Err)
+        if (v30Err) console.error('Erro ao carregar vendas para gráfico:', v30Err)
 
-        const vendasPorDiaMap: Record<string, number> = {};
-        // Inicializar os últimos 30 dias com zero (fuso local)
-        for (let i = 0; i < 30; i++) {
-            const d = new Date(dataHoje);
-            d.setDate(dataHoje.getDate() - i);
-            const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            vendasPorDiaMap[dStr] = 0;
+        const vendasPorDiaMap: Record<string, number> = {}
+        const startDate = new Date(chartInicio + 'T12:00:00')
+        const endDate = new Date(chartFim + 'T12:00:00')
+        const current = new Date(startDate)
+        let diasCount = 0
+        while (current.getTime() <= endDate.getTime() && diasCount < 90) {
+            const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`
+            vendasPorDiaMap[key] = 0
+            current.setDate(current.getDate() + 1)
+            diasCount++
         }
 
-        ;(vendasTrintaDias || []).forEach(v => {
+        ; (vendasChartArr || []).forEach(v => {
             vendasPorDiaMap[v.data] = (vendasPorDiaMap[v.data] || 0) + Number(v.valor_total || 0)
         })
 
@@ -81,7 +81,7 @@ export async function GET(request: Request) {
         // 4) Top Produtos (Mês)
         const vendaIdsMes = (vendasMesArr || []).map(v => v.id)
         let topProdutos: any[] = []
-        
+
         if (vendaIdsMes.length > 0) {
             const { data: itensMes, error: itemsErr } = await supabase
                 .from('venda_itens')
@@ -91,8 +91,8 @@ export async function GET(request: Request) {
             if (itemsErr) console.error('Erro ao carregar itens do mês:', itemsErr)
 
             const produtosAgrupados: Record<string, { nome: string, quantidade: number, total: number }> = {};
-            
-            ;(itensMes || []).forEach((item: any) => {
+
+            ; (itensMes || []).forEach((item: any) => {
                 const nome = item.produtos?.nome || item.varejo?.nome || 'Desconhecido'
                 if (!produtosAgrupados[nome]) {
                     produtosAgrupados[nome] = { nome, quantidade: 0, total: 0 }
@@ -119,7 +119,7 @@ export async function GET(request: Request) {
             return nomes[forma] || forma;
         };
 
-        ;(vendasMesArr || []).forEach(v => {
+        ; (vendasMesArr || []).forEach(v => {
             const forma = formatarForma(v.forma_pagamento)
             pagamentosAgrupados[forma] = (pagamentosAgrupados[forma] || 0) + Number(v.valor_total || 0)
         })
@@ -128,11 +128,12 @@ export async function GET(request: Request) {
             .map(([forma, total]) => ({ forma, total }))
             .sort((a, b) => b.total - a.total)
 
-        // 6) Últimas Vendas (Hoje)
+        // 6) Últimas Vendas (período)
         const { data: ultimasVendas, error: ultimasErr } = await supabase
             .from('vendas')
-            .select('id, numero_venda, created_at, valor_total, forma_pagamento, status')
-            .eq('data', hoje)
+            .select('id, numero_venda, created_at, valor_total, forma_pagamento, status, data')
+            .gte('data', dataInicio)
+            .lte('data', dataFim)
             .order('created_at', { ascending: false })
             .limit(5);
 
@@ -141,7 +142,7 @@ export async function GET(request: Request) {
         // Formatar vendas recentes com fuso horário local
         const vendasRecentesFormatadas = (ultimasVendas || []).map(v => {
             const dataVenda = new Date(v.created_at);
-            const horaLocal = dataVenda.toLocaleTimeString('pt-BR', { 
+            const horaLocal = dataVenda.toLocaleTimeString('pt-BR', {
                 timeZone: 'America/Sao_Paulo',
                 hour: '2-digit',
                 minute: '2-digit',
@@ -155,10 +156,10 @@ export async function GET(request: Request) {
             };
         });
 
-        // 7) Itens vendidos hoje
+        // 7) Itens vendidos no período
         let itensVendidosHoje = 0
         if (vendasHojeCount > 0) {
-            const vendaIds = (vendasHojeArr || []).map((r: any) => r.id).filter(Boolean)
+            const vendaIds = (vendasPeriodoArr || []).map((r: any) => r.id).filter(Boolean)
             if (vendaIds.length > 0) {
                 const { data: itensData, error: itensErr } = await supabase
                     .from('venda_itens')
@@ -172,7 +173,7 @@ export async function GET(request: Request) {
             }
         }
 
-        // 8) Ticket médio hoje
+        // 8) Ticket médio no período
         const ticketMedioHoje = vendasHojeCount > 0 ? vendasHojeTotal / vendasHojeCount : 0
 
         return NextResponse.json({

@@ -4,17 +4,18 @@ import { useEffect, useState } from 'react'
 import ProtectedLayout from '@/components/ProtectedLayout'
 import RouteGuard from '@/components/RouteGuard'
 import { offlineStorage } from '@/lib/offlineStorage'
-import { 
-  TrendingUp, 
-  DollarSign, 
-  ShoppingCart, 
-  Package, 
-  BarChart3, 
+import {
+  TrendingUp,
+  DollarSign,
+  ShoppingCart,
+  Package,
+  BarChart3,
   PieChart as PieChartIcon,
   ArrowUpRight,
-  History
+  History,
+  Calendar
 } from 'lucide-react'
-import { obterInicioMes } from '@/lib/dateUtils'
+import { obterDataLocal, obterDataNDiasAtras, obterInicioMes } from '@/lib/dateUtils'
 import {
   LineChart,
   Line,
@@ -56,21 +57,54 @@ interface DashboardData {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8']
 
+function formatarDataBR(isoDate: string): string {
+  const [ano, mes, dia] = isoDate.split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
+type FiltroPeriodo = 'hoje' | 'mes' | '7dias' | '30dias' | 'personalizado'
+
 export default function DashboardPage() {
+  const hoje = obterDataLocal()
+  const inicioMes = obterInicioMes()
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [filtro, setFiltro] = useState<FiltroPeriodo>('mes')
+  const [dataInicioCustom, setDataInicioCustom] = useState(inicioMes)
+  const [dataFimCustom, setDataFimCustom] = useState(hoje)
+
+  const getDataInicioFim = (): { dataInicio: string; dataFim: string } => {
+    switch (filtro) {
+      case 'hoje':
+        return { dataInicio: hoje, dataFim: hoje }
+      case 'mes':
+        return { dataInicio: inicioMes, dataFim: hoje }
+      case '7dias':
+        return { dataInicio: obterDataNDiasAtras(6), dataFim: hoje }
+      case '30dias':
+        return { dataInicio: obterDataNDiasAtras(29), dataFim: hoje }
+      case 'personalizado':
+        return { dataInicio: dataInicioCustom, dataFim: dataFimCustom }
+      default:
+        return { dataInicio: inicioMes, dataFim: hoje }
+    }
+  }
+
+  const { dataInicio, dataFim } = getDataInicioFim()
+  const ehHoje = filtro === 'hoje'
 
   useEffect(() => {
     carregarDados()
-  }, [])
+  }, [dataInicio, dataFim])
 
   const carregarDados = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      const res = await fetch('/api/dashboard')
+      const params = new URLSearchParams({ dataInicio, dataFim })
+      const res = await fetch(`/api/dashboard?${params}`)
       if (!res.ok) throw new Error('Erro ao carregar dados do dashboard')
 
       const dashboardData = await res.json()
@@ -83,11 +117,9 @@ export default function DashboardPage() {
           offlineStorage.getOfflineData('vendas'),
           offlineStorage.getOfflineData('venda_itens')
         ])
-        const hoje = new Date().toISOString().split('T')[0]
-        const inicioMes = obterInicioMes()
 
-        const vendasHojeArr = (vendasCache || []).filter((v: any) => v.data === hoje)
-        const vendasMesArr = (vendasCache || []).filter((v: any) => v.data >= inicioMes && v.data <= hoje)
+        const vendasHojeArr = (vendasCache || []).filter((v: any) => v.data >= dataInicio && v.data <= dataFim)
+        const vendasMesArr = vendasHojeArr
 
         const vendasHojeTotal = vendasHojeArr.reduce((s: number, v: any) => s + Number(v.valor_total || 0), 0)
         const vendasHojeCount = vendasHojeArr.length
@@ -100,16 +132,17 @@ export default function DashboardPage() {
           .reduce((sum: number, it: any) => sum + (Number(it.quantidade) || 0), 0)
         const ticketMedioHoje = vendasHojeCount > 0 ? vendasHojeTotal / vendasHojeCount : 0
 
-        const trintaDiasAtras = new Date()
-        trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30)
-        const trintaDiasStr = trintaDiasAtras.toISOString().split('T')[0]
-        const vendasTrinta = (vendasCache || []).filter((v: any) => v.data >= trintaDiasStr && v.data <= hoje)
+        const vendasTrinta = (vendasCache || []).filter((v: any) => v.data >= dataInicio && v.data <= dataFim)
         const vendasPorDiaMap: Record<string, number> = {}
-        for (let i = 0; i < 30; i++) {
-          const d = new Date()
-          d.setDate(d.getDate() - i)
-          const dStr = d.toISOString().split('T')[0]
-          vendasPorDiaMap[dStr] = 0
+        const startDate = new Date(dataInicio + 'T12:00:00')
+        const endDate = new Date(dataFim + 'T12:00:00')
+        const current = new Date(startDate)
+        let diasCount = 0
+        while (current.getTime() <= endDate.getTime() && diasCount < 90) {
+          const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`
+          vendasPorDiaMap[key] = 0
+          current.setDate(current.getDate() + 1)
+          diasCount++
         }
         vendasTrinta.forEach((v: any) => {
           vendasPorDiaMap[v.data] = (vendasPorDiaMap[v.data] || 0) + Number(v.valor_total || 0)
@@ -160,19 +193,59 @@ export default function DashboardPage() {
     }
   }
 
-  const inicioMes = obterInicioMes()
-  const hoje = new Date().toISOString().split('T')[0]
-
   return (
     <RouteGuard>
       <ProtectedLayout>
         <div className="page-container">
           {/* Header */}
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Dashboard Administrativo</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Visão geral do mês atual - {new Date(inicioMes).toLocaleDateString('pt-BR')} até {new Date(hoje).toLocaleDateString('pt-BR')}
-            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Dashboard Administrativo</h1>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+                  {(['hoje', 'mes', '7dias', '30dias'] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setFiltro(f)}
+                      className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${filtro === f ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                    >
+                      {f === 'hoje' && 'Hoje'}
+                      {f === 'mes' && 'Este mês'}
+                      {f === '7dias' && '7 dias'}
+                      {f === '30dias' && '30 dias'}
+                    </button>
+                  ))}
+                </div>
+                {filtro === 'personalizado' ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      type="date"
+                      value={dataInicioCustom}
+                      onChange={(e) => setDataInicioCustom(e.target.value)}
+                      className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                    />
+                    <span className="text-gray-500 text-sm">até</span>
+                    <input
+                      type="date"
+                      value={dataFimCustom}
+                      onChange={(e) => setDataFimCustom(e.target.value)}
+                      className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setFiltro('personalizado')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    Personalizado
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           {loading ? (
@@ -214,11 +287,11 @@ export default function DashboardPage() {
 
               {/* Cards de Métricas */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                {/* Vendas Hoje */}
+                {/* Vendas no período */}
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 transition-all hover:shadow-md">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Vendas Hoje</p>
+                      <p className="text-sm font-medium text-gray-600">{ehHoje ? 'Vendas Hoje' : 'Vendas no período'}</p>
                       <p className="text-2xl font-bold text-gray-900 mt-1">
                         R$ {data?.vendasHoje.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
@@ -233,17 +306,22 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Vendas do Mês */}
+                {/* Total ou média diária */}
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 transition-all hover:shadow-md">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Vendas do Mês</p>
+                      <p className="text-sm font-medium text-gray-600">{ehHoje ? 'Vendas' : 'Média diária'}</p>
                       <p className="text-2xl font-bold text-gray-900 mt-1">
-                        R$ {data?.vendasMes.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        R$ {(() => {
+                          const total = data?.vendasMes?.total ?? 0
+                          if (ehHoje) return total
+                          const dias = Math.ceil((new Date(dataFim + 'T12:00:00').getTime() - new Date(dataInicio + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24)) + 1
+                          return total / Math.max(1, dias)
+                        })().toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                       <div className="flex items-center mt-1 text-xs text-blue-600 font-medium">
                         <TrendingUp className="h-3 w-3 mr-0.5" />
-                        <span>{data?.vendasMes.count || 0} no período</span>
+                        <span>{data?.vendasMes.count || 0} vendas</span>
                       </div>
                     </div>
                     <div className="p-3 bg-blue-50 rounded-xl">
@@ -256,11 +334,11 @@ export default function DashboardPage() {
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 transition-all hover:shadow-md">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Ticket Médio (Hoje)</p>
+                      <p className="text-sm font-medium text-gray-600">Ticket Médio</p>
                       <p className="text-2xl font-bold text-gray-900 mt-1">
                         R$ {data?.ticketMedioHoje.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">Por transação hoje</p>
+                      <p className="text-xs text-gray-500 mt-1">Por transação no período</p>
                     </div>
                     <div className="p-3 bg-purple-50 rounded-xl">
                       <DollarSign className="h-6 w-6 text-purple-600" />
@@ -272,7 +350,7 @@ export default function DashboardPage() {
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 transition-all hover:shadow-md">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Itens Vendidos (Hoje)</p>
+                      <p className="text-sm font-medium text-gray-600">Itens Vendidos</p>
                       <p className="text-2xl font-bold text-gray-900 mt-1">
                         {(data?.itensVendidosHoje ?? 0).toLocaleString('pt-BR', {
                           minimumFractionDigits: 0,
@@ -293,28 +371,38 @@ export default function DashboardPage() {
                 {/* Vendas por Dia */}
                 <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Vendas nos Últimos 30 Dias</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">Vendas por dia</h3>
                     <TrendingUp className="h-5 w-5 text-gray-400" />
                   </div>
                   <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={data?.vendasPorDia}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis 
-                          dataKey="data" 
+                        <XAxis
+                          dataKey="data"
                           tick={{ fontSize: 12 }}
-                          tickFormatter={(val) => new Date(val).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                          tickFormatter={(val) => {
+                            const s = String(val)
+                            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+                              const [, mes, dia] = s.split('-')
+                              return `${dia}/${mes}`
+                            }
+                            return s
+                          }}
                         />
                         <YAxis tick={{ fontSize: 12 }} />
-                        <Tooltip 
+                        <Tooltip
                           formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Vendas']}
-                          labelFormatter={(label) => new Date(label).toLocaleDateString('pt-BR')}
+                          labelFormatter={(label) => {
+                            const s = String(label)
+                            return /^\d{4}-\d{2}-\d{2}$/.test(s) ? formatarDataBR(s) : s
+                          }}
                         />
-                        <Line 
-                          type="monotone" 
-                          dataKey="total" 
-                          stroke="#10b981" 
-                          strokeWidth={2} 
+                        <Line
+                          type="monotone"
+                          dataKey="total"
+                          stroke="#10b981"
+                          strokeWidth={2}
                           dot={{ r: 4 }}
                           activeDot={{ r: 6 }}
                         />
@@ -371,7 +459,7 @@ export default function DashboardPage() {
                 {/* Top Produtos */}
                 <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Top 5 Produtos (Mês)</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">Top 5 Produtos</h3>
                     <Package className="h-5 w-5 text-gray-400" />
                   </div>
                   <div className="space-y-4">
@@ -389,8 +477,8 @@ export default function DashboardPage() {
                         <div className="text-right">
                           <p className="text-sm font-bold text-gray-900">R$ {produto.total.toFixed(2)}</p>
                           <div className="w-24 bg-gray-100 h-1.5 rounded-full mt-1 overflow-hidden">
-                            <div 
-                              className="bg-blue-500 h-full rounded-full" 
+                            <div
+                              className="bg-blue-500 h-full rounded-full"
                               style={{ width: `${(produto.total / (data.topProdutos[0].total || 1)) * 100}%` }}
                             ></div>
                           </div>
@@ -403,7 +491,7 @@ export default function DashboardPage() {
                 {/* Vendas Recentes */}
                 <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Últimas Vendas (Hoje)</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">Últimas Vendas</h3>
                     <History className="h-5 w-5 text-gray-400" />
                   </div>
                   <div className="overflow-x-auto">

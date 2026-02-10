@@ -6,6 +6,7 @@ import { ClienteCaderneta, MovimentacaoCaderneta } from '@/lib/supabase'
 import Toast from '@/app/gestao/caderneta/Toast'
 import { Plus, Users, DollarSign, CreditCard, Search, Edit, Trash2, Calculator, Eye, WifiOff, RefreshCw, X, Download, FileText, MessageCircle, FileSpreadsheet, Printer } from 'lucide-react'
 import { useCadernetaOffline } from '@/hooks/useCadernetaOffline'
+import { obterDataLocal as obterDataHoje } from '@/lib/dateUtils'
 
 /**
  * Componente da página de gestão da Caderneta (Fiado).
@@ -142,7 +143,7 @@ export function CadernetaContent() {
   const [formPagamento, setFormPagamento] = useState({
     cliente_id: '',
     valor: '',
-    data_pagamento: new Date().toISOString().split('T')[0], // Data atual por padrão
+    data_pagamento: obterDataHoje(), // Data atual por padrão
     forma_pagamento: 'dinheiro', // Forma de pagamento padrão
     observacoes: '',
     taxa_percentual: '0'
@@ -157,7 +158,7 @@ export function CadernetaContent() {
     saldo_atual: '',
     novo_saldo: '',
     observacoes: '',
-    data_ajuste: new Date().toISOString().split('T')[0]
+    data_ajuste: obterDataHoje()
   })
 
   // Estado para prévia do limite de crédito
@@ -486,7 +487,7 @@ export function CadernetaContent() {
       setFormPagamento({
         cliente_id: cliente.id.toString(),
         valor: '',
-        data_pagamento: new Date().toISOString().split('T')[0],
+        data_pagamento: obterDataHoje(),
         forma_pagamento: 'dinheiro',
         observacoes: '',
         taxa_percentual: '0'
@@ -507,7 +508,7 @@ export function CadernetaContent() {
       saldo_atual: cliente.saldo_devedor.toFixed(2),
       novo_saldo: '',
       observacoes: '',
-      data_ajuste: new Date().toISOString().split('T')[0]
+      data_ajuste: obterDataHoje()
     })
     setShowModalSaldo(true)
   }
@@ -589,7 +590,7 @@ export function CadernetaContent() {
     setFormPagamento({
       cliente_id: '',
       valor: '',
-      data_pagamento: new Date().toISOString().split('T')[0],
+      data_pagamento: obterDataHoje(),
       forma_pagamento: 'dinheiro',
       observacoes: '',
       taxa_percentual: '0'
@@ -607,7 +608,7 @@ export function CadernetaContent() {
       saldo_atual: '',
       novo_saldo: '',
       observacoes: '',
-      data_ajuste: new Date().toISOString().split('T')[0]
+      data_ajuste: obterDataHoje()
     })
     setClienteSelecionado(null)
   }

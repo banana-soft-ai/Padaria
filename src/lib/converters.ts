@@ -2,6 +2,7 @@
 // Observação: usamos `import type` para evitar trazer módulos em tempo de execução.
 import type * as Gestao from '../types/gestao'
 import type * as Supabase from './supabase'
+import { obterDataLocal } from './dateUtils'
 
 
 function toNumber(v: any, fallback = 0) {
@@ -27,7 +28,12 @@ export function toReceita(obj: any): ReceitaSupabase {
     unidade_rendimento: toString(obj?.unidade_rendimento, ''),
     categoria: (obj?.categoria as ReceitaSupabase['categoria']) || 'outro',
     preco_venda: obj?.preco_venda ?? undefined,
-    custosInvisiveis: obj?.custosInvisiveis ?? undefined,
+    custosInvisiveis: (() => {
+      const v = obj?.custosInvisiveis ?? obj?.custos_invisiveis
+      if (v == null || v === '') return undefined
+      const n = Number(v)
+      return Number.isFinite(n) ? n : undefined
+    })(),
     instrucoes: obj?.instrucoes ?? undefined,
     created_at: toISODate(obj?.created_at),
     updated_at: obj?.updated_at ?? '',
@@ -123,7 +129,7 @@ import type { Venda as VendaSupabase } from './supabase'
 export function toVenda(obj: any): VendaSupabase {
   return {
     id: toNumber(obj?.id, 0),
-    data: (obj?.data ? String(obj.data) : new Date().toISOString()).split('T')[0],
+    data: (obj?.data ? String(obj.data) : obterDataLocal()),
     hora: obj?.hora ?? undefined,
     forma_pagamento: (obj?.forma_pagamento as Gestao.Venda['forma_pagamento']) || 'dinheiro',
     cliente_caderneta_id: obj?.cliente_caderneta_id ?? undefined,
@@ -145,7 +151,7 @@ import type { CaixaDiario as CaixaDiarioSupabase } from './supabase'
 export function toCaixaDiario(obj: any): CaixaDiarioSupabase {
   return {
     id: toNumber(obj?.id, 0),
-    data: (obj?.data ? String(obj.data) : new Date().toISOString()).split('T')[0],
+    data: (obj?.data ? String(obj.data) : obterDataLocal()),
     status: (obj?.status as Gestao.CaixaDiario['status']) || 'aberto',
     valor_abertura: toNumber(obj?.valor_abertura, 0),
     valor_fechamento: obj?.valor_fechamento != null ? toNumber(obj?.valor_fechamento, 0) : undefined,

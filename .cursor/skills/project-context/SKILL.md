@@ -33,7 +33,7 @@ description: Fornece o contexto completo do projeto Rey dos Pães (stack, conven
 ## Convenções
 
 - **Moeda**: centavos internamente, BRL formatado na UI
-- **Datas**: ISO 8601, timezone America/Sao_Paulo na exibição
+- **Datas**: ISO 8601 (YYYY-MM-DD); timezone America/Sao_Paulo. Todas as datas operacionais (vendas, caixa, caderneta, dashboard) usam `obterDataLocal()` de `@/lib/dateUtils` — nunca `new Date().toISOString().split('T')[0]` (UTC)
 - **IDs**: UUID v4 (gerados no client para suporte offline)
 - **Roles**: admin, gerente, funcionario, caixa
 - **Idioma do código**: inglês para variáveis/funções, português para mensagens ao usuário
@@ -47,6 +47,7 @@ description: Fornece o contexto completo do projeto Rey dos Pães (stack, conven
 | — | Supabase em vez de API própria | Velocidade de desenvolvimento, RLS nativo |
 | — | Impressão via serviço local Node | Navegador não permite print direto na Elgin i9 |
 | — | EAN-13 peso variável (Toledo Prix) | Padrão da balança já em uso na padaria |
+| — | Datas operacionais em America/Sao_Paulo via obterDataLocal() | Evita vendas à noite serem gravadas com data do dia seguinte (UTC) |
 
 ## Módulos e Status
 

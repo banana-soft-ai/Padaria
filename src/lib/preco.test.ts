@@ -62,4 +62,14 @@ describe('calcularCustos', () => {
     expect(resultado.unitarioBase).toBe(0)
     expect(resultado.unitarioTotal).toBe(0)
   })
+
+  it('custo total inclui custos invisíveis quando custosInvisiveisDecimal > 0', () => {
+    const ingredientes = [
+      { insumo_id: 1, quantidade: 2, categoria: 'massa' }
+    ]
+    const resultado = calcularCustos({ ingredientes, insumos, rendimento: 4, custosInvisiveisDecimal: 0.1 })
+    expect(resultado.custoIngredientes).toBeCloseTo(10)
+    expect(resultado.totalComEmbalagem).toBeGreaterThan(resultado.custoIngredientes)
+    expect(resultado.totalComEmbalagem).toBeCloseTo(11) // custoBase = 10 + 1 (10% invisível)
+  })
 })

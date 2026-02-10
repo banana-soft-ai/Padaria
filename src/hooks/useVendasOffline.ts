@@ -6,6 +6,7 @@
 import { useOfflineData } from './useOfflineData'
 import { Venda, ItemVenda, ClienteCaderneta } from '@/lib/supabase'
 import { toVenda, toClienteCaderneta } from '@/lib/converters'
+import { obterDataLocal } from '@/lib/dateUtils'
 
 interface VendaFormData {
   forma_pagamento: 'pix' | 'debito' | 'credito' | 'dinheiro' | 'caderneta'
@@ -67,7 +68,7 @@ export function useVendasOffline() {
 
       // Criar venda
       const novaVenda: Omit<Venda, 'id'> = {
-        data: new Date().toISOString().split('T')[0],
+        data: obterDataLocal(),
         hora: new Date().toTimeString().split(' ')[0],
         forma_pagamento: formData.forma_pagamento,
         cliente_caderneta_id: formData.cliente_caderneta_id,
@@ -105,7 +106,7 @@ export function useVendasOffline() {
 
   // Obter vendas do dia
   const getVendasHoje = () => {
-    const hoje = new Date().toISOString().split('T')[0]
+    const hoje = obterDataLocal()
     return vendas.filter(venda => venda.data === hoje)
   }
 

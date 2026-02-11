@@ -61,6 +61,7 @@ src/
 | Documentação, README, JSDoc, changelogs, guias operadores | Docs | `.cursor/skills/agente-documentacao/` (skill) |
 | Atualizar tasks, mover entre seções, arquivar sprint, estado do projeto | Tasks | `.cursor/skills/agente-tasks/` (skill) |
 | Pipeline, GitHub Actions, lint/typecheck/test/build, gates de merge | CI/CD | `.cursor/skills/ci-cd-qualidade/` (skill) |
+| Revisão de RLS, auth, roles, dados sensíveis, secrets, conformidade deploy | Segurança (revisão) | `.cursor/skills/agente-seguranca/` (skill) |
 
 ## Fases do Plano de Execução
 
@@ -181,6 +182,11 @@ Ao delegar, preencher o template do agente e entregar como bloco **copy-paste** 
 - **Ação:** atualizar/mover/criar sprint em `docs/TASKS.md`
 - **Itens:** [lista de tasks no formato do arquivo].
 
+### Segurança (agente-seguranca) — revisão apenas
+- **Objetivo:** revisar/auditar (não implementar) políticas de segurança, RLS, auth, roles, dados sensíveis ou secrets.
+- **Contexto:** [o que foi alterado ou será alterado: tabelas, rotas, envs, pipeline].
+- **Entregável esperado:** resumo da revisão, riscos, recomendações e conformidade (ver formato no skill agente-seguranca).
+
 ## Checklist de validação por fase
 
 - **Fase 1 (Banco):** [ ] Migrations reversíveis? [ ] RLS documentado? [ ] Types em `src/types`?
@@ -257,12 +263,20 @@ Para **Fase 1 (Banco)** e **Fase 2 (Backend)** com breaking changes ou migration
 | Conceitos | turno operador, formas de pagamento, balança, leitor código de barras |
 | Hooks/Libs | useCaixa, useCaixaOffline, useVendasOffline, useCadernetaOffline |
 
+### Segurança (agente-seguranca)
+
+- Revisão de RLS, políticas por tabela, consistência de roles
+- Autenticação (RouteGuard, AuthGuard, auth offline), permissões
+- Dados sensíveis (caderneta, vendas, caixa), secrets e variáveis de ambiente
+- Conformidade em deploy e pipeline (exposição de credenciais)
+
+*Segurança atua como consultor: revisa e propõe; Backend/CI-CD implementam.*
+
 ### Sem especialista (resposta direta)
 
-- Autenticação, permissões, RLS
-- Configurações gerais (`/configuracoes`)
+- Configurações gerais (`/configuracoes`) sem foco em segurança
 - Migrations sem domínio específico
-- Deploy, CI/CD, infraestrutura
+- Deploy, CI/CD, infraestrutura (execução; revisão de secrets → Segurança)
 - Dúvidas gerais sobre o projeto
 
 ### Como classificar

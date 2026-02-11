@@ -283,7 +283,7 @@ O script SQL inclui tabelas adicionais que parecem ser de uma versão anterior o
 
 ## ⚡ Views (Visões)
 
-Views são "tabelas virtuais" baseadas no resultado de uma query, usadas para simplificar consultas complexas e recorrentes.
+Views são "tabelas virtuais" baseadas no resultado de uma query, usadas para simplificar consultas complexas e recorrentes. As views de relatório (`vendas_hoje`, `produtos_estoque_baixo`, `resumo_caixa_hoje`) são criadas com **`security_invoker = true`** para respeitar o RLS do usuário que consulta (ver `docs/decisions/views-security-invoker.md`).
 
 ### 1. `vendas_hoje`
 *   **Descrição:** Fornece um relatório simplificado de todas as vendas realizadas no dia atual, juntando informações de `vendas`, `clientes` e `usuarios`.

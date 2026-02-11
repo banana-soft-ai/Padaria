@@ -1108,8 +1108,8 @@ $$ LANGUAGE plpgsql;
 -- VIEWS ÚTEIS
 -- =====================================================
 
--- View para relatório de vendas do dia
-CREATE OR REPLACE VIEW vendas_hoje AS
+-- View para relatório de vendas do dia (security_invoker: RLS do usuário que consulta)
+CREATE OR REPLACE VIEW vendas_hoje WITH (security_invoker = true) AS
 SELECT 
     v.id,
     v.numero_venda,
@@ -1125,8 +1125,8 @@ LEFT JOIN usuarios u ON u.id = v.usuario_id
 WHERE v.data = CURRENT_DATE
 ORDER BY v.hora DESC;
 
--- View para produtos com estoque baixo
-CREATE OR REPLACE VIEW produtos_estoque_baixo AS
+-- View para produtos com estoque baixo (security_invoker: RLS do usuário que consulta)
+CREATE OR REPLACE VIEW produtos_estoque_baixo WITH (security_invoker = true) AS
 SELECT 
     p.id,
     p.nome,
@@ -1142,8 +1142,8 @@ WHERE p.ativo = true
 GROUP BY p.id, p.nome, p.categoria, p.preco_venda
 HAVING COUNT(CASE WHEN i.estoque_atual <= i.estoque_minimo THEN 1 END) > 0;
 
--- View para resumo de caixa do dia
-CREATE OR REPLACE VIEW resumo_caixa_hoje AS
+-- View para resumo de caixa do dia (security_invoker: RLS do usuário que consulta)
+CREATE OR REPLACE VIEW resumo_caixa_hoje WITH (security_invoker = true) AS
 SELECT 
     c.id as caixa_id,
     c.data_abertura,

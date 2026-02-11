@@ -48,6 +48,8 @@ Este arquivo cria e gerencia as views utilizadas para relatórios e análises r�
 -   `ingredientes_necessarios`: Campo calculado (atualmente `0`, a lógica principal está no `HAVING`).
 -   `status`: Um texto fixo `'Verificar disponibilidade'` para sinalizar a necessidade de atenção.
 
+As três views acima são criadas com **`security_invoker = true`** para que o RLS (Row Level Security) do usuário que consulta seja aplicado. Ver `docs/decisions/views-security-invoker.md`.
+
 #### `resumo_caixa_hoje`
 
 **Propósito:** Gera um resumo financeiro detalhado para o caixa que está aberto no dia corrente. Consolida os totais de vendas por forma de pagamento e o valor total movimentado.

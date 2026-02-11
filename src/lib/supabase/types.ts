@@ -443,7 +443,12 @@ export interface Database {
             }>;
         }
         Views: Record<string, unknown>
-        Functions: Record<string, unknown>
+        Functions: Record<string, unknown> & {
+            get_vendas_por_dia: {
+                Args: { inicio: string; fim: string }
+                Returns: { data: string; total: number }[]
+            }
+        }
         Enums: Record<string, string>
     }
 }

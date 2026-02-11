@@ -30,31 +30,42 @@ export async function GET(request: Request) {
         { cookies: createSupabaseCookies(cookieStore) }
     )
     try {
-        // 1) Vendas no período
-        const { data: vendasPeriodoArr, error: vendasPeriodoErr } = await supabase
-            .from('vendas')
-            .select('id, valor_total, forma_pagamento, data')
-            .gte('data', dataInicio)
-            .lte('data', dataFim)
+        // 1) Vendas no período (paginação para evitar limite 1000 do Supabase)
+        type VendaPeriodoRow = { id: number; valor_total: number; forma_pagamento: string; data: string }
+        const vendasPeriodoArr: VendaPeriodoRow[] = []
+        const pageSize = 1000
+        let offset = 0
+        while (true) {
+            const { data: page, error: vendasPeriodoErr } = await supabase
+                .from('vendas')
+                .select('id, valor_total, forma_pagamento, data')
+                .gte('data', dataInicio)
+                .lte('data', dataFim)
+                .order('data', { ascending: true })
+                .range(offset, offset + pageSize - 1)
 
-        if (vendasPeriodoErr) console.error('Erro ao carregar vendas período:', vendasPeriodoErr)
+            if (vendasPeriodoErr) {
+                console.error('Erro ao carregar vendas período:', vendasPeriodoErr)
+                break
+            }
+            if (!page?.length) break
+            vendasPeriodoArr.push(...(page as VendaPeriodoRow[]))
+            if (page.length < pageSize) break
+            offset += pageSize
+        }
 
-        const vendasHojeTotal = (vendasPeriodoArr || []).reduce((s, v) => s + Number(v.valor_total || 0), 0)
-        const vendasHojeCount = (vendasPeriodoArr || []).length
+        const vendasHojeTotal = vendasPeriodoArr.reduce((s, v) => s + Number(v.valor_total || 0), 0)
+        const vendasHojeCount = vendasPeriodoArr.length
 
         // 2) Vendas do mês (mesmo que período quando filtro aplicado)
         const vendasMesArr = vendasPeriodoArr
 
-        const totalMesGestao = (vendasMesArr || []).reduce((s, v) => s + Number(v.valor_total || 0), 0)
-        const vendasMesCount = (vendasMesArr || []).length
+        const totalMesGestao = vendasMesArr.reduce((s, v) => s + Number(v.valor_total || 0), 0)
+        const vendasMesCount = vendasMesArr.length
 
-        // 3) Vendas por dia no range do filtro
-        const { data: vendasChartArr, error: v30Err } = await supabase
-            .from('vendas')
-            .select('data, valor_total')
-            .gte('data', chartInicio)
-            .lte('data', chartFim)
-            .order('data', { ascending: true })
+        // 3) Vendas por dia no range do filtro (RPC agrega no banco; sem limite de linhas)
+        const { data: vendasPorDiaRpc, error: v30Err } = await supabase
+            .rpc('get_vendas_por_dia', { inicio: chartInicio, fim: chartFim })
 
         if (v30Err) console.error('Erro ao carregar vendas para gráfico:', v30Err)
 
@@ -70,8 +81,9 @@ export async function GET(request: Request) {
             diasCount++
         }
 
-        ; (vendasChartArr || []).forEach(v => {
-            vendasPorDiaMap[v.data] = (vendasPorDiaMap[v.data] || 0) + Number(v.valor_total || 0)
+        ; (vendasPorDiaRpc || []).forEach((row: { data: string | null; total: number }) => {
+            const dataKey = row.data ? String(row.data).slice(0, 10) : ''
+            if (dataKey && dataKey in vendasPorDiaMap) vendasPorDiaMap[dataKey] = Number(row.total ?? 0)
         })
 
         const vendasPorDia = Object.entries(vendasPorDiaMap)
@@ -159,7 +171,7 @@ export async function GET(request: Request) {
         // 7) Itens vendidos no período
         let itensVendidosHoje = 0
         if (vendasHojeCount > 0) {
-            const vendaIds = (vendasPeriodoArr || []).map((r: any) => r.id).filter(Boolean)
+            const vendaIds = vendasPeriodoArr.map((r) => r.id).filter(Boolean)
             if (vendaIds.length > 0) {
                 const { data: itensData, error: itensErr } = await supabase
                     .from('venda_itens')

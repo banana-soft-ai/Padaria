@@ -463,28 +463,32 @@ export default function DashboardPage() {
                     <Package className="h-5 w-5 text-gray-400" />
                   </div>
                   <div className="space-y-4">
-                    {data?.topProdutos.map((produto, index) => (
-                      <div key={produto.nome} className="flex items-center justify-between">
-                        <div className="flex items-center flex-1">
-                          <div className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg text-sm font-bold text-gray-500 mr-3">
-                            {index + 1}
+                    {data?.topProdutos?.length ? (
+                      data.topProdutos.map((produto, index) => (
+                        <div key={produto.nome} className="flex items-center justify-between">
+                          <div className="flex items-center flex-1">
+                            <div className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg text-sm font-bold text-gray-500 mr-3">
+                              {index + 1}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{produto.nome}</p>
+                              <p className="text-xs text-gray-500">{produto.quantidade} unidades vendidas</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{produto.nome}</p>
-                            <p className="text-xs text-gray-500">{produto.quantidade} unidades vendidas</p>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-gray-900">R$ {produto.total.toFixed(2)}</p>
+                            <div className="w-24 bg-gray-100 h-1.5 rounded-full mt-1 overflow-hidden">
+                              <div
+                                className="bg-blue-500 h-full rounded-full"
+                                style={{ width: `${(produto.total / (data.topProdutos[0].total || 1)) * 100}%` }}
+                              ></div>
+                            </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-bold text-gray-900">R$ {produto.total.toFixed(2)}</p>
-                          <div className="w-24 bg-gray-100 h-1.5 rounded-full mt-1 overflow-hidden">
-                            <div
-                              className="bg-blue-500 h-full rounded-full"
-                              style={{ width: `${(produto.total / (data.topProdutos[0].total || 1)) * 100}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500 py-4 text-center">Nenhum produto vendido no período.</p>
+                    )}
                   </div>
                 </div>
 

@@ -29,6 +29,7 @@ export async function GET(request: Request) {
         supabaseKey,
         { cookies: createSupabaseCookies(cookieStore) }
     )
+    const CHUNK_SIZE = 250 // limite de IDs por .in() para evitar URI too long
     try {
         // 1) Vendas no período (paginação para evitar limite 1000 do Supabase)
         type VendaPeriodoRow = { id: number; valor_total: number; forma_pagamento: string; data: string }
@@ -90,21 +91,28 @@ export async function GET(request: Request) {
             .map(([data, total]) => ({ data, total }))
             .sort((a, b) => a.data.localeCompare(b.data))
 
-        // 4) Top Produtos (Mês)
+        // 4) Top Produtos (período) — buscar itens em chunks para evitar URI too long
         const vendaIdsMes = (vendasMesArr || []).map(v => v.id)
-        let topProdutos: any[] = []
+        let topProdutos: { nome: string; quantidade: number; total: number }[] = []
 
         if (vendaIdsMes.length > 0) {
-            const { data: itensMes, error: itemsErr } = await supabase
-                .from('venda_itens')
-                .select('quantidade, subtotal, produto_id, varejo_id, produtos(nome), varejo(nome)')
-                .in('venda_id', vendaIdsMes)
+            const itensMesAccum: unknown[] = []
+            for (let i = 0; i < vendaIdsMes.length; i += CHUNK_SIZE) {
+                const chunk = vendaIdsMes.slice(i, i + CHUNK_SIZE)
+                const { data: itensChunk, error: itemsErr } = await supabase
+                    .from('venda_itens')
+                    .select('quantidade, subtotal, produto_id, varejo_id, produtos(nome), varejo(nome)')
+                    .in('venda_id', chunk)
 
-            if (itemsErr) console.error('Erro ao carregar itens do mês:', itemsErr)
+                if (itemsErr) {
+                    console.error('Erro ao carregar itens do período (chunk):', itemsErr)
+                } else if (itensChunk?.length) {
+                    itensMesAccum.push(...itensChunk)
+                }
+            }
 
-            const produtosAgrupados: Record<string, { nome: string, quantidade: number, total: number }> = {};
-
-            ; (itensMes || []).forEach((item: any) => {
+            const produtosAgrupados: Record<string, { nome: string; quantidade: number; total: number }> = {}
+            ;(itensMesAccum as { quantidade?: number; subtotal?: number; produtos?: { nome?: string }; varejo?: { nome?: string } }[]).forEach((item) => {
                 const nome = item.produtos?.nome || item.varejo?.nome || 'Desconhecido'
                 if (!produtosAgrupados[nome]) {
                     produtosAgrupados[nome] = { nome, quantidade: 0, total: 0 }
@@ -168,21 +176,22 @@ export async function GET(request: Request) {
             };
         });
 
-        // 7) Itens vendidos no período
+        // 7) Itens vendidos no período (chunks para evitar URI too long)
         let itensVendidosHoje = 0
         if (vendasHojeCount > 0) {
             const vendaIds = vendasPeriodoArr.map((r) => r.id).filter(Boolean)
-            if (vendaIds.length > 0) {
-                const { data: itensData, error: itensErr } = await supabase
+            let somaItens = 0
+            for (let i = 0; i < vendaIds.length; i += CHUNK_SIZE) {
+                const chunk = vendaIds.slice(i, i + CHUNK_SIZE)
+                const { data: itensChunk, error: itensErr } = await supabase
                     .from('venda_itens')
                     .select('quantidade')
-                    .in('venda_id', vendaIds)
+                    .in('venda_id', chunk)
 
-                if (itensErr) console.error('Erro ao buscar itens vendidos hoje:', itensErr)
-                const soma = (itensData || []).reduce((sum, it) => sum + (Number(it.quantidade) || 0), 0)
-                // Arredondar para 2 casas decimais para evitar erros de precisão de ponto flutuante
-                itensVendidosHoje = Math.round(soma * 100) / 100
+                if (itensErr) console.error('Erro ao buscar itens vendidos (chunk):', itensErr)
+                somaItens += (itensChunk || []).reduce((sum, it) => sum + (Number(it.quantidade) || 0), 0)
             }
+            itensVendidosHoje = Math.round(somaItens * 100) / 100
         }
 
         // 8) Ticket médio no período

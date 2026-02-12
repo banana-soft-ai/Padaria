@@ -8,13 +8,19 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import RouteGuard from '@/components/RouteGuard'
 import VendasTab from '@/components/gestao/VendasTab'
 import { RelatorioVendas, RankingVendas } from '@/types/gestao'
-import { obterInicioMes, obterInicioSemana, obterDataLocal } from '@/lib/dateUtils'
+import { obterDataLocal, obterInicioMes, obterDataNDiasAtras } from '@/lib/dateUtils'
+
+type FiltroPeriodo = 'hoje' | 'mes' | '7dias' | '30dias' | 'personalizado'
 
 export default function VendasPage() {
+  const hoje = obterDataLocal()
+  const inicioMes = obterInicioMes()
   const { isOnline } = useOnlineStatus()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [periodoVendas, setPeriodoVendas] = useState<'dia' | 'semana' | 'mes' | 'trimestre' | 'semestre' | 'ano'>('mes')
+  const [filtro, setFiltro] = useState<FiltroPeriodo>('mes')
+  const [dataInicioCustom, setDataInicioCustom] = useState(inicioMes)
+  const [dataFimCustom, setDataFimCustom] = useState(hoje)
   const [relatorioVendas, setRelatorioVendas] = useState<RelatorioVendas[]>([])
   const [rankingVendas, setRankingVendas] = useState<RankingVendas[]>([])
   const [metricasResumo, setMetricasResumo] = useState({
@@ -29,9 +35,28 @@ export default function VendasPage() {
     valorReceber: 0
   })
 
+  const getDataInicioFim = (): { dataInicio: string; dataFim: string } => {
+    switch (filtro) {
+      case 'hoje':
+        return { dataInicio: hoje, dataFim: hoje }
+      case 'mes':
+        return { dataInicio: inicioMes, dataFim: hoje }
+      case '7dias':
+        return { dataInicio: obterDataNDiasAtras(6), dataFim: hoje }
+      case '30dias':
+        return { dataInicio: obterDataNDiasAtras(29), dataFim: hoje }
+      case 'personalizado':
+        return { dataInicio: dataInicioCustom, dataFim: dataFimCustom }
+      default:
+        return { dataInicio: inicioMes, dataFim: hoje }
+    }
+  }
+
+  const { dataInicio, dataFim } = getDataInicioFim()
+
   useEffect(() => {
     carregarDados()
-  }, [periodoVendas])
+  }, [dataInicio, dataFim])
 
   const carregarDados = async () => {
     try {
@@ -51,10 +76,7 @@ export default function VendasPage() {
           offlineStorage.getOfflineData('venda_itens'),
           offlineStorage.getOfflineData('varejo')
         ])
-        const dataInicioYmd = obterDataInicioPeriodo(periodoVendas)
-        const hojeYmd = obterDataLocal()
-
-        const vendas = (vendasCache || []).filter((v: any) => v.data >= dataInicioYmd && v.data <= hojeYmd && (v.status === 'finalizada' || !v.status))
+        const vendas = (vendasCache || []).filter((v: any) => v.data >= dataInicio && v.data <= dataFim && (v.status === 'finalizada' || !v.status))
         const vendaIds = vendas.map((v: any) => v.id).filter(Boolean)
         const itens = (itensCache || []).filter((it: any) => vendaIds.includes(it.venda_id))
         const varejoMap = new Map((varejoCache || []).map((p: any) => [p.id, p.nome]))
@@ -116,44 +138,12 @@ export default function VendasPage() {
 
   const carregarRelatorioVendas = async () => {
     try {
-      // Carregando relatório de vendas
-
-      // Buscar vendas do período usando created_at (igual PDV)
-      const dataInicioYmd = obterDataInicioPeriodo(periodoVendas)
-      // Converte YYYY-MM-DD local para intervalo ISO (meia-noite local -> ISO UTC)
-      const toLocalIsoRange = (ymd: string) => {
-        const [yy, mm, dd] = ymd.split('-').map(Number)
-        const start = new Date(yy, mm - 1, dd, 0, 0, 0, 0).toISOString()
-        const end = new Date(yy, mm - 1, dd, 23, 59, 59, 999).toISOString()
-        return { start, end }
-      }
-
-      const startIso = toLocalIsoRange(dataInicioYmd).start
-      const hojeYmd = obterDataLocal()
-      const endIso = toLocalIsoRange(hojeYmd).end
-
       const { data: vendas, error: vendasError } = await supabase!
         .from('vendas')
         .select('id, created_at, valor_total, valor_pago, valor_debito, forma_pagamento, data')
-        // Preferir filtrar pela coluna DATE (`data`) que é gravada em YYYY-MM-DD local
-        .gte('data', dataInicioYmd)
-        .lte('data', hojeYmd)
+        .gte('data', dataInicio)
+        .lte('data', dataFim)
         .order('created_at', { ascending: false })
-
-      // Logs de diagnóstico para inspecionar quais datas e registros o banco retornou
-      try {
-        const preview = (vendas as any[] | null) ? (vendas as any[]).slice(0, 20).map(v => ({ id: v.id, data: v.data, created_at: v.created_at })) : []
-        console.log('[DIAGNOSTICO] carregarRelatorioVendas', {
-          dataInicioYmd,
-          hojeYmd,
-          startIso: startIso,
-          endIso: endIso,
-          vendasCount: (vendas as any[] | null)?.length ?? 0,
-          vendasPreview: preview
-        })
-      } catch (e) {
-        console.warn('[DIAGNOSTICO] falha ao gerar preview de vendas', e)
-      }
 
       if (vendasError) {
         setRelatorioVendas([])
@@ -223,12 +213,20 @@ export default function VendasPage() {
 
   const carregarRankingVendas = async () => {
     try {
-      // Carregando ranking de vendas
-
+      const { data: vendasPeriodo } = await supabase!
+        .from('vendas')
+        .select('id')
+        .gte('data', dataInicio)
+        .lte('data', dataFim)
+      const vendaIds = (vendasPeriodo || []).map(v => v.id)
+      if (vendaIds.length === 0) {
+        setRankingVendas([])
+        return
+      }
       const { data, error } = await supabase!
         .from('venda_itens')
         .select('*')
-        .gte('created_at', obterDataInicioPeriodo(periodoVendas))
+        .in('venda_id', vendaIds)
 
       if (error) {
         console.error('Erro ao carregar itens de venda:', error.message || error)
@@ -353,9 +351,6 @@ export default function VendasPage() {
 
   const carregarMetricasResumo = async () => {
     try {
-      const dataInicio = obterDataInicioPeriodo(periodoVendas)
-      const dataFim = obterDataLocal()
-
       const params = new URLSearchParams({ dataInicio, dataFim })
       const res = await fetch(`/api/gestao/vendas/metricas?${params}`)
       if (!res.ok) throw new Error('Erro ao carregar métricas')
@@ -385,52 +380,6 @@ export default function VendasPage() {
         totalCaderneta: 0,
         valorReceber: 0
       })
-    }
-  }
-
-  const obterDataInicioPeriodo = (periodo: string): string => {
-    try {
-      const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
-      let dataInicio: Date
-
-      switch (periodo) {
-        case 'dia':
-          dataInicio = new Date(hoje)
-          dataInicio.setHours(0, 0, 0, 0)
-          break
-        case 'semana':
-          // Usar função centralizada para semana (última segunda até hoje)
-          return obterInicioSemana()
-        case 'mes':
-          // Usar função centralizada para mês (dia 1 até hoje)
-          return obterInicioMes()
-        case 'trimestre':
-          const trimestre = Math.floor(hoje.getMonth() / 3)
-          dataInicio = new Date(hoje.getFullYear(), trimestre * 3, 1)
-          break
-        case 'semestre':
-          const semestre = Math.floor(hoje.getMonth() / 6)
-          dataInicio = new Date(hoje.getFullYear(), semestre * 6, 1)
-          break
-        case 'ano':
-          dataInicio = new Date(hoje.getFullYear(), 0, 1)
-          break
-        default:
-          dataInicio = new Date(hoje)
-          dataInicio.setHours(0, 0, 0, 0)
-      }
-
-      const dataFormatada = (() => {
-        const ano = dataInicio.getFullYear()
-        const mes = String(dataInicio.getMonth() + 1).padStart(2, '0')
-        const dia = String(dataInicio.getDate()).padStart(2, '0')
-        return `${ano}-${mes}-${dia}`
-      })()
-      return dataFormatada
-    } catch (error) {
-      console.error('Erro ao calcular data de início:', error)
-      // Fallback para hoje (data local)
-      return obterDataLocal()
     }
   }
 
@@ -485,10 +434,16 @@ export default function VendasPage() {
               <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="p-6">
                   <VendasTab
-                    periodoVendas={periodoVendas}
+                    filtro={filtro}
+                    dataInicio={dataInicio}
+                    dataFim={dataFim}
+                    dataInicioCustom={dataInicioCustom}
+                    dataFimCustom={dataFimCustom}
+                    onFiltroChange={setFiltro}
+                    onDataInicioCustomChange={setDataInicioCustom}
+                    onDataFimCustomChange={setDataFimCustom}
                     relatorioVendas={relatorioVendas}
                     rankingVendas={rankingVendas}
-                    onPeriodoChange={setPeriodoVendas}
                     metricasResumo={metricasResumo}
                   />
                 </div>

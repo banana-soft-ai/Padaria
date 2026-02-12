@@ -1,14 +1,22 @@
 'use client'
 
-import { useState } from 'react'
-import { Eye } from 'lucide-react'
+import React, { useState } from 'react'
+import { Eye, Calendar } from 'lucide-react'
 import { RelatorioVendas, RankingVendas } from '@/types/gestao'
 
+export type FiltroPeriodoVendas = 'hoje' | 'mes' | '7dias' | '30dias' | 'personalizado'
+
 interface VendasTabProps {
-  periodoVendas: 'dia' | 'semana' | 'mes' | 'trimestre' | 'semestre' | 'ano'
+  filtro: FiltroPeriodoVendas
+  dataInicio: string
+  dataFim: string
+  dataInicioCustom: string
+  dataFimCustom: string
+  onFiltroChange: (filtro: FiltroPeriodoVendas) => void
+  onDataInicioCustomChange: (value: string) => void
+  onDataFimCustomChange: (value: string) => void
   relatorioVendas: RelatorioVendas[]
   rankingVendas: RankingVendas[]
-  onPeriodoChange: (periodo: 'dia' | 'semana' | 'mes' | 'trimestre' | 'semestre' | 'ano') => void
   metricasResumo: {
     unidadesVendidas: number
     receitaTotal: number
@@ -22,13 +30,22 @@ interface VendasTabProps {
   }
 }
 
-import React from 'react';
+function formatarDataBR(ymd: string): string {
+  const [ano, mes, dia] = ymd.split('-')
+  return `${dia}/${mes}/${ano}`
+}
 
 const VendasTab: React.FC<VendasTabProps> = ({
-  periodoVendas,
+  filtro,
+  dataInicio,
+  dataFim,
+  dataInicioCustom,
+  dataFimCustom,
+  onFiltroChange,
+  onDataInicioCustomChange,
+  onDataFimCustomChange,
   relatorioVendas,
   rankingVendas,
-  onPeriodoChange,
   metricasResumo
 }) => {
   const [ordenacao, setOrdenacao] = useState<{ coluna: string; direcao: 'asc' | 'desc' }>({ coluna: 'item', direcao: 'asc' });
@@ -86,17 +103,18 @@ const VendasTab: React.FC<VendasTabProps> = ({
     });
   };
 
-  const obterDescricaoPeriodo = (periodo: string) => {
-    switch (periodo) {
-      case 'dia': return 'Hoje';
-      case 'semana': return 'Esta semana';
-      case 'mes': return 'Este mês';
-      case 'trimestre': return 'Este trimestre';
-      case 'semestre': return 'Este semestre';
-      case 'ano': return 'Este ano';
-      default: return periodo;
-    }
-  };
+  const descricaoPeriodo =
+    filtro === 'personalizado'
+      ? `${formatarDataBR(dataInicio)} até ${formatarDataBR(dataFim)}`
+      : filtro === 'hoje'
+        ? 'Hoje'
+        : filtro === 'mes'
+          ? 'Este mês'
+          : filtro === '7dias'
+            ? '7 dias'
+            : filtro === '30dias'
+              ? '30 dias'
+              : 'Período'
 
   return (
     <div>
@@ -105,26 +123,53 @@ const VendasTab: React.FC<VendasTabProps> = ({
       </div>
       <div className="grid grid-cols-1 gap-4">
         <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
             <div>
               <h3 className="text-xl font-semibold text-gray-900">Resumo de Vendas</h3>
               <p className="text-sm text-gray-600 mt-1">
-                Período: {obterDescricaoPeriodo(periodoVendas)}
+                Período: {descricaoPeriodo}
               </p>
             </div>
-            <div className="flex space-x-1">
-              {['dia', 'semana', 'mes', 'ano'].map(periodo => (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+                {(['hoje', 'mes', '7dias', '30dias'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => onFiltroChange(f)}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${filtro === f ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                  >
+                    {f === 'hoje' && 'Hoje'}
+                    {f === 'mes' && 'Este mês'}
+                    {f === '7dias' && '7 dias'}
+                    {f === '30dias' && '30 dias'}
+                  </button>
+                ))}
+              </div>
+              {filtro === 'personalizado' ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="date"
+                    value={dataInicioCustom}
+                    onChange={(e) => onDataInicioCustomChange(e.target.value)}
+                    className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                  <span className="text-gray-500 text-sm">até</span>
+                  <input
+                    type="date"
+                    value={dataFimCustom}
+                    onChange={(e) => onDataFimCustomChange(e.target.value)}
+                    className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+              ) : (
                 <button
-                  key={periodo}
-                  onClick={() => onPeriodoChange(periodo as VendasTabProps['periodoVendas'])}
-                  className={`px-2 py-1 rounded-md text-sm font-medium transition-colors ${periodoVendas === periodo
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                  onClick={() => onFiltroChange('personalizado')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50"
                 >
-                  {periodo.charAt(0).toUpperCase() + periodo.slice(1)}
+                  <Calendar className="h-4 w-4" />
+                  Personalizado
                 </button>
-              ))}
+              )}
             </div>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">

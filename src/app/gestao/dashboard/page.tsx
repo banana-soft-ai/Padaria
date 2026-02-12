@@ -321,7 +321,7 @@ export default function DashboardPage() {
                       </p>
                       <div className="flex items-center mt-1 text-xs text-blue-600 font-medium">
                         <TrendingUp className="h-3 w-3 mr-0.5" />
-                        <span>{data?.vendasMes.count || 0} vendas</span>
+                        <span>Total de {data?.vendasMes.count || 0} vendas no período</span>
                       </div>
                     </div>
                     <div className="p-3 bg-blue-50 rounded-xl">

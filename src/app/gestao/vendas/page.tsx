@@ -54,7 +54,7 @@ export default function VendasPage() {
         const dataInicioYmd = obterDataInicioPeriodo(periodoVendas)
         const hojeYmd = obterDataLocal()
 
-        const vendas = (vendasCache || []).filter((v: any) => v.data >= dataInicioYmd && v.data <= hojeYmd)
+        const vendas = (vendasCache || []).filter((v: any) => v.data >= dataInicioYmd && v.data <= hojeYmd && (v.status === 'finalizada' || !v.status))
         const vendaIds = vendas.map((v: any) => v.id).filter(Boolean)
         const itens = (itensCache || []).filter((it: any) => vendaIds.includes(it.venda_id))
         const varejoMap = new Map((varejoCache || []).map((p: any) => [p.id, p.nome]))
@@ -83,7 +83,7 @@ export default function VendasPage() {
         })
         setRelatorioVendas(Array.from(vendasPorProdutoPreco.values()))
 
-        const unidadesVendidas = itens.reduce((s: number, it: any) => s + (Number(it.quantidade) || 0), 0)
+        const unidadesVendidas = Math.round(itens.reduce((s: number, it: any) => s + (Number(it.quantidade) || 0), 0) * 100) / 100
         const receitaTotal = vendas.reduce((s: number, v: any) => s + (Number(v.valor_total) || 0), 0)
         const ticketMedio = vendas.length > 0 ? receitaTotal / vendas.length : 0
         const totalPix = vendas.filter((v: any) => v.forma_pagamento === 'pix').reduce((s: number, v: any) => s + (Number(v.valor_total) || 0), 0)
@@ -353,82 +353,24 @@ export default function VendasPage() {
 
   const carregarMetricasResumo = async () => {
     try {
-      if (!supabase) {
-        setMetricasResumo({
-          unidadesVendidas: 0,
-          receitaTotal: 0,
-          ticketMedio: 0,
-          totalPix: 0,
-          totalDinheiro: 0,
-          totalDebito: 0,
-          totalCredito: 0,
-          totalCaderneta: 0,
-          valorReceber: 0
-        })
-        return
-      }
-
       const dataInicio = obterDataInicioPeriodo(periodoVendas)
       const dataFim = obterDataLocal()
 
-      let todasVendas: Array<{ id: string; valor_total?: number; forma_pagamento?: string; valor_debito?: number }> = []
-      let offset = 0
-      const limit = 1000
-      let hasMore = true
+      const params = new URLSearchParams({ dataInicio, dataFim })
+      const res = await fetch(`/api/gestao/vendas/metricas?${params}`)
+      if (!res.ok) throw new Error('Erro ao carregar métricas')
 
-      while (hasMore) {
-        const { data: vendasBatch, error: vendasError } = await supabase!
-          .from('vendas')
-          .select('id, valor_total, forma_pagamento, valor_debito')
-          .gte('data', dataInicio)
-          .lte('data', dataFim)
-          .order('data', { ascending: false })
-          .range(offset, offset + limit - 1)
-
-        if (vendasError) {
-          console.error('Erro ao carregar vendas para métricas:', vendasError)
-          break
-        }
-        if (vendasBatch && vendasBatch.length > 0) {
-          todasVendas = [...todasVendas, ...vendasBatch]
-          offset += limit
-          hasMore = vendasBatch.length === limit
-        } else {
-          hasMore = false
-        }
-      }
-
-      let unidadesVendidas = 0
-      if (todasVendas.length > 0) {
-        const vendaIds = todasVendas.map(v => v.id)
-        const { data: itensData } = await supabase!
-          .from('venda_itens')
-          .select('quantidade')
-          .in('venda_id', vendaIds)
-        if (itensData) {
-          unidadesVendidas = itensData.reduce((sum, item) => sum + (item.quantidade || 0), 0)
-        }
-      }
-
-      const receitaTotal = todasVendas.reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
-      const totalPix = todasVendas.filter(v => v.forma_pagamento === 'pix').reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
-      const totalDinheiro = todasVendas.filter(v => v.forma_pagamento === 'dinheiro').reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
-      const totalDebito = todasVendas.filter(v => v.forma_pagamento === 'cartao_debito').reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
-      const totalCredito = todasVendas.filter(v => v.forma_pagamento === 'cartao_credito').reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
-      const totalCaderneta = todasVendas.filter(v => v.forma_pagamento === 'caderneta').reduce((s, v) => s + (Number(v.valor_total) || 0), 0)
-      const valorReceber = todasVendas.reduce((s, v) => s + (Number(v.valor_debito) || 0), 0)
-      const vendasCount = todasVendas.length
-
+      const data = await res.json()
       setMetricasResumo({
-        unidadesVendidas,
-        receitaTotal,
-        ticketMedio: vendasCount > 0 ? receitaTotal / vendasCount : 0,
-        totalPix,
-        totalDinheiro,
-        totalDebito,
-        totalCredito,
-        totalCaderneta,
-        valorReceber
+        unidadesVendidas: data.unidadesVendidas ?? 0,
+        receitaTotal: data.receitaTotal ?? 0,
+        ticketMedio: data.ticketMedio ?? 0,
+        totalPix: data.totalPix ?? 0,
+        totalDinheiro: data.totalDinheiro ?? 0,
+        totalDebito: data.totalDebito ?? 0,
+        totalCredito: data.totalCredito ?? 0,
+        totalCaderneta: data.totalCaderneta ?? 0,
+        valorReceber: data.valorReceber ?? 0
       })
     } catch (error) {
       console.error('Erro ao carregar métricas de resumo:', error instanceof Error ? error.message : String(error))

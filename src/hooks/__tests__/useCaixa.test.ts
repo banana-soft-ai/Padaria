@@ -38,10 +38,10 @@ jest.mock('@/lib/offlineStorage', () => ({
 }))
 
 jest.mock('react-hot-toast', () => {
-  const fn = () => {}
+  const fn = () => { }
   return {
     __esModule: true,
-    default: Object.assign(fn, { dismiss: () => {}, success: () => {}, error: () => {} }),
+    default: Object.assign(fn, { dismiss: () => { }, success: () => { }, error: () => { } }),
   }
 })
 
@@ -81,9 +81,9 @@ describe('useCaixa', () => {
   it('should handle abrirCaixa with valid data', async () => {
     const { result } = renderHook(() => useCaixa())
 
-    ;(supabase.from as jest.Mock).mockReturnValue({
-      insert: jest.fn(() => Promise.resolve({ data: null, error: null })),
-    })
+      ; (supabase.from as jest.Mock).mockReturnValue({
+        insert: jest.fn(() => Promise.resolve({ data: null, error: null })),
+      })
 
     await expect(result.current.abrirCaixa(100, 'Teste')).resolves.toBe(true)
   })
@@ -126,9 +126,9 @@ describe('useCaixa', () => {
   it('should handle registrarSaida with valid data', async () => {
     const { result } = renderHook(() => useCaixa())
 
-    ;(supabase.from as jest.Mock).mockReturnValue({
-      insert: jest.fn(() => Promise.resolve({ data: null, error: null })),
-    })
+      ; (supabase.from as jest.Mock).mockReturnValue({
+        insert: jest.fn(() => Promise.resolve({ data: null, error: null })),
+      })
 
     await expect(result.current.registrarSaida(50, 'Teste saída')).resolves.toBe(true)
   })
@@ -136,15 +136,15 @@ describe('useCaixa', () => {
   it('should keep caixaHoje null when load fails', async () => {
     const { result } = renderHook(() => useCaixa())
 
-    ;(supabase.from as jest.Mock).mockReturnValue({
-      select: jest.fn(() => ({
-        eq: jest.fn(() => ({
-          limit: jest.fn(() => ({
-            single: jest.fn(() => Promise.resolve({ data: null, error: new Error('Test error') })),
+      ; (supabase.from as jest.Mock).mockReturnValue({
+        select: jest.fn(() => ({
+          eq: jest.fn(() => ({
+            limit: jest.fn(() => ({
+              single: jest.fn(() => Promise.resolve({ data: null, error: new Error('Test error') })),
+            })),
           })),
         })),
-      })),
-    })
+      })
 
     await result.current.carregarCaixaHoje()
 

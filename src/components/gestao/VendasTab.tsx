@@ -131,7 +131,9 @@ const VendasTab: React.FC<VendasTabProps> = ({
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-gray-800 text-base">Unidades Vendidas:</span>
-                <span className="font-semibold text-blue-600">{metricasResumo.unidadesVendidas}</span>
+                <span className="font-semibold text-blue-600">
+                  {Number(metricasResumo.unidadesVendidas).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-800 text-base">Receita Total:</span>

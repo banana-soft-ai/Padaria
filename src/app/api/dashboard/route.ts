@@ -7,6 +7,15 @@ import { createSupabaseCookies } from '@/lib/supabase/supabaseCookies'
 import { clientEnv } from '@/env/client-env'
 import { serverEnv } from '@/env/server-env'
 import { obterDataLocal, obterInicioMes } from '@/lib/dateUtils'
+import { buscarMetricasPeriodo } from '@/services/vendasMetricas.service'
+
+const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
+    pix: 'PIX',
+    dinheiro: 'Dinheiro',
+    debito: 'Débito',
+    credito: 'Crédito',
+    caderneta: 'Caderneta'
+}
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
@@ -31,40 +40,21 @@ export async function GET(request: Request) {
     )
     const CHUNK_SIZE = 250 // limite de IDs por .in() para evitar URI too long
     try {
-        // 1) Vendas no período (paginação para evitar limite 1000 do Supabase)
-        type VendaPeriodoRow = { id: number; valor_total: number; forma_pagamento: string; data: string }
-        const vendasPeriodoArr: VendaPeriodoRow[] = []
-        const pageSize = 1000
-        let offset = 0
-        while (true) {
-            const { data: page, error: vendasPeriodoErr } = await supabase
-                .from('vendas')
-                .select('id, valor_total, forma_pagamento, data')
-                .gte('data', dataInicio)
-                .lte('data', dataFim)
-                .order('data', { ascending: true })
-                .range(offset, offset + pageSize - 1)
+        // 1) Métricas do período (serviço centralizado, filtra status=finalizada)
+        const metricas = await buscarMetricasPeriodo(supabase, dataInicio, dataFim)
+        const vendasHojeTotal = metricas.receitaTotal
+        const vendasHojeCount = metricas.vendasCount
+        const totalMesGestao = metricas.receitaTotal
+        const vendasMesCount = metricas.vendasCount
+        const itensVendidosHoje = metricas.unidadesVendidas
+        const ticketMedioHoje = metricas.ticketMedio
+        const vendasPorPagamento = Object.entries(metricas.porFormaPagamento)
+            .filter(([, total]) => total > 0)
+            .map(([forma, total]) => ({ forma: FORMA_PAGAMENTO_LABELS[forma] || forma, total }))
+            .sort((a, b) => b.total - a.total)
+        const vendaIdsMes = metricas.vendaIds
 
-            if (vendasPeriodoErr) {
-                console.error('Erro ao carregar vendas período:', vendasPeriodoErr)
-                break
-            }
-            if (!page?.length) break
-            vendasPeriodoArr.push(...(page as VendaPeriodoRow[]))
-            if (page.length < pageSize) break
-            offset += pageSize
-        }
-
-        const vendasHojeTotal = vendasPeriodoArr.reduce((s, v) => s + Number(v.valor_total || 0), 0)
-        const vendasHojeCount = vendasPeriodoArr.length
-
-        // 2) Vendas do mês (mesmo que período quando filtro aplicado)
-        const vendasMesArr = vendasPeriodoArr
-
-        const totalMesGestao = vendasMesArr.reduce((s, v) => s + Number(v.valor_total || 0), 0)
-        const vendasMesCount = vendasMesArr.length
-
-        // 3) Vendas por dia no range do filtro (RPC agrega no banco; sem limite de linhas)
+        // 2) Vendas por dia no range do filtro (RPC agrega no banco; sem limite de linhas)
         const { data: vendasPorDiaRpc, error: v30Err } = await supabase
             .rpc('get_vendas_por_dia', { inicio: chartInicio, fim: chartFim })
 
@@ -91,8 +81,7 @@ export async function GET(request: Request) {
             .map(([data, total]) => ({ data, total }))
             .sort((a, b) => a.data.localeCompare(b.data))
 
-        // 4) Top Produtos (período) — buscar itens em chunks para evitar URI too long
-        const vendaIdsMes = (vendasMesArr || []).map(v => v.id)
+        // 3) Top Produtos (período) — buscar itens em chunks para evitar URI too long
         let topProdutos: { nome: string; quantidade: number; total: number }[] = []
 
         if (vendaIdsMes.length > 0) {
@@ -126,40 +115,20 @@ export async function GET(request: Request) {
                 .slice(0, 5)
         }
 
-        // 5) Vendas por forma de pagamento (Mês)
-        const pagamentosAgrupados: Record<string, number> = {};
-        const formatarForma = (forma: string) => {
-            const nomes: Record<string, string> = {
-                'dinheiro': 'Dinheiro',
-                'cartao_debito': 'Débito',
-                'cartao_credito': 'Crédito',
-                'pix': 'PIX',
-                'caderneta': 'Caderneta'
-            };
-            return nomes[forma] || forma;
-        };
-
-        ; (vendasMesArr || []).forEach(v => {
-            const forma = formatarForma(v.forma_pagamento)
-            pagamentosAgrupados[forma] = (pagamentosAgrupados[forma] || 0) + Number(v.valor_total || 0)
-        })
-
-        const vendasPorPagamento = Object.entries(pagamentosAgrupados)
-            .map(([forma, total]) => ({ forma, total }))
-            .sort((a, b) => b.total - a.total)
-
-        // 6) Últimas Vendas (período)
+        // 4) Últimas Vendas (período)
         const { data: ultimasVendas, error: ultimasErr } = await supabase
             .from('vendas')
             .select('id, numero_venda, created_at, valor_total, forma_pagamento, status, data')
             .gte('data', dataInicio)
             .lte('data', dataFim)
+            .eq('status', 'finalizada')
             .order('created_at', { ascending: false })
             .limit(5);
 
         if (ultimasErr) console.error('Erro ao carregar últimas vendas:', ultimasErr);
 
         // Formatar vendas recentes com fuso horário local
+        const formatarForma = (forma: string) => FORMA_PAGAMENTO_LABELS[forma === 'cartao_debito' ? 'debito' : forma === 'cartao_credito' ? 'credito' : forma] || forma
         const vendasRecentesFormatadas = (ultimasVendas || []).map(v => {
             const dataVenda = new Date(v.created_at);
             const horaLocal = dataVenda.toLocaleTimeString('pt-BR', {
@@ -175,27 +144,6 @@ export async function GET(request: Request) {
                 forma_pagamento: formatarForma(v.forma_pagamento)
             };
         });
-
-        // 7) Itens vendidos no período (chunks para evitar URI too long)
-        let itensVendidosHoje = 0
-        if (vendasHojeCount > 0) {
-            const vendaIds = vendasPeriodoArr.map((r) => r.id).filter(Boolean)
-            let somaItens = 0
-            for (let i = 0; i < vendaIds.length; i += CHUNK_SIZE) {
-                const chunk = vendaIds.slice(i, i + CHUNK_SIZE)
-                const { data: itensChunk, error: itensErr } = await supabase
-                    .from('venda_itens')
-                    .select('quantidade')
-                    .in('venda_id', chunk)
-
-                if (itensErr) console.error('Erro ao buscar itens vendidos (chunk):', itensErr)
-                somaItens += (itensChunk || []).reduce((sum, it) => sum + (Number(it.quantidade) || 0), 0)
-            }
-            itensVendidosHoje = Math.round(somaItens * 100) / 100
-        }
-
-        // 8) Ticket médio no período
-        const ticketMedioHoje = vendasHojeCount > 0 ? vendasHojeTotal / vendasHojeCount : 0
 
         return NextResponse.json({
             vendasHoje: {

@@ -1,8 +1,16 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { useVendas } from '../useVendas'
 
+type SupabaseChain = {
+  select: jest.Mock
+  eq: jest.Mock
+  order: jest.Mock
+  limit: jest.Mock
+  insert: jest.Mock
+}
+
 // Mock que retorna uma chain completa para qualquer .from().select().eq()... ou .from().insert().select()...
-const createChain = (finalData: unknown = [], finalError: unknown = null) => ({
+const createChain = (finalData: unknown = [], finalError: unknown = null): SupabaseChain => ({
   select: jest.fn(() => createChain(finalData, finalError)),
   eq: jest.fn(() => createChain(finalData, finalError)),
   order: jest.fn(() => Promise.resolve({ data: finalData, error: finalError })),

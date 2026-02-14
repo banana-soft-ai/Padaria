@@ -1,4 +1,10 @@
-require('@testing-library/jest-dom')
+const dotenv = require('dotenv')
+
+dotenv.config({ path: '.env.local', quiet: true })
+
+if (typeof window !== 'undefined') {
+  require('@testing-library/jest-dom')
+}
 
 // Polyfill Response para testes de API routes (Node/jest jsdom não tem global Response)
 if (typeof global.Response === 'undefined') {
@@ -40,24 +46,26 @@ jest.mock('next/link', () => {
   }
 })
 
-// Configurações globais para testes
-global.ResizeObserver = jest.fn().mockImplementation(() => ({
-  observe: jest.fn(),
-  unobserve: jest.fn(),
-  disconnect: jest.fn(),
-}))
+if (typeof window !== 'undefined') {
+  // Configurações globais para testes
+  global.ResizeObserver = jest.fn().mockImplementation(() => ({
+    observe: jest.fn(),
+    unobserve: jest.fn(),
+    disconnect: jest.fn(),
+  }))
 
-// Mock do window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: jest.fn().mockImplementation(query => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: jest.fn(),
-    removeListener: jest.fn(),
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
-  })),
-})
+  // Mock do window.matchMedia
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: jest.fn().mockImplementation(query => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    })),
+  })
+}

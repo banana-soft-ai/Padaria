@@ -57,6 +57,12 @@ describe('lib/permissions', () => {
       expect(canAccessRoute('admin', '/gestao')).toBe(true)
       expect(canAccessRoute('gerente', '/gestao')).toBe(true)
       expect(canAccessRoute('funcionario', '/gestao')).toBe(false)
+
+      // cobertura explícita para áreas críticas da gestão/dashboard/admin
+      expect(canAccessRoute('admin', '/gestao/dashboard')).toBe(true)
+      expect(canAccessRoute('admin', '/gestao/vendas')).toBe(true)
+      expect(canAccessRoute('admin', '/sistema/usuarios')).toBe(true)
+      expect(canAccessRoute('funcionario', '/gestao/dashboard')).toBe(false)
     })
 
     it('permite rotas administrativas para funcionário se adminUnlocked', () => {

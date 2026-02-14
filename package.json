@@ -15,6 +15,7 @@
     "setup-admin": "node scripts/js/setup-admin.js",
     "impressao-local": "node servicos/impressao-local/server.js",
     "test": "jest",
+    "test:e2e": "node scripts/js/run-e2e-tests.js",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
   },

@@ -1,6 +1,8 @@
 /** @type {import('jest').Config} */
+const isE2E = process.argv.some((arg) => arg.includes('tests/e2e'))
+
 const config = {
-  testEnvironment: 'jsdom',
+  testEnvironment: isE2E ? 'node' : 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   preset: 'ts-jest',
   moduleNameMapper: {
@@ -17,6 +19,7 @@ const config = {
     '^.+\\.(ts|tsx)$': ['ts-jest', { useESM: false }],
   },
   transformIgnorePatterns: ['/node_modules/'],
+  ...(isE2E ? { maxWorkers: 1 } : {}),
 }
 
-module.exports = config;
+module.exports = config

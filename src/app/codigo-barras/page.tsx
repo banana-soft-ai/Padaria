@@ -519,7 +519,7 @@ export default function CodigoBarrasPage() {
                       <div className="text-center">
                         <Camera className="h-16 w-16 mx-auto mb-4 text-gray-300" />
                         <p>Câmera não ativa</p>
-                        <p className="text-sm">Clique em "Iniciar Scanner" para começar</p>
+                        <p className="text-sm">Clique em &quot;Iniciar Scanner&quot; para começar</p>
                       </div>
                     </div>
                   )}

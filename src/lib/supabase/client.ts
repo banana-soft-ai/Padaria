@@ -34,9 +34,7 @@ if (typeof window !== 'undefined' && url && anonKey) {
       throw new Error(`[Supabase] Cliente não configurado: variáveis ausentes (${missing}). Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no build do deploy.`)
     }
   }
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore - proxy will throw when used
-  _supabase = new Proxy({}, handler) as unknown as SupabaseClient<any>
+    _supabase = new Proxy({}, handler) as unknown as SupabaseClient<any>
 }
 
 export const supabase = _supabase

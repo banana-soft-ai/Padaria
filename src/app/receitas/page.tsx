@@ -1062,7 +1062,7 @@ export default function ReceitasPage() {
                           <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg bg-white mx-2">
                             <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
                             <p className="text-sm font-medium">Nenhum ingrediente</p>
-                            <p className="text-xs mt-1">Clique em "Adicionar Ingrediente" abaixo</p>
+                            <p className="text-xs mt-1">Clique em &quot;Adicionar Ingrediente&quot; abaixo</p>
                           </div>
                         )}
 

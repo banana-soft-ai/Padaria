@@ -11,12 +11,14 @@
     "check-env": "node ./scripts/check-env.js",
     "build": "next build",
     "start": "node server.js",
-    "lint": "next lint",
+    "lint": "eslint .",
     "setup-admin": "node scripts/js/setup-admin.js",
     "impressao-local": "node servicos/impressao-local/server.js",
     "test": "jest",
+    "test:e2e": "node scripts/js/run-e2e-tests.js",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.7",

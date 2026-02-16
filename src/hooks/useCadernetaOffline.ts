@@ -32,6 +32,41 @@ interface ClienteComMovimentacoes extends ClienteCaderneta {
   ultimo_pagamento?: string
 }
 
+
+interface CaixaDiarioOffline {
+  id: number
+  data?: string
+  status?: string
+  total_entradas?: number | null
+  total_dinheiro?: number | null
+  total_pix?: number | null
+  total_debito?: number | null
+  total_credito?: number | null
+  updated_at?: string
+}
+
+interface CaixaMovimentacaoOffline {
+  id: number
+  caixa_diario_id: number
+  tipo: 'entrada' | 'saida'
+  valor: number
+  motivo?: string | null
+  observacoes?: string | null
+  created_at: string
+}
+
+interface FluxoCaixaOffline {
+  id: number
+  data: string
+  tipo: 'entrada' | 'saida'
+  categoria: string
+  descricao: string
+  valor: number
+  caixa_diario_id: number
+  observacoes?: string | null
+  created_at: string
+}
+
 export function useCadernetaOffline() {
   // Hook offline para clientes da caderneta
   const {
@@ -71,6 +106,22 @@ export function useCadernetaOffline() {
     loading: vendasLoading
   } = useOfflineData<Venda>({
     table: 'vendas',
+    autoSync: true
+  })
+
+
+  const { data: caixasOffline, updateItem: updateCaixaOffline } = useOfflineData<CaixaDiarioOffline>({
+    table: 'caixa_diario',
+    autoSync: false
+  })
+
+  const { addItem: addMovCaixaOffline } = useOfflineData<CaixaMovimentacaoOffline>({
+    table: 'caixa_movimentacoes',
+    autoSync: true
+  })
+
+  const { addItem: addFluxoOffline } = useOfflineData<FluxoCaixaOffline>({
+    table: 'fluxo_caixa',
     autoSync: true
   })
 
@@ -314,37 +365,36 @@ export function useCadernetaOffline() {
             created_at: new Date().toISOString()
           });
       } else {
-        // OFFLINE: registrar localmente (como antes)
+        // OFFLINE: registrar localmente usando hooks inicializados no topo
         try {
-          // eslint-disable-next-line react-hooks/rules-of-hooks
-          const { data: caixas } = useOfflineData<any>({ table: 'caixa_diario', autoSync: false });
-          let caixaAberto = caixas.find((c: any) => c.data === hoje && c.status === 'aberto');
-          if (!caixaAberto) return result;
-          let atualizar: any = { ...caixaAberto };
+          const caixaAberto =
+            caixasOffline.find((c) => c.data === hoje && c.status === 'aberto') ??
+            caixasOffline.find((c) => c.status === 'aberto')
+
+          if (!caixaAberto) return result
+
+          const atualizar: Partial<CaixaDiarioOffline> = {}
           if (formasValidas.includes(forma)) {
-            atualizar.total_entradas = Number((Number(atualizar.total_entradas || 0) + valorParaCaixa).toFixed(2));
-            if (forma === 'dinheiro') atualizar.total_dinheiro = Number((Number(atualizar.total_dinheiro || 0) + valorParaCaixa).toFixed(2));
-            if (forma === 'pix') atualizar.total_pix = Number((Number(atualizar.total_pix || 0) + valorParaCaixa).toFixed(2));
-            if (['debito', 'débito', 'cartao_debito', 'cartao-debito'].includes(forma)) atualizar.total_debito = Number((Number(atualizar.total_debito || 0) + valorParaCaixa).toFixed(2));
-            if (['credito', 'crédito', 'cartao_credito', 'cartao-credito'].includes(forma)) atualizar.total_credito = Number((Number(atualizar.total_credito || 0) + valorParaCaixa).toFixed(2));
+            atualizar.total_entradas = Number((Number(caixaAberto.total_entradas || 0) + valorParaCaixa).toFixed(2))
+            if (forma === 'dinheiro') atualizar.total_dinheiro = Number((Number(caixaAberto.total_dinheiro || 0) + valorParaCaixa).toFixed(2))
+            if (forma === 'pix') atualizar.total_pix = Number((Number(caixaAberto.total_pix || 0) + valorParaCaixa).toFixed(2))
+            if (['debito', 'débito', 'cartao_debito', 'cartao-debito'].includes(forma)) atualizar.total_debito = Number((Number(caixaAberto.total_debito || 0) + valorParaCaixa).toFixed(2))
+            if (['credito', 'crédito', 'cartao_credito', 'cartao-credito'].includes(forma)) atualizar.total_credito = Number((Number(caixaAberto.total_credito || 0) + valorParaCaixa).toFixed(2))
           }
-          atualizar.updated_at = new Date().toISOString();
-          // eslint-disable-next-line react-hooks/rules-of-hooks
-          const { updateItem: updateCaixa } = useOfflineData<any>({ table: 'caixa_diario', autoSync: false });
-          await updateCaixa(caixaAberto.id, atualizar);
-          // eslint-disable-next-line react-hooks/rules-of-hooks
-          const { addItem: addMovCaixa } = useOfflineData<any>({ table: 'caixa_movimentacoes', autoSync: true });
-          await addMovCaixa({
+
+          atualizar.updated_at = new Date().toISOString()
+          await updateCaixaOffline(caixaAberto.id, atualizar)
+
+          await addMovCaixaOffline({
             caixa_diario_id: caixaAberto.id,
             tipo: 'entrada',
             valor: valorParaCaixa,
             motivo: `Pagamento caderneta (cliente ${clienteId})`,
             observacoes: observacoes || null,
-            created_at: new Date().toISOString()
-          });
-          // eslint-disable-next-line react-hooks/rules-of-hooks
-          const { addItem: addFluxo } = useOfflineData<any>({ table: 'fluxo_caixa', autoSync: true });
-          await addFluxo({
+            created_at: new Date().toISOString(),
+          })
+
+          await addFluxoOffline({
             data: caixaAberto.data || hoje,
             tipo: 'entrada',
             categoria: 'caderneta',
@@ -352,10 +402,10 @@ export function useCadernetaOffline() {
             valor: valorParaCaixa,
             caixa_diario_id: caixaAberto.id,
             observacoes: observacoes || null,
-            created_at: new Date().toISOString()
-          });
+            created_at: new Date().toISOString(),
+          })
         } catch (e) {
-          console.warn('[registrarPagamento] Falha ao registrar movimentação de caixa offline:', e);
+          console.warn('[registrarPagamento] Falha ao registrar movimentação de caixa offline:', e)
         }
       }
     }

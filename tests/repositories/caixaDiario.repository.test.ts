@@ -56,7 +56,7 @@ describe('caixaDiario.repository', () => {
       const erro = createSupabaseError('Erro de conexão')
       mocks.then.mockResolvedValueOnce({ data: null, error: erro })
 
-      await expect(fetchCaixasAbertos(supabase)).rejects.toThrow()
+      await expect(fetchCaixasAbertos(supabase)).rejects.toEqual(erro)
     })
   })
 
@@ -165,8 +165,8 @@ describe('caixaDiario.repository', () => {
       const { supabase, mocks } = createSupabaseMock()
 
       let dadosAtualizados: any
-      mocks.update.mockImplementationOnce((dados: any) => {
-        dadosAtualizados = dados
+      mocks.update.mockImplementationOnce((...args: any[]) => {
+        dadosAtualizados = args[0]
         return mocks.queryBuilder
       })
 

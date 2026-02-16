@@ -43,11 +43,32 @@ export function createSupabaseMock<T = any>(
 
   // ✅ Tornar queryBuilder "thenable": then(resolve, reject) deve invocar resolve para await funcionar
   const defaultResponse = { data: defaultData, error: defaultError }
-  const thenMock = jest.fn().mockImplementation((onFulfilled?: (value: unknown) => void) => {
-    const p = Promise.resolve(defaultResponse)
-    if (typeof onFulfilled === 'function') p.then(onFulfilled)
-    return p
-  })
+  const thenResponsesQueue: unknown[] = []
+  const thenMock = jest
+    .fn()
+    .mockImplementation((onFulfilled?: (value: unknown) => unknown, onRejected?: (error: unknown) => unknown) => {
+      const response = thenResponsesQueue.length > 0 ? thenResponsesQueue.shift() : defaultResponse
+      return Promise.resolve(response).then(
+        (value) => {
+          if (typeof onFulfilled === 'function') onFulfilled(value)
+          return value
+        },
+        (error) => {
+          if (typeof onRejected === 'function') onRejected(error)
+          throw error
+        }
+      )
+    })
+
+  thenMock.mockResolvedValueOnce = (value: unknown) => {
+    thenResponsesQueue.push(value)
+    return thenMock
+  }
+  thenMock.mockResolvedValue = (value: unknown) => {
+    thenResponsesQueue.length = 0
+    thenResponsesQueue.push(value)
+    return thenMock
+  }
 
   // ✅ Preencher queryBuilder AGORA com as funções (serão retornadas quando chamadas)
   Object.assign(queryBuilder, {
@@ -175,6 +196,7 @@ export function createSupabaseMock<T = any>(
       singleMock.mockClear()
       maybeSingleMock.mockClear()
       thenMock.mockClear()
+      thenResponsesQueue.length = 0
       fromMock.mockClear()
       return mockHelpers
     },

@@ -53,8 +53,6 @@ export const CAIXA_ABERTO_MOCK: CaixaDiario = {
   usuario_fechamento: null,
   observacoes_abertura: 'Abertura normal',
   observacoes_fechamento: null,
-  created_at: '2026-02-13T08:00:00Z',
-  updated_at: null,
 }
 
 /**
@@ -100,8 +98,6 @@ export const CAIXA_FECHADO_MOCK: CaixaDiario = {
   usuario_fechamento: 'Admin',
   observacoes_abertura: 'Abertura normal',
   observacoes_fechamento: 'Fechamento com diferença de R$ 10',
-  created_at: '2026-02-12T08:00:00Z',
-  updated_at: '2026-02-12T18:00:00Z',
 }
 
 /**
@@ -192,7 +188,6 @@ export function criarCaixaUpdateFechamentoMock(overrides?: Partial<CaixaDiarioUp
     data_fechamento: '2026-02-13T18:00:00Z',
     usuario_fechamento: 'Admin',
     observacoes_fechamento: 'Fechamento teste',
-    updated_at: '2026-02-13T18:00:00Z',
   }
   return { ...base, ...overrides }
 }

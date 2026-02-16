@@ -46,7 +46,7 @@ export function useUser(): UseUserReturn {
 
   const updateState = useCallback((newUser: User | null, newUserData: UserData | null, newLoading: boolean, newError: string | null = null) => {
     if (!isMountedRef.current) return
-    
+
     globalUserData = { user: newUser, userData: newUserData }
     setUser(newUser)
     setUserData(newUserData)

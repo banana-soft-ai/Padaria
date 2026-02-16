@@ -1,0 +1,5 @@
+export { default as BarraBusca } from './BarraBusca'
+export { default as Carrinho } from './Carrinho'
+export { default as FinalizacaoVenda } from './FinalizacaoVenda'
+export { default as SelecionarCliente } from './SelecionarCliente'
+export { default as SelecionarProduto } from './SelecionarProduto'

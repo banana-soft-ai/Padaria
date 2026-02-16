@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  // Corrige aviso "multiple lockfiles" — força raiz do projeto para trace de chunks (H1)
+  outputFileTracingRoot: path.join(__dirname),
   // Suprimir avisos de console em produção
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',

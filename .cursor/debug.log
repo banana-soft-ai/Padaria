@@ -1,4 +1,146 @@
-{"location":"useOfflineData.ts:supabaseError","message":"supabaseError structure","data":{"rawKeys":["code","details","hint","message"],"rawOwn":["code","details","hint","message"],"rawStrSample":"{\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'custosInvisiveis' column of 'receitas' in the schema cache\"}","directCode":"PGRST204","directMessage":"Could not find the 'custosInvisiveis' column of 'receitas' in the schema cache","directDetails":null,"nestedError":false,"nestedKeys":null,"nestedMsg":null},"timestamp":1769775451224,"sessionId":"debug-session","hypothesisId":"H1-H5"}
-{"location":"useOfflineData.ts:supabaseError","message":"supabaseError structure","data":{"rawKeys":["code","details","hint","message"],"rawOwn":["code","details","hint","message"],"rawStrSample":"{\"code\":\"23505\",\"details\":null,\"hint\":null,\"message\":\"duplicate key value violates unique constraint \\\"receitas_nome_unique\\\"\"}","directCode":"23505","directMessage":"duplicate key value violates unique constraint \"receitas_nome_unique\"","directDetails":null,"nestedError":false,"nestedKeys":null,"nestedMsg":null},"timestamp":1769775451540,"sessionId":"debug-session","hypothesisId":"H1-H5"}
-{"location":"useOfflineData.ts:supabaseError","message":"supabaseError structure","data":{"rawKeys":["code","details","hint","message"],"rawOwn":["code","details","hint","message"],"rawStrSample":"{\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'custosInvisiveis' column of 'receitas' in the schema cache\"}","directCode":"PGRST204","directMessage":"Could not find the 'custosInvisiveis' column of 'receitas' in the schema cache","directDetails":null,"nestedError":false,"nestedKeys":null,"nestedMsg":null},"timestamp":1769775462303,"sessionId":"debug-session","hypothesisId":"H1-H5"}
-{"location":"useOfflineData.ts:errInfo","message":"errInfo before throw","data":{"errInfoBuilt":{"code":"PGRST204","message":"Could not find the 'custosInvisiveis' column of 'receitas' in the schema cache","details":null,"hint":null}},"timestamp":1769775630604,"sessionId":"debug-session","runId":"post-fix","hypothesisId":"verify"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771185838322},"timestamp":1771185838322,"hypothesisId":"H2"}
+{"location":"ThemeConfigurator.tsx:mount","message":"Layout chunk loaded, client hydrated","data":{"t":1771185842474},"timestamp":1771185842474,"hypothesisId":"H3"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/sw.js","host":"localhost:3000","t":1771185843940},"timestamp":1771185843940,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771185844945},"timestamp":1771185844945,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771185844946},"timestamp":1771185844946,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771185844948},"timestamp":1771185844948,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771185844949},"timestamp":1771185844949,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771185947749},"timestamp":1771185947749,"hypothesisId":"H2"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771185948299},"timestamp":1771185948299,"hypothesisId":"H6"}
+{"location":"useUser.ts:fetchStart","message":"useUser fetchUserData started","data":{"t":1771185948374},"timestamp":1771185948374,"hypothesisId":"H6"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771185950345},"timestamp":1771185950345,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771185950345},"timestamp":1771185950345,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771185950346},"timestamp":1771185950346,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771185950346},"timestamp":1771185950346,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771185950995},"timestamp":1771185950995,"hypothesisId":"H2"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771185951116},"timestamp":1771185951116,"hypothesisId":"H6"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/estoque","host":"localhost:3000","t":1771185953076},"timestamp":1771185953076,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771185953267},"timestamp":1771185953267,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771185953269},"timestamp":1771185953269,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771185953269},"timestamp":1771185953269,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771185953268},"timestamp":1771185953268,"hypothesisId":"H2"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771185953341},"timestamp":1771185953341,"hypothesisId":"H6"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771185955373},"timestamp":1771185955373,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771185955373},"timestamp":1771185955373,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771185955374},"timestamp":1771185955374,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771185955374},"timestamp":1771185955374,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771185955374},"timestamp":1771185955374,"hypothesisId":"H2"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771185956532},"timestamp":1771185956532,"hypothesisId":"H6"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771185958288},"timestamp":1771185958288,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771185958289},"timestamp":1771185958289,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771185958289},"timestamp":1771185958289,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771185958289},"timestamp":1771185958289,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/dashboard","host":"localhost:3000","t":1771185982423},"timestamp":1771185982423,"hypothesisId":"H2"}
+{"location":"useUser.ts:fetchStart","message":"useUser fetchUserData started","data":{"t":1771185982549},"timestamp":1771185982549,"hypothesisId":"H6"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771185982807},"timestamp":1771185982807,"hypothesisId":"H6"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771185984677},"timestamp":1771185984677,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771185984677},"timestamp":1771185984677,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771185984677},"timestamp":1771185984677,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771185984678},"timestamp":1771185984678,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/caixas","host":"localhost:3000","t":1771185995236},"timestamp":1771185995236,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771185999930},"timestamp":1771185999930,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/caixas","host":"localhost:3000","t":1771185999978},"timestamp":1771185999978,"hypothesisId":"H2"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771186001365},"timestamp":1771186001365,"hypothesisId":"H6"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/caixas","host":"localhost:3000","t":1771186001824},"timestamp":1771186001824,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186001826},"timestamp":1771186001826,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186002253},"timestamp":1771186002253,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186003401},"timestamp":1771186003401,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186003403},"timestamp":1771186003403,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186003404},"timestamp":1771186003404,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186003405},"timestamp":1771186003405,"hypothesisId":"H2"}
+{"location":"ThemeConfigurator.tsx:mount","message":"Layout chunk loaded, client hydrated","data":{"t":1771186003929},"timestamp":1771186003929,"hypothesisId":"H3"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/sw.js","host":"localhost:3000","t":1771186005386},"timestamp":1771186005386,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186006937},"timestamp":1771186006937,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186006937},"timestamp":1771186006937,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186006938},"timestamp":1771186006938,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186006938},"timestamp":1771186006938,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/saidas","host":"localhost:3000","t":1771186010031},"timestamp":1771186010031,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186011988},"timestamp":1771186011988,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/saidas","host":"localhost:3000","t":1771186012130},"timestamp":1771186012130,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186012196},"timestamp":1771186012196,"hypothesisId":"H2"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771186012920},"timestamp":1771186012920,"hypothesisId":"H6"}
+{"location":"ThemeConfigurator.tsx:mount","message":"Layout chunk loaded, client hydrated","data":{"t":1771186013760},"timestamp":1771186013760,"hypothesisId":"H3"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186014927},"timestamp":1771186014927,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186014927},"timestamp":1771186014927,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186014927},"timestamp":1771186014927,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186014928},"timestamp":1771186014928,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/sw.js","host":"localhost:3000","t":1771186015609},"timestamp":1771186015609,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186015928},"timestamp":1771186015928,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186015928},"timestamp":1771186015928,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186015929},"timestamp":1771186015929,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186015928},"timestamp":1771186015928,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/vendas","host":"localhost:3000","t":1771186026785},"timestamp":1771186026785,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186031588},"timestamp":1771186031588,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/vendas","host":"localhost:3000","t":1771186031722},"timestamp":1771186031722,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186031778},"timestamp":1771186031778,"hypothesisId":"H2"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771186032849},"timestamp":1771186032849,"hypothesisId":"H6"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/sw.js","host":"localhost:3000","t":1771186034944},"timestamp":1771186034944,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186035025},"timestamp":1771186035025,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186035026},"timestamp":1771186035026,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186035026},"timestamp":1771186035026,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186035026},"timestamp":1771186035026,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/vendas","host":"localhost:3000","t":1771186035492},"timestamp":1771186035492,"hypothesisId":"H2"}
+{"location":"ThemeConfigurator.tsx:mount","message":"Layout chunk loaded, client hydrated","data":{"t":1771186036023},"timestamp":1771186036023,"hypothesisId":"H3"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186038927},"timestamp":1771186038927,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186038928},"timestamp":1771186038928,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186038928},"timestamp":1771186038928,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186038928},"timestamp":1771186038928,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/precos","host":"localhost:3000","t":1771186048484},"timestamp":1771186048484,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186051858},"timestamp":1771186051858,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/precos","host":"localhost:3000","t":1771186052128},"timestamp":1771186052128,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186052199},"timestamp":1771186052199,"hypothesisId":"H2"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771186053153},"timestamp":1771186053153,"hypothesisId":"H6"}
+{"location":"ThemeConfigurator.tsx:mount","message":"Layout chunk loaded, client hydrated","data":{"t":1771186054588},"timestamp":1771186054588,"hypothesisId":"H3"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186055141},"timestamp":1771186055141,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186055141},"timestamp":1771186055141,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186055141},"timestamp":1771186055141,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186055142},"timestamp":1771186055142,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/sw.js","host":"localhost:3000","t":1771186056286},"timestamp":1771186056286,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186056953},"timestamp":1771186056953,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186056951},"timestamp":1771186056951,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186056954},"timestamp":1771186056954,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186056954},"timestamp":1771186056954,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/operadores","host":"localhost:3000","t":1771186059344},"timestamp":1771186059344,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186062447},"timestamp":1771186062447,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/operadores","host":"localhost:3000","t":1771186062600},"timestamp":1771186062600,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186062715},"timestamp":1771186062715,"hypothesisId":"H2"}
+{"location":"ThemeConfigurator.tsx:mount","message":"Layout chunk loaded, client hydrated","data":{"t":1771186065087},"timestamp":1771186065087,"hypothesisId":"H3"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/sw.js","host":"localhost:3000","t":1771186065380},"timestamp":1771186065380,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186065940},"timestamp":1771186065940,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186065941},"timestamp":1771186065941,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186065941},"timestamp":1771186065941,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186065942},"timestamp":1771186065942,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186067945},"timestamp":1771186067945,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186067943},"timestamp":1771186067943,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186067946},"timestamp":1771186067946,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186067947},"timestamp":1771186067947,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/lucro","host":"localhost:3000","t":1771186071328},"timestamp":1771186071328,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186075506},"timestamp":1771186075506,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/gestao/lucro","host":"localhost:3000","t":1771186075682},"timestamp":1771186075682,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186075727},"timestamp":1771186075727,"hypothesisId":"H2"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771186077192},"timestamp":1771186077192,"hypothesisId":"H6"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/sw.js","host":"localhost:3000","t":1771186078657},"timestamp":1771186078657,"hypothesisId":"H2"}
+{"location":"ThemeConfigurator.tsx:mount","message":"Layout chunk loaded, client hydrated","data":{"t":1771186078726},"timestamp":1771186078726,"hypothesisId":"H3"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186079269},"timestamp":1771186079269,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186079270},"timestamp":1771186079270,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186079271},"timestamp":1771186079271,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186079272},"timestamp":1771186079272,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186082065},"timestamp":1771186082065,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186082065},"timestamp":1771186082065,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186082065},"timestamp":1771186082065,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186082066},"timestamp":1771186082066,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/sistema/usuarios","host":"localhost:3000","t":1771186083955},"timestamp":1771186083955,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186093324},"timestamp":1771186093324,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/sistema/usuarios","host":"localhost:3000","t":1771186093603},"timestamp":1771186093603,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/pt-BR","host":"localhost:3000","t":1771186093669},"timestamp":1771186093669,"hypothesisId":"H2"}
+{"location":"ProtectedLayout.tsx:sessionOk","message":"ProtectedLayout loading=false","data":{"t":1771186094663},"timestamp":1771186094663,"hypothesisId":"H6"}
+{"location":"ThemeConfigurator.tsx:mount","message":"Layout chunk loaded, client hydrated","data":{"t":1771186095680},"timestamp":1771186095680,"hypothesisId":"H3"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186096679},"timestamp":1771186096679,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186096680},"timestamp":1771186096680,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186096680},"timestamp":1771186096680,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186096681},"timestamp":1771186096681,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/sw.js","host":"localhost:3000","t":1771186097781},"timestamp":1771186097781,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/receitas","host":"localhost:3000","t":1771186097937},"timestamp":1771186097937,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/estoque","host":"localhost:3000","t":1771186097938},"timestamp":1771186097938,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/caixa","host":"localhost:3000","t":1771186097938},"timestamp":1771186097938,"hypothesisId":"H2"}
+{"location":"middleware.ts:request","message":"Request received","data":{"pathname":"/configuracoes","host":"localhost:3000","t":1771186097937},"timestamp":1771186097937,"hypothesisId":"H2"}

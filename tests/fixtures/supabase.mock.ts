@@ -49,6 +49,23 @@ export function createSupabaseMock<T = any>(
     return p
   })
 
+  const mockThenResolvedValue = (value: unknown) =>
+    thenMock.mockImplementation((onFulfilled?: (value: unknown) => void) => {
+      const p = Promise.resolve(value)
+      if (typeof onFulfilled === 'function') p.then(onFulfilled)
+      return p
+    })
+
+  const mockThenResolvedValueOnce = (value: unknown) =>
+    thenMock.mockImplementationOnce((onFulfilled?: (value: unknown) => void) => {
+      const p = Promise.resolve(value)
+      if (typeof onFulfilled === 'function') p.then(onFulfilled)
+      return p
+    })
+
+  thenMock.mockResolvedValue = mockThenResolvedValue as typeof thenMock.mockResolvedValue
+  thenMock.mockResolvedValueOnce = mockThenResolvedValueOnce as typeof thenMock.mockResolvedValueOnce
+
   // ✅ Preencher queryBuilder AGORA com as funções (serão retornadas quando chamadas)
   Object.assign(queryBuilder, {
     select: selectMock,
